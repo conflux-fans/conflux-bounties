@@ -1,0 +1,33 @@
+name: "Bounty Claim"
+description: "Claim a bounty by outlining your plan, timeline, and experience."
+labels: [bounty, claim]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Claiming a Bounty
+        Please fill out the following to claim this bounty. See the [Submission Guide](../../docs/02_submission_guide.md) for details.
+  - type: textarea
+    id: plan
+    attributes:
+      label: "My Plan"
+      description: "Briefly describe your approach (2-3 sentences)."
+      placeholder: "I'll build the gas sponsorship SDK using TypeScript with ethers.js integration..."
+    validations:
+      required: true
+  - type: input
+    id: timeline
+    attributes:
+      label: "Timeline"
+      description: "Estimated time to complete (e.g., 2-3 weeks)"
+      placeholder: "3 weeks"
+    validations:
+      required: true
+  - type: textarea
+    id: experience
+    attributes:
+      label: "Relevant Experience (optional)"
+      description: "Share any relevant background or previous work."
+      placeholder: "Built similar Web3 SDKs for Ethereum and Polygon..."
+    validations:
+      required: false

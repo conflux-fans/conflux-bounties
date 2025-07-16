@@ -1,0 +1,25 @@
+name: "Question / Support Request"
+description: "Ask a question or request support related to the Conflux Bounties Initiative."
+labels: [question, support]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Need Help?
+        Please provide as much detail as possible. Check the [FAQ](../../docs/04_FAQ.md) before submitting.
+  - type: textarea
+    id: question
+    attributes:
+      label: "Your Question"
+      description: "Describe your question or issue. Include error messages, screenshots, or links if relevant."
+      placeholder: "I'm having trouble with..."
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: "Discord or GitHub Username (optional)"
+      description: "So we can follow up if needed."
+      placeholder: "your-discord#1234 or @github-username"
+    validations:
+      required: false
