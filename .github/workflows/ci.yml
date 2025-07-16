@@ -29,5 +29,5 @@ jobs:
         if: steps.pkg.outputs.exists == 'true'
         run: npm test
       - name: Test coverage
-        run: |
-          npm run test:coverage || yarn test:coverage
+        if: steps.pkg.outputs.exists == 'true'
+        run: npm run test:coverage
