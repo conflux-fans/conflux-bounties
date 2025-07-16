@@ -2,4 +2,4 @@
 
 Track progress and bounty status on our GitHub Projects Kanban board:
 
-[Conflux Bounties Project Board](https://github.com/conflux-network/conflux-bounties-2025/projects/1)
+[Conflux Bounties Project Board](https://github.com/orgs/conflux-fans/projects/1/views/1)
