@@ -11,19 +11,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Check for package.json
+        id: pkg
+        run: echo "exists=$(test -f package.json && echo true || echo false)" >> $GITHUB_OUTPUT
       - name: Set up Node.js
+        if: steps.pkg.outputs.exists == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: 18
       - name: Install dependencies
-        run: |
-          npm install || yarn install
+        if: steps.pkg.outputs.exists == 'true'
+        run: npm install
       - name: Lint
-        run: |
-          npm run lint || yarn lint
+        if: steps.pkg.outputs.exists == 'true'
+        run: npm run lint
       - name: Run tests
-        run: |
-          npm test || yarn test
+        if: steps.pkg.outputs.exists == 'true'
+        run: npm test
       - name: Test coverage
         run: |
           npm run test:coverage || yarn test:coverage
