@@ -51,7 +51,7 @@ export default function Home() {
           setAuditStatus(data);
         }
       } catch (err) {
-        console.error('Erreur lors de la récupération du statut:', err);
+        console.error('Error fetching status:', err);
       }
     };
 
@@ -76,7 +76,7 @@ export default function Home() {
         setReportData(data);
       }
     } catch (err) {
-      console.error('Erreur lors de la récupération du rapport:', err);
+      console.error('Error fetching report:', err);
     }
   };
 
@@ -94,7 +94,7 @@ export default function Home() {
 
   const handleStartAudit = async () => {
     if (!address.trim()) {
-      setError('Veuillez entrer une adresse valide');
+      setError('Please enter a valid address');
       return;
     }
 
@@ -114,12 +114,12 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors du lancement de l\'audit');
+        throw new Error(data.error || 'Error starting audit');
       }
 
       setJobId(data.jobId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -127,11 +127,11 @@ export default function Home() {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'pending': return 'En attente...';
-      case 'processing': return 'Analyse en cours...';
-      case 'completed': return 'Audit terminé';
-      case 'failed': return 'Échec de l\'audit';
-      default: return 'Statut inconnu';
+      case 'pending': return 'Pending...';
+      case 'processing': return 'Analysis in progress...';
+      case 'completed': return 'Audit completed';
+      case 'failed': return 'Audit failed';
+      default: return 'Unknown status';
     }
   };
 
@@ -140,7 +140,7 @@ export default function Home() {
       <div className="max-w-md mx-auto">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            Auditeur de Smart Contracts
+            Smart Contract Auditor
           </h1>
         </div>
 
@@ -149,7 +149,7 @@ export default function Home() {
             <div className="space-y-6">
               <div>
                 <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-2">
-                  Adresse du contrat
+                  Contract Address
                 </label>
                 <input
                   type="text"
@@ -172,14 +172,14 @@ export default function Home() {
                 disabled={loading}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Lancement en cours...' : 'Lancer l\'audit'}
+                {loading ? 'Starting...' : 'Start Audit'}
               </button>
             </div>
           ) : (
             <div className="space-y-6">
               <div className="text-center">
                 <h2 className="text-lg font-medium text-gray-900 mb-2">
-                  {auditStatus ? getStatusText(auditStatus.status) : 'Audit en attente...'}
+                  {auditStatus ? getStatusText(auditStatus.status) : 'Audit pending...'}
                 </h2>
                 <p className="text-sm text-gray-600 mb-4">
                   Job ID: {jobId}
@@ -190,7 +190,7 @@ export default function Home() {
                 <div className="space-y-4">
                   <div>
                     <div className="flex justify-between text-sm text-gray-600 mb-1">
-                      <span>Progression</span>
+                      <span>Progress</span>
                       <span>{auditStatus.progress}%</span>
                     </div>
                     <ProgressBar progress={auditStatus.progress} />
@@ -205,7 +205,7 @@ export default function Home() {
                   {auditStatus.errorMessage && (
                     <div className="bg-red-50 border border-red-200 rounded-md p-3">
                       <p className="text-sm text-red-800">
-                        <strong>Erreur:</strong> {auditStatus.errorMessage}
+                        <strong>Error:</strong> {auditStatus.errorMessage}
                       </p>
                     </div>
                   )}
@@ -213,7 +213,7 @@ export default function Home() {
                   {auditStatus.status === 'completed' && (
                     <div className="bg-green-50 border border-green-200 rounded-md p-3">
                       <p className="text-sm text-green-800">
-                        ✅ L'audit a été complété avec succès !
+                        ✅ Audit completed successfully!
                       </p>
                     </div>
                   )}
@@ -224,7 +224,7 @@ export default function Home() {
                 <div className="space-y-6 mt-6">
                   <div className="border-t pt-6">
                     <h3 className="text-lg font-medium text-gray-900 mb-4">
-                      Rapport d'audit
+                      Audit Report
                     </h3>
                     
                     <div className="flex gap-2 mb-4">
@@ -232,19 +232,19 @@ export default function Home() {
                         onClick={() => setShowJson(!showJson)}
                         className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
                       >
-                        {showJson ? 'Afficher Markdown' : 'Afficher JSON'}
+                        {showJson ? 'Show Markdown' : 'Show JSON'}
                       </button>
                       <button
                         onClick={() => downloadFile(JSON.stringify(reportData.json, null, 2), `audit-report-${jobId}.json`, 'application/json')}
                         className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
                       >
-                        Télécharger JSON
+                        Download JSON
                       </button>
                       <button
                         onClick={() => downloadFile(reportData.markdown, `audit-report-${jobId}.md`, 'text/markdown')}
                         className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
                       >
-                        Télécharger MD
+                        Download MD
                       </button>
                     </div>
 
@@ -267,7 +267,7 @@ export default function Home() {
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-2"></div>
                   <p className="text-sm text-gray-500">
-                    Initialisation de l'audit...
+                    Initializing audit...
                   </p>
                 </div>
               )}
@@ -282,7 +282,7 @@ export default function Home() {
                 }}
                 className="w-full mt-4 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
-                Nouvel audit
+                New Audit
               </button>
             </div>
           )}

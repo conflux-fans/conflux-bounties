@@ -51,43 +51,43 @@ function generateMarkdownReport(data: ReportData): string {
     low: findings.filter(f => f.severity === 'low').length,
   };
 
-  let markdown = `# Rapport d'Audit de Smart Contract
+  let markdown = `# Smart Contract Audit Report
 
-## Résumé
+## Summary
 
-- **Total des findings**: ${summary.total}
-- **Critique**: ${summary.critical} ${severityEmoji.critical}
-- **Élevé**: ${summary.high} ${severityEmoji.high}
-- **Moyen**: ${summary.medium} ${severityEmoji.medium}
-- **Faible**: ${summary.low} ${severityEmoji.low}
+- **Total findings**: ${summary.total}
+- **Critical**: ${summary.critical} ${severityEmoji.critical}
+- **High**: ${summary.high} ${severityEmoji.high}
+- **Medium**: ${summary.medium} ${severityEmoji.medium}
+- **Low**: ${summary.low} ${severityEmoji.low}
 
 ---
 
-## Détails des Findings
+## Finding Details
 
 `;
 
   if (findings.length === 0) {
-    markdown += `Aucun problème détecté lors de l'audit.
+    markdown += `No issues detected during the audit.
 
-✅ Le contrat semble conforme aux bonnes pratiques de sécurité.
+✅ The contract appears to follow security best practices.
 `;
   } else {
     findings.forEach((finding, index) => {
       markdown += `### ${index + 1}. ${finding.title} ${severityEmoji[finding.severity]}
 
-**Sévérité**: ${finding.severity.toUpperCase()}
+**Severity**: ${finding.severity.toUpperCase()}
 
 **Description**: ${finding.description}
 
-${finding.location ? `**Localisation**: ${finding.location}\n\n` : ''}${finding.recommendation ? `**Recommandation**: ${finding.recommendation}\n\n` : ''}---
+${finding.location ? `**Location**: ${finding.location}\n\n` : ''}${finding.recommendation ? `**Recommendation**: ${finding.recommendation}\n\n` : ''}---
 
 `;
     });
   }
 
   markdown += `
-*Rapport généré le ${new Date().toLocaleString('fr-FR')}*
+*Report generated on ${new Date().toLocaleString('en-US')}*
 `;
 
   return markdown;

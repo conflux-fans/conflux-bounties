@@ -29,9 +29,9 @@ interface AuditJob {
 // In-memory storage (stub for database)
 const auditJobs = new Map<string, AuditJob>();
 
-// Stub function pour analyser le code source
+// Stub function to analyze source code
 async function analyzeSource(source: string): Promise<Finding[]> {
-  // Simulation d'analyse - retourne un array vide pour l'instant
+  // Analysis simulation - returns empty array for now
   await new Promise(resolve => setTimeout(resolve, 500));
   return [];
 }
@@ -50,13 +50,13 @@ export async function startAudit(address: string): Promise<string> {
   // Save job to database (stub)
   auditJobs.set(jobId, job);
   
-  // Démarrer l'audit de manière asynchrone
+  // Start audit asynchronously
   processAudit(jobId).catch(error => {
-    console.error(`Erreur lors de l'audit ${jobId}:`, error);
+    console.error(`Error during audit ${jobId}:`, error);
     const failedJob = auditJobs.get(jobId);
     if (failedJob) {
       failedJob.status = 'failed';
-      failedJob.errorMessage = error.message || 'Erreur inconnue';
+      failedJob.errorMessage = error.message || 'Unknown error';
       auditJobs.set(jobId, failedJob);
     }
   });
@@ -69,44 +69,44 @@ async function processAudit(jobId: string): Promise<void> {
   if (!job) return;
 
   try {
-    // Mise à jour du statut en processing
+    // Update status to processing
     job.status = 'processing';
     job.progress = 10;
     auditJobs.set(jobId, job);
 
-    // Simulation d'attente pour le prototypage
+    // Simulation delay for prototyping
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Étape 1: Récupérer le code source
+    // Step 1: Fetch source code
     job.progress = 30;
     auditJobs.set(jobId, job);
     
     const source = await getContractSource(job.address);
     
-    // Étape 2: Analyser le code source
+    // Step 2: Analyze source code
     job.progress = 60;
     auditJobs.set(jobId, job);
     
     const findings = await analyzeSource(source);
     
-    // Étape 3: Générer les rapports
+    // Step 3: Generate reports
     job.progress = 80;
     auditJobs.set(jobId, job);
     
     const reports = generateReports(findings);
     
-    // Étape 4: Finaliser
+    // Step 4: Finalize
     job.status = 'completed';
     job.progress = 100;
     job.findings = findings;
     job.reports = reports;
-    job.result = 'Audit complété avec succès';
+    job.result = 'Audit completed successfully';
     
     auditJobs.set(jobId, job);
     
   } catch (error) {
     job.status = 'failed';
-    job.errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+    job.errorMessage = error instanceof Error ? error.message : 'Unknown error';
     auditJobs.set(jobId, job);
   }
 }
