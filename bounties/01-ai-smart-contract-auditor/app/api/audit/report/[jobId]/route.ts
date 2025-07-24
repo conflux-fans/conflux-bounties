@@ -24,11 +24,16 @@ export async function GET(
       );
     }
 
+    if (!job.reports) {
+      return NextResponse.json(
+        { error: 'Report not available' },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json({
-      status: job.status,
-      progress: job.progress,
-      ...(job.errorMessage && { errorMessage: job.errorMessage }),
-      ...(job.status === 'completed' && { reportUrl: `/api/audit/report/${jobId}` })
+      json: job.reports.json,
+      markdown: job.reports.markdown
     });
   } catch (error) {
     return NextResponse.json(
