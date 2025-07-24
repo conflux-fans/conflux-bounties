@@ -3,9 +3,11 @@ import { v4 as uuidv4 } from 'uuid';
 interface AuditJob {
   id: string;
   address: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
   createdAt: Date;
   result?: string;
+  errorMessage?: string;
 }
 
 // In-memory storage (stub for database)
@@ -18,6 +20,7 @@ export async function startAudit(address: string): Promise<string> {
     id: jobId,
     address,
     status: 'pending',
+    progress: 0,
     createdAt: new Date(),
   };
   
