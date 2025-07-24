@@ -1,12 +1,62 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+interface ProgressBarProps {
+  progress: number;
+}
+
+function ProgressBar({ progress }: ProgressBarProps) {
+  return (
+    <div className="w-full bg-gray-200 rounded-full h-2.5">
+      <div 
+        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
+        style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+      ></div>
+    </div>
+  );
+}
+
+interface AuditStatus {
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  errorMessage?: string;
+}
 
 export default function Home() {
   const [address, setAddress] = useState('');
   const [jobId, setJobId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [auditStatus, setAuditStatus] = useState<AuditStatus | null>(null);
+
+  useEffect(() => {
+    if (!jobId) return;
+
+    const pollStatus = async () => {
+      try {
+        const response = await fetch(`/api/audit/status/${jobId}`);
+        const data = await response.json();
+
+        if (response.ok) {
+          setAuditStatus(data);
+        }
+      } catch (err) {
+        console.error('Erreur lors de la récupération du statut:', err);
+      }
+    };
+
+    pollStatus();
+    const interval = setInterval(pollStatus, 2000);
+
+    return () => clearInterval(interval);
+  }, [jobId]);
+
+  useEffect(() => {
+    if (auditStatus?.status === 'completed' || auditStatus?.status === 'failed') {
+      // Arrêter le polling quand l'audit est terminé
+    }
+  }, [auditStatus?.status]);
 
   const handleStartAudit = async () => {
     if (!address.trim()) {
@@ -16,6 +66,7 @@ export default function Home() {
 
     setLoading(true);
     setError(null);
+    setAuditStatus(null);
 
     try {
       const response = await fetch('/api/audit/start', {
@@ -37,6 +88,16 @@ export default function Home() {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'pending': return 'En attente...';
+      case 'processing': return 'Analyse en cours...';
+      case 'completed': return 'Audit terminé';
+      case 'failed': return 'Échec de l\'audit';
+      default: return 'Statut inconnu';
     }
   };
 
@@ -81,17 +142,69 @@ export default function Home() {
               </button>
             </div>
           ) : (
-            <div className="text-center space-y-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-              <h2 className="text-lg font-medium text-gray-900">
-                Audit en attente...
-              </h2>
-              <p className="text-sm text-gray-600">
-                Job ID: {jobId}
-              </p>
-              <p className="text-sm text-gray-500">
-                L'audit de votre contrat est en cours de traitement.
-              </p>
+            <div className="space-y-6">
+              <div className="text-center">
+                <h2 className="text-lg font-medium text-gray-900 mb-2">
+                  {auditStatus ? getStatusText(auditStatus.status) : 'Audit en attente...'}
+                </h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Job ID: {jobId}
+                </p>
+              </div>
+
+              {auditStatus && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between text-sm text-gray-600 mb-1">
+                      <span>Progression</span>
+                      <span>{auditStatus.progress}%</span>
+                    </div>
+                    <ProgressBar progress={auditStatus.progress} />
+                  </div>
+                  
+                  {auditStatus.status === 'processing' && (
+                    <div className="flex justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    </div>
+                  )}
+
+                  {auditStatus.errorMessage && (
+                    <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                      <p className="text-sm text-red-800">
+                        <strong>Erreur:</strong> {auditStatus.errorMessage}
+                      </p>
+                    </div>
+                  )}
+
+                  {auditStatus.status === 'completed' && (
+                    <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                      <p className="text-sm text-green-800">
+                        ✅ L'audit a été complété avec succès !
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!auditStatus && (
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <p className="text-sm text-gray-500">
+                    Initialisation de l'audit...
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setJobId(null);
+                  setAuditStatus(null);
+                  setAddress('');
+                }}
+                className="w-full mt-4 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Nouvel audit
+              </button>
             </div>
           )}
         </div>
