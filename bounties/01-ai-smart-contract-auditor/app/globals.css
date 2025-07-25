@@ -12,15 +12,43 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
+/* Force light mode - disable dark mode */
+/* @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
-}
+} */
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: #ffffff;
+  color: #171717;
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Ensure all text elements are dark */
+* {
+  color: inherit;
+}
+
+/* Specific overrides for common elements */
+h1, h2, h3, h4, h5, h6, p, span, div, label, button {
+  color: #171717 !important;
+}
+
+/* Ensure input text is always dark */
+input, textarea, select {
+  color: #171717 !important;
+  background-color: #ffffff !important;
+}
+
+/* Ensure buttons have proper contrast */
+button {
+  color: inherit !important;
+}
+
+/* Ensure code blocks and pre elements are readable */
+pre, code {
+  color: #171717 !important;
+  background-color: #f5f5f5 !important;
 }

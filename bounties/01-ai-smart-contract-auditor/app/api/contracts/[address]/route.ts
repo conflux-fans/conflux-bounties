@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getContractSource, ContractNotFound } from '../../../lib/confluxScanClient';
+import { getContractSource, ContractNotFound } from '../../../../lib/confluxScanClient';
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 

@@ -66,13 +66,19 @@ export async function startAudit(address: string): Promise<string> {
 
 async function processAudit(jobId: string): Promise<void> {
   const job = auditJobs.get(jobId);
-  if (!job) return;
+  if (!job) {
+    console.log(`[ProcessAudit] Job ${jobId} not found`);
+    return;
+  }
+
+  console.log(`[ProcessAudit] Starting audit for job ${jobId}, address: ${job.address}`);
 
   try {
     // Update status to processing
     job.status = 'processing';
     job.progress = 10;
     auditJobs.set(jobId, job);
+    console.log(`[ProcessAudit] Job ${jobId} set to processing, progress: 10%`);
 
     // Simulation delay for prototyping
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -80,20 +86,26 @@ async function processAudit(jobId: string): Promise<void> {
     // Step 1: Fetch source code
     job.progress = 30;
     auditJobs.set(jobId, job);
+    console.log(`[ProcessAudit] Job ${jobId} progress: 30%, fetching source code...`);
     
     const source = await getContractSource(job.address);
+    console.log(`[ProcessAudit] Job ${jobId} source code fetched, length: ${source.length}`);
     
     // Step 2: Analyze source code
     job.progress = 60;
     auditJobs.set(jobId, job);
+    console.log(`[ProcessAudit] Job ${jobId} progress: 60%, analyzing source code...`);
     
     const findings = await analyzeSource(source);
+    console.log(`[ProcessAudit] Job ${jobId} analysis complete, findings: ${findings.length}`);
     
     // Step 3: Generate reports
     job.progress = 80;
     auditJobs.set(jobId, job);
+    console.log(`[ProcessAudit] Job ${jobId} progress: 80%, generating reports...`);
     
     const reports = generateReports(findings);
+    console.log(`[ProcessAudit] Job ${jobId} reports generated`);
     
     // Step 4: Finalize
     job.status = 'completed';
@@ -103,11 +115,14 @@ async function processAudit(jobId: string): Promise<void> {
     job.result = 'Audit completed successfully';
     
     auditJobs.set(jobId, job);
+    console.log(`[ProcessAudit] Job ${jobId} completed successfully`);
     
   } catch (error) {
+    console.error(`[ProcessAudit] Job ${jobId} failed:`, error);
     job.status = 'failed';
     job.errorMessage = error instanceof Error ? error.message : 'Unknown error';
     auditJobs.set(jobId, job);
+    console.log(`[ProcessAudit] Job ${jobId} marked as failed with error: ${job.errorMessage}`);
   }
 }
 

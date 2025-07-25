@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuditStatus } from '../../../../lib/analysisEngine';
+import { getAuditStatus } from '@/lib/analysisEngine';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
-  const { jobId } = params;
+  const { jobId } = await params;
 
   if (!jobId) {
     return NextResponse.json(
@@ -19,7 +19,7 @@ export async function GET(
     
     if (!job) {
       return NextResponse.json(
-        { error: 'Job not found' },
+        { error: `Audit job with ID '${jobId}' was not found. Please check the Job ID and try again.` },
         { status: 404 }
       );
     }
@@ -27,12 +27,16 @@ export async function GET(
     return NextResponse.json({
       status: job.status,
       progress: job.progress,
+      createdAt: job.createdAt,
+      address: job.address,
       ...(job.errorMessage && { errorMessage: job.errorMessage }),
       ...(job.status === 'completed' && { reportUrl: `/api/audit/report/${jobId}` })
     });
   } catch (error) {
+    console.error(`Error fetching audit status for job ${jobId}:`, error);
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to retrieve audit status. Please try again later.' },
       { status: 500 }
     );
   }
