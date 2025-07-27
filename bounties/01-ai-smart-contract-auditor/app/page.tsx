@@ -1,133 +1,103 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import { Upload, FileText, Shield, Zap, Clock, CheckCircle, AlertCircle, History } from 'lucide-react';
+import Link from 'next/link';
+import './page.css';
 
-interface ProgressBarProps {
+interface StreamMessage {
+  type: 'start' | 'progress' | 'complete' | 'error';
+  stage?: string;
+  progress?: number;
+  message: string;
+  timestamp: string;
+  data?: any;
+  report?: any;
+  error?: any;
+}
+
+interface StageMessage {
+  id: string;
+  stage: string;
+  message: string;
   progress: number;
+  timestamp: Date;
+  type: 'start' | 'progress' | 'complete' | 'error';
 }
 
-function ProgressBar({ progress }: ProgressBarProps) {
-  return (
-    <div className="w-full bg-gray-200 rounded-full h-2.5">
-      <div 
-        className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out"
-        style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-      ></div>
-    </div>
-  );
-}
-
-interface AuditStatus {
+interface BatchAuditJob {
+  id: string;
+  address: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  progress: number;
-  errorMessage?: string;
-  reportUrl?: string;
+  startTime: string | Date;
+  endTime?: string | Date;
+  report?: any;
+  error?: string;
 }
 
-interface ReportData {
-  json: any;
-  markdown: string;
-}
+type AuditMode = 'single' | 'batch' | 'api';
 
-export default function Home() {
+export default function SimplifiedAuditPage() {
+  const [auditMode, setAuditMode] = useState<AuditMode>('single');
   const [address, setAddress] = useState('');
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [auditStatus, setAuditStatus] = useState<AuditStatus | null>(null);
-  const [reportData, setReportData] = useState<ReportData | null>(null);
-  const [showJson, setShowJson] = useState(false);
+  const [addressError, setAddressError] = useState('');
+  const [isValidAddress, setIsValidAddress] = useState(false);
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [currentProgress, setCurrentProgress] = useState(0);
+  const [stageMessages, setStageMessages] = useState<StageMessage[]>([]);
+  const [auditReport, setAuditReport] = useState<any>(null);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error' | ''>('');
 
-  useEffect(() => {
-    if (!jobId) return;
-
-    const pollStatus = async () => {
-      try {
-        const response = await fetch(`/api/audit/status/${jobId}`);
-        const data = await response.json();
-
-        if (response.ok) {
-          setAuditStatus(data);
-        } else {
-          console.error('Status fetch error:', data.error);
-          setAuditStatus(prevStatus => ({
-            ...prevStatus,
-            status: 'failed',
-            progress: prevStatus?.progress || 0,
-            errorMessage: data.error || 'Failed to fetch audit status'
-          }));
-        }
-      } catch (err) {
-        console.error('Error fetching status:', err);
-        setAuditStatus(prevStatus => ({
-          ...prevStatus,
-          status: 'failed',
-          progress: prevStatus?.progress || 0,
-          errorMessage: 'Network error while checking audit status'
-        }));
-      }
-    };
-
-    pollStatus();
-    const interval = setInterval(pollStatus, 2000);
-
-    return () => clearInterval(interval);
-  }, [jobId]);
-
-  useEffect(() => {
-    if (auditStatus?.status === 'completed' && auditStatus.reportUrl && !reportData) {
-      fetchReport(auditStatus.reportUrl);
-    }
-  }, [auditStatus?.status, auditStatus?.reportUrl, reportData]);
-
-  const fetchReport = async (reportUrl: string) => {
-    try {
-      const response = await fetch(reportUrl);
-      const data = await response.json();
-      
-      if (response.ok) {
-        setReportData(data);
-      } else {
-        console.error('Report fetch error:', data.error);
-        setAuditStatus(prevStatus => ({
-          ...prevStatus,
-          status: 'failed',
-          errorMessage: data.error || 'Failed to fetch audit report'
-        }));
-      }
-    } catch (err) {
-      console.error('Error fetching report:', err);
-      setAuditStatus(prevStatus => ({
-        ...prevStatus,
-        status: 'failed',
-        errorMessage: 'Network error while fetching audit report'
-      }));
-    }
+  // Simple toast function
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToastMessage(message);
+    setToastType(type);
+    setTimeout(() => {
+      setToastMessage('');
+      setToastType('');
+    }, 3000);
   };
 
-  const downloadFile = (content: string, filename: string, mimeType: string) => {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+  // Address validation with debouncing
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      validateAddress(address);
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [address]);
 
-  const handleStartAudit = async () => {
-    if (!address.trim()) {
-      setError('Please enter a contract address');
+  const validateAddress = (addr: string) => {
+    if (!addr.trim()) {
+      setAddressError('');
+      setIsValidAddress(false);
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    setAuditStatus(null);
-    setReportData(null);
+    // Conflux address validation
+    const confluxRegex = /^cfx:[a-z0-9]{42}$/i;
+    const ethRegex = /^0x[a-fA-F0-9]{40}$/;
+    
+    if (confluxRegex.test(addr) || ethRegex.test(addr)) {
+      setAddressError('');
+      setIsValidAddress(true);
+    } else {
+      setAddressError('Please enter a valid Conflux (cfx:...) or Ethereum (0x...) address');
+      setIsValidAddress(false);
+    }
+  };
+
+  const startSingleAudit = async () => {
+    if (!isValidAddress) {
+      showToast('Please enter a valid contract address', 'error');
+      return;
+    }
+
+    setIsAuditing(true);
+    setCurrentProgress(0);
+    setStageMessages([]);
+    setAuditReport(null);
 
     try {
       const response = await fetch('/api/audit/start', {
@@ -135,313 +105,499 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ address: address.trim() }),
+        body: JSON.stringify({ 
+          address: address.trim(),
+          format: 'json'
+        }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to start audit');
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 
-      setJobId(data.jobId);
-    } catch (err) {
-      console.error('Audit start error:', err);
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('An unexpected error occurred while starting the audit');
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('No response body available');
       }
-    } finally {
-      setLoading(false);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const data: StreamMessage = JSON.parse(line);
+              handleStreamMessage(data);
+            } catch (parseError) {
+              console.error('Failed to parse stream message:', parseError);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Audit failed:', error);
+      showToast(error instanceof Error ? error.message : 'Audit failed', 'error');
+      setIsAuditing(false);
     }
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'pending': return 'Pending...';
-      case 'processing': return 'Analysis in progress...';
-      case 'completed': return 'Audit completed';
-      case 'failed': return 'Audit failed';
-      default: return 'Unknown status';
+  const handleStreamMessage = (message: StreamMessage) => {
+    const newMessage: StageMessage = {
+      id: `${Date.now()}-${Math.random()}`,
+      stage: message.stage || 'unknown',
+      message: message.message,
+      progress: message.progress || 0,
+      timestamp: new Date(),
+      type: message.type
+    };
+
+    if (message.type === 'progress') {
+      setCurrentProgress(message.progress || 0);
     }
+
+    setStageMessages(prev => {
+      const updated = [...prev];
+      const existingIndex = updated.findIndex(m => m.stage === newMessage.stage);
+      
+      if (existingIndex !== -1) {
+        updated[existingIndex] = newMessage;
+      } else {
+        updated.push(newMessage);
+      }
+      
+      return updated.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    });
+
+    if (message.type === 'complete') {
+      setAuditReport(message.report);
+      setIsAuditing(false);
+      setCurrentProgress(100);
+      showToast('Audit completed successfully!', 'success');
+    } else if (message.type === 'error') {
+      setIsAuditing(false);
+      showToast(`Audit failed: ${message.message}`, 'error');
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === 'text/csv') {
+      setCsvFile(file);
+      showToast('CSV file uploaded successfully', 'success');
+    } else {
+      showToast('Please upload a valid CSV file', 'error');
+    }
+  };
+
+  const getCurrentStage = () => {
+    if (currentProgress < 20) return 'Initializing';
+    if (currentProgress < 40) return 'Fetching Contract';
+    if (currentProgress < 60) return 'Static Analysis';
+    if (currentProgress < 80) return 'AI Analysis';
+    if (currentProgress < 100) return 'Generating Report';
+    return 'Complete';
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
+    <div className="container">
+      {/* Toast */}
+      {toastMessage && (
+        <div className={`toast toast-${toastType}`}>
+          {toastMessage}
+        </div>
+      )}
+      
+      {/* Hero Section */}
+      <div className="hero-section">
+        <div className="hero-content">
+          <div className="icon-container">
+            <div className="hero-icon">
+              <Shield className="icon-large" />
             </div>
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Smart Contract Auditor
+          <h1 className="main-heading">
+            Smart Contract
+            <span className="gradient-text"> Auditor</span>
           </h1>
-          <p className="text-lg text-gray-600">
-            Automated security analysis for Conflux smart contracts
+          <p className="hero-description">
+            Advanced AI-powered security analysis for Conflux smart contracts. 
+            Detect vulnerabilities, optimize gas usage, and ensure code quality.
           </p>
+          <div className="hero-actions">
+            <Link href="/history">
+              <button className="btn btn-secondary btn-lg">
+                <History className="icon-small mr-2" />
+                View History
+              </button>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="main-content">
+        {/* Mode Selection */}
+        <div className="mode-selection">
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title gradient-text">Choose Audit Mode</h2>
+              <p className="card-description">
+                Select how you want to audit your smart contracts with our advanced AI system
+              </p>
+            </div>
+            <div className="card-content">
+              <div className="mode-grid">
+                {[
+                  { 
+                    mode: 'single' as AuditMode, 
+                    icon: <FileText className="icon-medium" />, 
+                    title: 'Single Contract', 
+                    description: 'Audit one contract at a time' 
+                  },
+                  { 
+                    mode: 'batch' as AuditMode, 
+                    icon: <Upload className="icon-medium" />, 
+                    title: 'Batch Audit', 
+                    description: 'Upload CSV file with multiple addresses' 
+                  },
+                  { 
+                    mode: 'api' as AuditMode, 
+                    icon: <Zap className="icon-medium" />, 
+                    title: 'API Integration', 
+                    description: 'Learn how to integrate via API' 
+                  }
+                ].map((option) => (
+                  <button
+                    key={option.mode}
+                    onClick={() => setAuditMode(option.mode)}
+                    className={`mode-button ${
+                      auditMode === option.mode ? 'mode-button-active' : ''
+                    }`}
+                  >
+                    <div className="mode-header">
+                      <div className={`mode-icon ${
+                        auditMode === option.mode ? 'mode-icon-active' : ''
+                      }`}>
+                        {option.icon}
+                      </div>
+                      <h3 className="mode-title">{option.title}</h3>
+                    </div>
+                    <p className="mode-description">{option.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white py-8 px-8 shadow-xl rounded-2xl border border-gray-100">
-          {!jobId ? (
-            <div className="space-y-6">
-              <div>
-                <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-2">
-                  Contract Address
-                </label>
-                <input
-                  type="text"
-                  id="address"
-                  value={address}
-                  onChange={(e) => {
-                    setAddress(e.target.value);
-                    if (error) setError(null);
-                  }}
-                  placeholder="cfx:... or 0x..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono transition duration-200 text-gray-900 bg-white"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !loading && address.trim()) {
-                      handleStartAudit();
-                    }
-                  }}
-                />
-              </div>
-
-              {error && (
-                <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
-                  <div className="flex">
-                    <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                      </svg>
+        {/* Single Contract Audit */}
+        {auditMode === 'single' && (
+          <div className="audit-grid">
+            <div className="audit-content">
+              <div className="card">
+                <div className="card-header">
+                  <h2 className="card-title flex items-center gap-3">
+                    <div className="progress-icon">
+                      <Shield className="icon-medium" />
                     </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-red-800 font-medium">
-                        {error}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={handleStartAudit}
-                disabled={loading || !address.trim()}
-                className="w-full flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-lg text-base font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transform transition duration-200 hover:scale-105 disabled:hover:scale-100"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Starting Audit...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Start Security Audit
-                  </>
-                )}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-8">
-              <div className="text-center">
-                <div className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium mb-4
-                  {auditStatus?.status === 'completed' ? 'bg-green-100 text-green-800' :
-                   auditStatus?.status === 'failed' ? 'bg-red-100 text-red-800' :
-                   auditStatus?.status === 'processing' ? 'bg-blue-100 text-blue-800' :
-                   'bg-gray-100 text-gray-800'}">
-                  {auditStatus?.status === 'completed' && (
-                    <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                  {auditStatus?.status === 'failed' && (
-                    <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                  {auditStatus?.status === 'processing' && (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                  )}
-                  {auditStatus ? getStatusText(auditStatus.status) : 'Initializing audit...'}
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  Security Analysis in Progress
-                </h2>
-                <div className="bg-gray-50 px-4 py-2 rounded-lg inline-block">
-                  <p className="text-sm text-gray-600 font-mono">
-                    Job ID: {jobId}
+                    <span className="gradient-text">Contract Address</span>
+                  </h2>
+                  <p className="card-description">
+                    Enter the smart contract address you want to audit with our advanced AI system
                   </p>
                 </div>
-              </div>
-
-              {auditStatus && (
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm text-gray-600 mb-1">
-                      <span>Progress</span>
-                      <span>{auditStatus.progress}%</span>
-                    </div>
-                    <ProgressBar progress={auditStatus.progress} />
-                  </div>
-                  
-                  {auditStatus.status === 'processing' && (
-                    <div className="flex justify-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    </div>
-                  )}
-
-                  {auditStatus.errorMessage && (
-                    <div className="bg-red-50 border-l-4 border-red-400 p-6 rounded-lg">
-                      <div className="flex">
-                        <div className="flex-shrink-0">
-                          <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z" />
-                          </svg>
-                        </div>
-                        <div className="ml-3">
-                          <h3 className="text-base font-semibold text-red-800">
-                            Audit Failed
-                          </h3>
-                          <p className="mt-2 text-sm text-red-700">
-                            {auditStatus.errorMessage}
-                          </p>
-                          <div className="mt-4">
-                            <button
-                              onClick={() => {
-                                setJobId(null);
-                                setAuditStatus(null);
-                                setError(null);
-                              }}
-                              className="text-sm bg-red-100 hover:bg-red-200 text-red-800 px-4 py-2 rounded-md font-medium transition duration-200"
-                            >
-                              Try Again
-                            </button>
-                          </div>
+                <div className="card-content">
+                  <div className="address-section">
+                    <div>
+                      <label className="input-label">
+                        Contract Address
+                      </label>
+                      <div className="input-container">
+                        <input
+                          type="text"
+                          value={address}
+                          onChange={(e) => setAddress(e.target.value)}
+                          placeholder="cfx:aak2rra2njvd77ezwjvx04kkds9fzagfe6ku8scz91 or 0x..."
+                          className={`input-field ${
+                            addressError ? 'input-error' : 
+                            isValidAddress ? 'input-success' : ''
+                          }`}
+                          disabled={isAuditing}
+                        />
+                        <div className="input-icon">
+                          {isValidAddress && (
+                            <CheckCircle className="icon-small input-icon-success" />
+                          )}
+                          {addressError && (
+                            <AlertCircle className="icon-small input-icon-error" />
+                          )}
                         </div>
                       </div>
-                    </div>
-                  )}
-
-                  {auditStatus.status === 'completed' && (
-                    <div className="bg-green-50 border-l-4 border-green-400 p-6 rounded-lg">
-                      <div className="flex">
-                        <div className="flex-shrink-0">
-                          <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <div className="ml-3">
-                          <h3 className="text-base font-semibold text-green-800">
-                            Audit Completed Successfully!
-                          </h3>
-                          <p className="mt-2 text-sm text-green-700">
-                            Your smart contract has been thoroughly analyzed. Review the detailed report below.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {reportData && (
-                <div className="space-y-6 mt-6">
-                  <div className="border-t pt-6">
-                    <h3 className="text-lg font-medium text-gray-900 mb-4">
-                      Audit Report
-                    </h3>
-                    
-                    <div className="flex flex-wrap gap-3 mb-6">
-                      <button
-                        onClick={() => setShowJson(!showJson)}
-                        className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        {showJson ? 'Show Markdown' : 'Show JSON'}
-                      </button>
-                      <button
-                        onClick={() => downloadFile(JSON.stringify(reportData.json, null, 2), `audit-report-${jobId}.json`, 'application/json')}
-                        className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 shadow-sm transition duration-200"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Download JSON
-                      </button>
-                      <button
-                        onClick={() => downloadFile(reportData.markdown, `audit-report-${jobId}.md`, 'text/markdown')}
-                        className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 shadow-sm transition duration-200"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Download Markdown
-                      </button>
-                    </div>
-
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 max-h-96 overflow-y-auto shadow-inner">
-                      {showJson ? (
-                        <pre className="text-sm text-gray-800 whitespace-pre-wrap">
-                          {JSON.stringify(reportData.json, null, 2)}
-                        </pre>
-                      ) : (
-                        <div className="prose prose-sm max-w-none">
-                          <ReactMarkdown>{reportData.markdown}</ReactMarkdown>
-                        </div>
+                      {addressError && (
+                        <p className="error-message">
+                          {addressError}
+                        </p>
                       )}
                     </div>
+
+                    <button
+                      onClick={startSingleAudit}
+                      disabled={!isValidAddress || isAuditing}
+                      className="btn btn-primary btn-xl w-full"
+                    >
+                      <Shield className="icon-small mr-2" />
+                      {isAuditing ? (
+                        <>
+                          <div className="animate-spin mr-2">⟳</div>
+                          Auditing Contract...
+                        </>
+                      ) : (
+                        'Start Security Audit'
+                      )}
+                    </button>
                   </div>
                 </div>
-              )}
+              </div>
 
-              {!auditStatus && (
-                <div className="text-center py-8">
-                  <div className="relative">
-                    <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600 mx-auto mb-4"></div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-8 h-8 bg-blue-600 rounded-full opacity-20"></div>
+              {/* Audit Progress */}
+              {(isAuditing || stageMessages.length > 0) && (
+                <div className="card progress-section">
+                  <div className="card-header">
+                    <div className="progress-header">
+                      <div className="progress-icon">
+                        <Clock className="icon-medium" />
+                      </div>
+                      <h2 className="progress-title gradient-text">Audit Progress</h2>
+                      <span className="badge badge-info">{currentProgress}%</span>
                     </div>
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    Initializing Security Audit
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    Setting up analysis environment and fetching contract data...
-                  </p>
+                  <div className="card-content">
+                    <div className="progress-container">
+                      <div className="progress-bar">
+                        <div 
+                          className="progress-fill" 
+                          style={{ width: `${currentProgress}%` }}
+                        />
+                      </div>
+                      <div className="progress-text">
+                        {getCurrentStage()} - {currentProgress}% Complete
+                      </div>
+                    </div>
+                    
+                    {stageMessages.length > 0 && (
+                      <div className="activity-log">
+                        <h4 className="activity-title">Recent Activity</h4>
+                        <div className="activity-messages">
+                          {stageMessages.slice(-3).map((message) => (
+                            <div
+                              key={message.id}
+                              className="activity-message"
+                            >
+                              <span className="activity-time">
+                                {message.timestamp.toLocaleTimeString()}:
+                              </span> {message.message}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
+            </div>
 
-              <div className="border-t pt-6">
+            {/* Sidebar */}
+            <div className="sidebar">
+              {/* Features */}
+              <div className="card">
+                <div className="card-header">
+                  <h3 className="sidebar-title gradient-text">Audit Features</h3>
+                </div>
+                <div className="card-content">
+                  <div className="feature-list">
+                    {[
+                      { icon: '🔒', title: 'Security Analysis', desc: 'Detect reentrancy, overflow, and access control issues' },
+                      { icon: '⛽', title: 'Gas Optimization', desc: 'Find inefficient patterns and optimize costs' },
+                      { icon: '📝', title: 'Code Quality', desc: 'Improve readability and maintainability' },
+                      { icon: '🤖', title: 'AI-Powered', desc: 'Advanced AI analysis with latest patterns' }
+                    ].map((feature) => (
+                      <div key={feature.title} className="feature-item">
+                        <span className="feature-icon">{feature.icon}</span>
+                        <div>
+                          <h4 className="feature-title">{feature.title}</h4>
+                          <p className="feature-desc">{feature.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Stats */}
+              {auditReport && (
+                <div className="card">
+                  <div className="card-header">
+                    <h3 className="sidebar-title gradient-text">Audit Results</h3>
+                  </div>
+                  <div className="card-content">
+                    <div className="feature-list">
+                      <div className="flex items-center justify-space-between">
+                        <span>Total Findings</span>
+                        <span className="badge badge-info">{auditReport.findings?.length || 0}</span>
+                      </div>
+                      {auditReport.summary && Object.entries(auditReport.summary.severityCounts || {}).map(([severity, count]) => (
+                        <div key={severity} className="flex items-center justify-space-between">
+                          <span className={`badge badge-${severity}`}>{severity}</span>
+                          <span>{count as number}</span>
+                        </div>
+                      ))}
+                      <button
+                        className="btn btn-primary btn-lg w-full mt-4"
+                        onClick={() => window.open(`/audit/report/${auditReport.id}`, '_blank')}
+                      >
+                        <FileText className="icon-small mr-2" />
+                        View Full Report
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Batch Audit Mode */}
+        {auditMode === 'batch' && (
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title flex items-center gap-3">
+                <div className="progress-icon">
+                  <Upload className="icon-medium" />
+                </div>
+                <span className="gradient-text">Batch Audit</span>
+              </h2>
+              <p className="card-description">
+                Upload a CSV file containing multiple contract addresses for enterprise-scale batch processing
+              </p>
+            </div>
+            <div className="card-content">
+              <div className="text-center">
+                <div className="upload-zone">
+                  <div className="upload-icon">
+                    <Upload className="icon-medium" />
+                  </div>
+                  <h3 className="upload-title">Upload CSV File</h3>
+                  <p className="upload-description">
+                    CSV should contain one address per row with an 'address' column header
+                  </p>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    className="file-input-hidden"
+                    id="csv-upload"
+                  />
+                  <label htmlFor="csv-upload">
+                    <button className="btn btn-secondary btn-lg">
+                      <Upload className="icon-small mr-2" />
+                      Choose File
+                    </button>
+                  </label>
+                  {csvFile && (
+                    <div className="file-success">
+                      <FileText className="icon-small" />
+                      {csvFile.name} uploaded successfully
+                    </div>
+                  )}
+                </div>
+
                 <button
-                  onClick={() => {
-                    setJobId(null);
-                    setAuditStatus(null);
-                    setReportData(null);
-                    setAddress('');
-                    setShowJson(false);
-                    setError(null);
-                  }}
-                  className="w-full flex justify-center items-center py-3 px-6 border-2 border-gray-300 rounded-lg shadow-sm text-base font-semibold text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200"
+                  disabled={!csvFile}
+                  className="btn btn-primary btn-xl w-full mt-4"
                 >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Start New Audit
+                  <Shield className="icon-small mr-2" />
+                  Start Batch Audit
                 </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* API Integration Mode */}
+        {auditMode === 'api' && (
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title flex items-center gap-3">
+                <div className="progress-icon">
+                  <Zap className="icon-medium" />
+                </div>
+                <span className="gradient-text">API Integration</span>
+              </h2>
+              <p className="card-description">
+                Learn how to integrate the audit service into your applications with our powerful API
+              </p>
+            </div>
+            <div className="card-content">
+              <p className="mb-4">
+                Coming soon: Comprehensive API documentation and integration examples 
+                for developers who want to integrate audit capabilities into their applications.
+              </p>
+              <div className="card" style={{ background: 'var(--surface-light)' }}>
+                <div className="card-content">
+                  <h4 className="mb-4">🚀 Features in Development</h4>
+                  <ul className="feature-list">
+                    <li className="feature-item">
+                      <span>•</span>
+                      <span>REST API endpoints for programmatic access</span>
+                    </li>
+                    <li className="feature-item">
+                      <span>•</span>
+                      <span>Webhook support for audit completion notifications</span>
+                    </li>
+                    <li className="feature-item">
+                      <span>•</span>
+                      <span>SDKs for popular programming languages</span>
+                    </li>
+                    <li className="feature-item">
+                      <span>•</span>
+                      <span>Rate limiting and authentication</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      <style jsx>{`
+        .toast {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          padding: 12px 24px;
+          border-radius: 8px;
+          color: white;
+          font-weight: 600;
+          z-index: 1000;
+          transition: all 0.3s ease;
+        }
+        .toast-success {
+          background: var(--accent-green);
+        }
+        .toast-error {
+          background: var(--accent-red);
+        }
+        .justify-space-between {
+          justify-content: space-between;
+        }
+      `}</style>
     </div>
   );
 }

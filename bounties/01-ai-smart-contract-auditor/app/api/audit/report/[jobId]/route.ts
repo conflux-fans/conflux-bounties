@@ -1,56 +1,153 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuditStatus } from '@/lib/analysisEngine';
+import { getAuditReportById } from '@/lib/database';
+
+interface AuditReportParams {
+  jobId: string;
+}
+
+/**
+ * Validate UUID format
+ */
+function validateUUID(id: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(id);
+}
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ jobId: string }> }
+  { params }: { params: Promise<AuditReportParams> }
 ) {
-  const { jobId } = await params;
-
-  if (!jobId) {
-    return NextResponse.json(
-      { error: 'Job ID is required' },
-      { status: 400 }
-    );
-  }
-
   try {
-    const job = await getAuditStatus(jobId);
-    
-    if (!job) {
-      return NextResponse.json(
-        { error: `Audit job with ID '${jobId}' was not found` },
-        { status: 404 }
-      );
-    }
+    const { jobId } = await params;
 
-    if (job.status !== 'completed') {
+    // Validate job ID format
+    if (!jobId) {
       return NextResponse.json(
-        { error: `Audit is not completed yet. Current status: ${job.status}` },
+        { error: 'Job ID is required' },
         { status: 400 }
       );
     }
 
-    if (!job.reports) {
+    if (!validateUUID(jobId)) {
       return NextResponse.json(
-        { error: 'Audit report is not available. The audit may have failed to generate a report.' },
+        { 
+          error: 'Invalid job ID format',
+          details: 'Job ID must be a valid UUID'
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[AuditReport] Fetching report for job ID: ${jobId}`);
+
+    // Fetch audit report from file-based database
+    const report = getAuditReportById(jobId);
+
+    if (!report) {
+      console.log(`[AuditReport] Report not found for job ID: ${jobId}`);
+      return NextResponse.json(
+        { 
+          error: 'Audit report not found',
+          details: `No audit report found with job ID: ${jobId}`
+        },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({
-      json: job.reports.json,
-      markdown: job.reports.markdown,
-      jobId: job.id,
-      address: job.address,
-      completedAt: job.createdAt
-    });
+    // Check if audit is completed and has report data
+    if (report.audit_status !== 'completed') {
+      return NextResponse.json(
+        { 
+          error: 'Audit is not completed yet',
+          details: `Current status: ${report.audit_status}`,
+          status: report.audit_status,
+          errorMessage: report.error_message
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!report.report_json || !report.report_markdown) {
+      return NextResponse.json(
+        { 
+          error: 'Audit report data is not available',
+          details: 'The audit completed but report content is missing'
+        },
+        { status: 404 }
+      );
+    }
+
+    // Parse JSON data since it's stored as string in file-based database
+    let reportJson;
+    try {
+      reportJson = typeof report.report_json === 'string' 
+        ? JSON.parse(report.report_json) 
+        : report.report_json;
+    } catch (parseError) {
+      console.error('[AuditReport] Failed to parse report JSON:', parseError);
+      return NextResponse.json(
+        { 
+          error: 'Report data is corrupted',
+          details: 'Failed to parse audit report JSON data'
+        },
+        { status: 500 }
+      );
+    }
+
+    // Parse static analysis tools if it's a string
+    let staticAnalysisTools;
+    try {
+      staticAnalysisTools = typeof report.static_analysis_tools === 'string' 
+        ? JSON.parse(report.static_analysis_tools) 
+        : report.static_analysis_tools;
+    } catch (parseError) {
+      staticAnalysisTools = [];
+    }
+
+    // Return the report data
+    const response = {
+      json: reportJson,
+      markdown: report.report_markdown,
+      jobId: report.id,
+      address: report.contract_address,
+      completedAt: report.created_at,
+      metadata: {
+        findingsCount: report.findings_count,
+        severityBreakdown: {
+          critical: report.critical_findings,
+          high: report.high_findings,
+          medium: report.medium_findings,
+          low: report.low_findings
+        },
+        processingTimeMs: report.processing_time_ms,
+        auditEngineVersion: report.audit_engine_version,
+        staticAnalysisTools: staticAnalysisTools
+      }
+    };
+
+    // Set cache headers for completed reports
+    const headers = {
+      'Cache-Control': 'public, max-age=3600', // 1 hour cache for completed reports
+      'Content-Type': 'application/json'
+    };
+
+    console.log(`[AuditReport] Successfully retrieved report for job ID: ${jobId}`);
+    return NextResponse.json(response, { headers });
+
   } catch (error) {
-    console.error(`Error fetching audit report for job ${jobId}:`, error);
+    console.error('[AuditReport] Error fetching audit report:', error);
     
     return NextResponse.json(
-      { error: 'Failed to retrieve audit report. Please try again later.' },
+      { 
+        error: 'Internal server error occurred while fetching audit report',
+        type: 'audit_report_error',
+        jobId: (await params).jobId,
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     );
   }
 }
+
+// Export types for use in other modules
+export type { AuditReportParams };
