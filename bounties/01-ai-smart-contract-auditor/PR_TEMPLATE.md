@@ -6,7 +6,7 @@ Complete implementation of an automated smart contract auditor for bounty **01-a
 
 ### ✅ Delivered Features
 
-- **Intuitive User Interface** with React/Next.js and Tailwind CSS
+- **Intuitive User Interface** with React/Next.js and custom CSS
 - **Complete REST API** for Conflux contract analysis
 - **ConfluxScan Integration** for source code retrieval
 - **Asynchronous Audit System** with real-time progress tracking
@@ -78,7 +78,7 @@ docker-compose up --build
 
 ## 🎯 Bounty Compliance
 
-✅ **User Interface**: React/Next.js with Tailwind  
+✅ **User Interface**: React/Next.js with custom CSS  
 ✅ **ConfluxScan API**: Complete integration with error handling  
 ✅ **Contract Analysis**: Extensible architecture with stub  
 ✅ **Reports**: JSON + Markdown with export  

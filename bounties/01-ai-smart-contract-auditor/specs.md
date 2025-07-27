@@ -59,11 +59,11 @@ Build a web application with backend services that uses Large Language Models to
 
 ### Architecture
 
-- **Frontend**: **Next.js 15** dashboard with RSC streaming + optimistic UI
-- **AI Framework**: **Mastra** agent chain calling Slither & Mythril docker images
-- **Vector Database**: **Pinecone** index for "known vuln" patterns and code snippet embeddings
-- **Database**: **Supabase** for audit reports and contract metadata
-- **Alternative**: **FastAPI** backend running **AutoGen** + open-source SWC dataset
+- **Frontend**: **Next.js 15** dashboard with responsive UI and real-time progress
+- **AI Integration**: **OpenAI GPT-4** and **Anthropic Claude** for vulnerability analysis
+- **Static Analysis**: **Slither** and **Mythril** docker integration for comprehensive analysis
+- **Database**: **PostgreSQL + Prisma** for audit reports and contract metadata
+- **Deployment**: **Vercel-ready** with Vercel Postgres support
 - **Blockchain Integration**: ConfluxScan API and ethers.js
 
 ### Core Components
@@ -86,7 +86,7 @@ Build a web application with backend services that uses Large Language Models to
 
 ### 1. Web Application Frontend
 
-- [x] Clean, responsive interface for contract analysis with Tailwind CSS
+- [x] Clean, responsive interface for contract analysis with custom CSS
 - [x] Contract address input and validation (cfx: and 0x formats)
 - [x] Real-time analysis progress and status updates via EventEmitter
 - [x] Interactive report viewer with code highlighting and severity badges
@@ -116,7 +116,7 @@ Build a web application with backend services that uses Large Language Models to
 - [x] Structured audit reports with findings and metadata
 - [x] Code highlighting and line-specific issue identification
 - [x] Export functionality (JSON, Markdown formats)
-- [x] Historical audit storage and retrieval via Supabase
+- [x] Historical audit storage and retrieval via PostgreSQL + Prisma
 - [x] Comprehensive audit statistics and analytics
 - [x] Report comparison and audit history tracking
 

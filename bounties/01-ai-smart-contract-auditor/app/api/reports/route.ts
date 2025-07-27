@@ -104,8 +104,8 @@ export async function GET(request: NextRequest) {
 
     console.log(`[GlobalReports] Fetching reports: limit=${limit}, offset=${offset}, status=${status}, sort=${sortBy} ${sortOrder}`);
 
-    // Get reports from local database
-    const { reports, total: totalCount } = getAllReports(
+    // Get reports from database
+    const { reports, total: totalCount } = await getAllReports(
       limit,
       offset,
       sortBy,
@@ -113,8 +113,8 @@ export async function GET(request: NextRequest) {
     );
 
     // Filter by status if specified (TODO: move this to database function)
-    let filteredReports = reports;
-    if (status) {
+    let filteredReports = reports || [];
+    if (status && reports) {
       filteredReports = reports.filter(report => report.audit_status === status);
     }
 

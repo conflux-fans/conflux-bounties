@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    container_name: nextjs-postgres-conflux
+    restart: unless-stopped 
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mypassword123
+      POSTGRES_DB: audit_db
+    ports:
+      - "5555:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

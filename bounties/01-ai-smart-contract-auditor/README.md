@@ -11,16 +11,16 @@ A comprehensive AI-powered smart contract auditor with static analysis, webhook 
 - **Real-time Progress**: Live progress tracking with detailed stage information
 
 ### User Interface
-- **Modern React UI**: Intuitive interface with Tailwind CSS styling
+- **Modern React UI**: Intuitive interface with custom CSS styling
 - **Batch Processing**: CSV upload for multiple contract audits
 - **Audit History**: Complete audit history with search and filtering
 - **Report Viewer**: Interactive report display with multiple formats
 
 ### Data & Storage
-- **Local SQLite Database**: Automatic local persistence for audit reports
+- **PostgreSQL + Prisma**: Production-ready database with type-safe ORM
 - **Audit History API**: RESTful endpoints for accessing historical audit data
 - **Report Export**: JSON and Markdown format downloads
-- **No External Dependencies**: Fully self-contained storage
+- **Vercel Deployment Ready**: Seamless deployment with Vercel Postgres
 
 ### Notifications & Webhooks
 - **Webhook System**: Real-time notifications for audit completion/failure
@@ -44,8 +44,10 @@ A comprehensive AI-powered smart contract auditor with static analysis, webhook 
 
 - Node.js 18+
 - npm or yarn
+- PostgreSQL (via Docker or local installation)
+- Docker (recommended for database)
 
-### Local Installation (Standalone)
+### Local Installation
 
 ```bash
 # Clone the repository
@@ -60,7 +62,17 @@ cp .env.example .env.local
 
 # Edit .env.local with your API keys (see below)
 
-# Run in development mode
+# Set up database (choose one option):
+
+# Option 1: Docker (Recommended)
+docker-compose up -d
+npm run db:migrate
+
+# Option 2: Local PostgreSQL
+# Install PostgreSQL, create 'audit_db' database
+npm run db:migrate
+
+# Run the application
 npm run dev
 ```
 
@@ -78,6 +90,9 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 # Required: Conflux Network
 CONFLUX_SCAN_API_KEY=your-conflux-scan-api-key
 
+# Required: Database
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/audit_db
+
 # Application
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 NODE_ENV=development
@@ -87,13 +102,25 @@ JWT_SECRET=your-random-jwt-secret
 WEBHOOK_SECRET=your-webhook-secret-key
 ```
 
-### Local Database
+### Database Setup
 
-The application uses JSON file storage for local persistence:
-- Database file: `./data/database.json` (created automatically)
-- No additional setup required
-- All audit reports and webhooks are stored locally
-- Human-readable JSON format for easy debugging
+The application uses PostgreSQL with Prisma ORM:
+- **PostgreSQL**: Production-ready relational database
+- **Prisma**: Type-safe database client with migrations
+- **Docker Support**: Easy setup with `docker-compose up -d`
+- **Vercel Ready**: Seamless deployment with Vercel Postgres
+
+#### Quick Database Setup
+```bash
+# Using Docker (recommended)
+docker-compose up -d
+npm run db:migrate
+
+# Migrate existing JSON data (if any)
+npm run db:migrate-data
+```
+
+See [Database Setup Guide](scripts/setup-db.md) for detailed instructions.
 
 ## 🐳 Docker Deployment
 
