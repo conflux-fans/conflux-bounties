@@ -2,6 +2,96 @@ import axios from 'axios';
 
 const CONFLUXSCAN_API_URL = 'https://evmapi.confluxscan.org';
 
+/**
+ * Removes comments from Solidity source code to prevent AI auditor confusion
+ * Handles both single-line and multi-line comments
+ * Preserves strings that might contain comment-like syntax
+ */
+function removeComments(sourceCode: string): string {
+  let result = '';
+  let i = 0;
+  let inString = false;
+  let stringChar = '';
+  let inSingleLineComment = false;
+  let inMultiLineComment = false;
+  
+  while (i < sourceCode.length) {
+    const char = sourceCode[i];
+    const nextChar = sourceCode[i + 1];
+    
+    // Handle string literals (preserve comment-like syntax in strings)
+    if (!inSingleLineComment && !inMultiLineComment) {
+      if ((char === '"' || char === "'") && !inString) {
+        inString = true;
+        stringChar = char;
+        result += char;
+        i++;
+        continue;
+      } else if (inString && char === stringChar && sourceCode[i - 1] !== '\\') {
+        inString = false;
+        stringChar = '';
+        result += char;
+        i++;
+        continue;
+      }
+    }
+    
+    // If we're in a string, just add the character
+    if (inString) {
+      result += char;
+      i++;
+      continue;
+    }
+    
+    // Handle comment start patterns
+    if (!inSingleLineComment && !inMultiLineComment) {
+      if (char === '/' && nextChar === '/') {
+        inSingleLineComment = true;
+        i += 2;
+        continue;
+      } else if (char === '/' && nextChar === '*') {
+        inMultiLineComment = true;
+        i += 2;
+        continue;
+      }
+    }
+    
+    // Handle comment end patterns
+    if (inSingleLineComment && char === '\n') {
+      inSingleLineComment = false;
+      result += char; // Preserve line breaks
+      i++;
+      continue;
+    }
+    
+    if (inMultiLineComment && char === '*' && nextChar === '/') {
+      inMultiLineComment = false;
+      i += 2;
+      // Add spaces to maintain column positions
+      result += '  ';
+      continue;
+    }
+    
+    // Skip characters if we're in a comment
+    if (inSingleLineComment || inMultiLineComment) {
+      // For multi-line comments, preserve line breaks
+      if (inMultiLineComment && char === '\n') {
+        result += char;
+      } else if (inMultiLineComment) {
+        result += ' '; // Replace comment chars with spaces to maintain positions
+      }
+      i++;
+      continue;
+    }
+    
+    // Normal character - add to result
+    result += char;
+    i++;
+  }
+  
+  return result;
+}
+
 export class ContractNotFound extends Error {
   constructor(address: string) {
     super(`Contract not found: ${address}`);
@@ -42,7 +132,11 @@ export async function getContractSource(address: string): Promise<string> {
       throw new ContractNotFound(address);
     }
     
-    return sourceCode;
+    // Remove comments to prevent AI auditor confusion
+    const cleanedSourceCode = removeComments(sourceCode);
+    console.log(`[ConfluxScan] Source code cleaned, original length: ${sourceCode.length}, cleaned length: ${cleanedSourceCode.length}`);
+    
+    return cleanedSourceCode;
   } catch (error) {
     console.error(`[ConfluxScan] Error fetching contract:`, error);
     

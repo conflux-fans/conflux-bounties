@@ -1,226 +1,243 @@
-import { getVulnerabilityCategoriesByType, VULNERABILITY_CATEGORIES } from './vulnerabilityCategories';
+import { getSWCDescription, getCWELink, getRelatedCWEs } from './swcCweMap';
 
 interface Finding {
   id: string;
   category: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
+  severity: 'critical' | 'high' | 'medium' | 'low';
   swc_id?: string;
   cwe_id?: string;
   title: string;
   description: string;
-  lines?: number[];
-  location?: string;
-  recommendation?: string;
+  lines: number[];
+  code_snippet?: string;
+  recommendation: string;
+  confidence: number;
+  impact?: string;
 }
 
-interface ReportData {
-  findings: Finding[];
-  categorizedFindings: {
-    security: Finding[];
-    gas_optimization: Finding[];
-    code_quality: Finding[];
-    other: Finding[];
-  };
-  summary: {
-    total: number;
-    critical: number;
-    high: number;
-    medium: number;
-    low: number;
-    byCategory: {
-      security: number;
-      gas_optimization: number;
-      code_quality: number;
-      other: number;
-    };
-  };
+interface ReportFormats {
+  json: any;
+  markdown: string;
 }
 
-export function generateReports(findings: Finding[]): { json: any; markdown: string } {
-  // Categorize findings by type
-  const categorizedFindings = categorizeFindings(findings);
+/**
+ * Generates comprehensive audit reports in JSON and Markdown formats
+ */
+export function generateReports(findings: Finding[]): ReportFormats {
+  const jsonReport = generateJSONReport(findings);
+  const markdownReport = generateMarkdownReport(findings);
   
-  // Create summary statistics
-  const summary = {
-    total: findings.length,
+  return {
+    json: jsonReport,
+    markdown: markdownReport
+  };
+}
+
+/**
+ * Generates structured JSON report
+ */
+function generateJSONReport(findings: Finding[]) {
+  const severityCounts = {
     critical: findings.filter(f => f.severity === 'critical').length,
     high: findings.filter(f => f.severity === 'high').length,
     medium: findings.filter(f => f.severity === 'medium').length,
-    low: findings.filter(f => f.severity === 'low').length,
-    byCategory: {
-      security: categorizedFindings.security.length,
-      gas_optimization: categorizedFindings.gas_optimization.length,
-      code_quality: categorizedFindings.code_quality.length,
-      other: categorizedFindings.other.length
+    low: findings.filter(f => f.severity === 'low').length
+  };
+
+  const categories = [...new Set(findings.map(f => f.category))];
+  
+  return {
+    summary: {
+      totalFindings: findings.length,
+      severityBreakdown: severityCounts,
+      categories: categories,
+      overallRisk: determineOverallRisk(severityCounts)
+    },
+    findings: findings.map(finding => ({
+      id: finding.id,
+      category: finding.category,
+      severity: finding.severity,
+      swc_id: finding.swc_id,
+      cwe_id: finding.cwe_id,
+      title: finding.title,
+      description: finding.description,
+      lines: finding.lines,
+      code_snippet: finding.code_snippet,
+      recommendation: finding.recommendation,
+      confidence: finding.confidence,
+      impact: finding.impact,
+      references: generateReferences(finding)
+    })),
+    metadata: {
+      generatedAt: new Date().toISOString(),
+      version: '1.0.0',
+      engine: 'AI Smart Contract Auditor'
     }
   };
-
-  const reportData: ReportData = {
-    findings,
-    categorizedFindings,
-    summary
-  };
-
-  const json = {
-    ...reportData,
-    generatedAt: new Date().toISOString(),
-  };
-
-  const markdown = generateMarkdownReport(reportData);
-
-  return { json, markdown };
 }
 
 /**
- * Categorize findings by vulnerability type based on predefined categories
+ * Generates human-readable Markdown report
  */
-function categorizeFindings(findings: Finding[]) {
-  const categories = getVulnerabilityCategoriesByType();
-  
-  const categorized = {
-    security: [] as Finding[],
-    gas_optimization: [] as Finding[],
-    code_quality: [] as Finding[],
-    other: [] as Finding[]
+function generateMarkdownReport(findings: Finding[]): string {
+  const severityCounts = {
+    critical: findings.filter(f => f.severity === 'critical').length,
+    high: findings.filter(f => f.severity === 'high').length,
+    medium: findings.filter(f => f.severity === 'medium').length,
+    low: findings.filter(f => f.severity === 'low').length
   };
 
-  findings.forEach(finding => {
-    const category = finding.category.toLowerCase().replace(/\s+/g, '_');
-    
-    // Check if finding matches any predefined security categories
-    const isSecurityFinding = categories.security.some(cat => 
-      cat.id === category || 
-      cat.name.toLowerCase() === finding.category.toLowerCase() ||
-      cat.detection_patterns.some(pattern => 
-        finding.description.toLowerCase().includes(pattern.toLowerCase())
-      )
-    );
-    
-    // Check gas optimization categories
-    const isGasOptimization = categories.gas_optimization.some(cat => 
-      cat.id === category || 
-      cat.name.toLowerCase() === finding.category.toLowerCase() ||
-      cat.detection_patterns.some(pattern => 
-        finding.description.toLowerCase().includes(pattern.toLowerCase())
-      )
-    );
-    
-    // Check code quality categories
-    const isCodeQuality = categories.code_quality.some(cat => 
-      cat.id === category || 
-      cat.name.toLowerCase() === finding.category.toLowerCase() ||
-      cat.detection_patterns.some(pattern => 
-        finding.description.toLowerCase().includes(pattern.toLowerCase())
-      )
-    );
+  let markdown = `# Smart Contract Security Audit Report
 
-    // Categorize finding
-    if (isSecurityFinding) {
-      categorized.security.push(finding);
-    } else if (isGasOptimization) {
-      categorized.gas_optimization.push(finding);
-    } else if (isCodeQuality) {
-      categorized.code_quality.push(finding);
-    } else {
-      categorized.other.push(finding);
-    }
-  });
+## Executive Summary
 
-  return categorized;
-}
+This security audit identified **${findings.length} findings** across multiple categories.
 
-/**
- * Generate a categorized section of the markdown report
- */
-function generateCategorizedSection(title: string, findings: Finding[], severityEmoji: any): string {
-  if (findings.length === 0) {
-    return '';
-  }
+### Severity Breakdown
+- 🔴 **Critical**: ${severityCounts.critical}
+- 🟠 **High**: ${severityCounts.high}  
+- 🟡 **Medium**: ${severityCounts.medium}
+- 🟢 **Low**: ${severityCounts.low}
 
-  let section = `## ${title}
+**Overall Risk Level**: ${determineOverallRisk(severityCounts)}
 
-Found ${findings.length} issue${findings.length === 1 ? '' : 's'} in this category.
+---
+
+## Detailed Findings
 
 `;
 
-  findings.forEach((finding, index) => {
-    section += `### ${index + 1}. ${finding.title} ${severityEmoji[finding.severity]}
-
-**Category**: ${finding.category}  
-**Severity**: ${finding.severity.toUpperCase()}
-
-**Description**: ${finding.description}
-
-${finding.swc_id || finding.cwe_id ? `**Standards**: ${[finding.swc_id, finding.cwe_id].filter(Boolean).join(', ')}\n\n` : ''}${finding.location ? `**Location**: ${finding.location}\n\n` : ''}${finding.lines && finding.lines.length > 0 ? `**Affected Lines**: ${finding.lines.join(', ')}\n\n` : ''}${finding.recommendation ? `**💡 Recommendation**: ${finding.recommendation}\n\n` : ''}---
-
-`;
-  });
-
-  return section;
-}
-
-function generateMarkdownReport(data: ReportData): string {
-  const { findings, categorizedFindings, summary } = data;
-  
-  const severityEmoji = {
+  // Group findings by severity
+  const severityOrder = ['critical', 'high', 'medium', 'low'];
+  const severityEmojis = {
     critical: '🔴',
-    high: '🟠',
+    high: '🟠', 
     medium: '🟡',
     low: '🟢'
   };
 
-  // Legacy summary for backward compatibility
-  const legacySummary = {
-    total: findings.length,
-    critical: findings.filter(f => f.severity === 'critical').length,
-    high: findings.filter(f => f.severity === 'high').length,
-    medium: findings.filter(f => f.severity === 'medium').length,
-    low: findings.filter(f => f.severity === 'low').length,
-  };
+  severityOrder.forEach(severity => {
+    const severityFindings = findings.filter(f => f.severity === severity);
+    if (severityFindings.length === 0) return;
 
-  let markdown = `# Smart Contract Audit Report
+    markdown += `### ${severityEmojis[severity as keyof typeof severityEmojis]} ${severity.toUpperCase()} Severity (${severityFindings.length})\n\n`;
 
-## Executive Summary
+    severityFindings.forEach((finding, index) => {
+      markdown += `#### ${severity.toUpperCase()}-${index + 1}: ${finding.title}\n\n`;
+      markdown += `**Category**: ${finding.category}\n`;
+      markdown += `**Confidence**: ${finding.confidence}%\n`;
+      
+      if (finding.swc_id) {
+        markdown += `**SWC Classification**: ${finding.swc_id}\n`;
+      }
+      if (finding.cwe_id) {
+        markdown += `**CWE Classification**: ${finding.cwe_id}\n`;
+      }
+      
+      markdown += `**Lines**: ${finding.lines.join(', ')}\n\n`;
+      
+      markdown += `**Description**:\n${finding.description}\n\n`;
+      
+      if (finding.code_snippet) {
+        markdown += `**Code Snippet**:\n\`\`\`solidity\n${finding.code_snippet}\n\`\`\`\n\n`;
+      }
+      
+      markdown += `**Recommendation**:\n${finding.recommendation}\n\n`;
+      
+      if (finding.impact) {
+        markdown += `**Impact**:\n${finding.impact}\n\n`;
+      }
 
-**Total Findings**: ${summary.total}
+      // Add references
+      const references = generateReferences(finding);
+      if (references.length > 0) {
+        markdown += `**References**:\n`;
+        references.forEach(ref => {
+          markdown += `- [${ref.title}](${ref.url})\n`;
+        });
+        markdown += `\n`;
+      }
+      
+      markdown += `---\n\n`;
+    });
+  });
 
-### Severity Distribution
-- **Critical**: ${legacySummary.critical} ${severityEmoji.critical}
-- **High**: ${legacySummary.high} ${severityEmoji.high}
-- **Medium**: ${legacySummary.medium} ${severityEmoji.medium}
-- **Low**: ${legacySummary.low} ${severityEmoji.low}
+  // Add categories summary
+  const categories = [...new Set(findings.map(f => f.category))];
+  markdown += `## Categories Summary\n\n`;
+  categories.forEach(category => {
+    const categoryFindings = findings.filter(f => f.category === category);
+    markdown += `- **${category}**: ${categoryFindings.length} findings\n`;
+  });
 
-### Category Distribution
-- **Security Issues**: ${summary.byCategory.security} findings
-- **Gas Optimization**: ${summary.byCategory.gas_optimization} findings
-- **Code Quality**: ${summary.byCategory.code_quality} findings
-- **Other Issues**: ${summary.byCategory.other} findings
+  markdown += `\n---\n\n`;
+  markdown += `*Report generated on ${new Date().toISOString()} by AI Smart Contract Auditor*\n`;
 
----
+  return markdown;
+}
 
-`;
-
-  if (findings.length === 0) {
-    markdown += `## Analysis Results
-
-No security issues or code quality problems were detected during the comprehensive audit.
-
-✅ **The contract appears to follow security best practices and coding standards.**
-`;
+/**
+ * Determines overall risk level based on severity counts
+ */
+function determineOverallRisk(severityCounts: { critical: number; high: number; medium: number; low: number }): string {
+  if (severityCounts.critical > 0) {
+    return 'CRITICAL';
+  } else if (severityCounts.high > 0) {
+    return 'HIGH';
+  } else if (severityCounts.medium > 2) {
+    return 'HIGH';
+  } else if (severityCounts.medium > 0) {
+    return 'MEDIUM';
+  } else if (severityCounts.low > 5) {
+    return 'MEDIUM';
+  } else if (severityCounts.low > 0) {
+    return 'LOW';
   } else {
-    // Generate categorized sections
-    markdown += generateCategorizedSection('🔒 Security Issues', categorizedFindings.security, severityEmoji);
-    markdown += generateCategorizedSection('⛽ Gas Optimization Opportunities', categorizedFindings.gas_optimization, severityEmoji);
-    markdown += generateCategorizedSection('📝 Code Quality Improvements', categorizedFindings.code_quality, severityEmoji);
-    
-    if (categorizedFindings.other.length > 0) {
-      markdown += generateCategorizedSection('🔍 Other Findings', categorizedFindings.other, severityEmoji);
+    return 'MINIMAL';
+  }
+}
+
+/**
+ * Generates reference links for findings
+ */
+function generateReferences(finding: Finding): Array<{ title: string; url: string }> {
+  const references = [];
+
+  // Add SWC reference
+  if (finding.swc_id) {
+    const description = getSWCDescription(finding.swc_id);
+    if (description) {
+      references.push({
+        title: `${finding.swc_id}: Smart Contract Weakness Classification`,
+        url: `https://swcregistry.io/docs/${finding.swc_id}`
+      });
     }
   }
 
-  markdown += `
-*Report generated on ${new Date().toLocaleString('en-US')}*
-`;
+  // Add CWE reference
+  if (finding.cwe_id) {
+    const cweLink = getCWELink(finding.cwe_id);
+    if (cweLink) {
+      references.push({
+        title: `${finding.cwe_id}: Common Weakness Enumeration`,
+        url: cweLink
+      });
+    }
+  }
 
-  return markdown;
+  // Add related CWEs if SWC is provided
+  if (finding.swc_id) {
+    const relatedCWEs = getRelatedCWEs(finding.swc_id);
+    relatedCWEs.forEach(cweId => {
+      const cweLink = getCWELink(cweId);
+      if (cweLink) {
+        references.push({
+          title: `${cweId}: Related Common Weakness`,
+          url: cweLink
+        });
+      }
+    });
+  }
+
+  return references;
 }

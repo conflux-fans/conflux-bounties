@@ -31,11 +31,15 @@ Get the AI Smart Contract Auditor running in less than 5 minutes!
    ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
    
    # Required: Conflux network access
-   CONFLUX_SCAN_API_KEY=your-conflux-scan-key
+   CONFLUXSCAN_API_KEY=https://evmapi.confluxscan.org
    
    # Database (already configured for Docker)
-   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/audit_db
+   DATABASE_URL="postgresql://postgres:mypassword123@localhost:5555/audit_db?schema=public"
    ```
+   
+   **Get API Keys:**
+   - OpenAI: [platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys)
+   - Anthropic: [console.anthropic.com](https://console.anthropic.com/)
 
 4. **Start the database**
    ```bash

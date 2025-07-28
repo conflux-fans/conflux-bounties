@@ -131,7 +131,7 @@ export async function sendWebhookNotifications(
     console.log(`[Webhook] Sending ${event} notifications for audit ${auditReportId}`);
 
     // Get all active webhook configurations
-    const webhookConfigs = getActiveWebhookConfigurations();
+    const webhookConfigs = await getActiveWebhookConfigurations();
     
     if (webhookConfigs.length === 0) {
       console.log('[Webhook] No active webhook configurations found');

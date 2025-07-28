@@ -340,7 +340,7 @@ CREATE TABLE analysis_jobs (
 - **Comprehensive Detection**: 8+ vulnerability categories with SWC/CWE mapping
 
 ### ✅ Advanced Storage & History
-- **Supabase Integration**: Complete audit persistence with PostgreSQL
+- **PostgreSQL Integration**: Complete audit persistence with Prisma ORM
 - **Audit History**: Searchable, filterable audit history with pagination
 - **Statistics & Analytics**: Comprehensive audit statistics and performance metrics
 - **Report Export**: JSON and Markdown format downloads

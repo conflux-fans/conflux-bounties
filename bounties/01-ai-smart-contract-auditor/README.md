@@ -80,26 +80,70 @@ The application will be available at `http://localhost:3000`
 
 ### Environment Variables
 
-Create `.env.local` with the following configuration:
+Create `.env.local` by copying the example file and configuring your values:
+
+```bash
+# Copy the example configuration
+cp .env.example .env.local
+```
+
+Then edit `.env.local` with your actual values. For detailed configuration instructions, see [CONFIGURATION.md](CONFIGURATION.md).
+
+#### **Required Configuration**
 
 ```env
-# Required: AI API Keys (at least one)
-OPENAI_API_KEY=your-openai-api-key
-ANTHROPIC_API_KEY=your-anthropic-api-key
+# AI API Keys (You need AT LEAST ONE of these)
+OPENAI_API_KEY=sk-your-openai-api-key-here
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
 
-# Required: Conflux Network
-CONFLUX_SCAN_API_KEY=your-conflux-scan-api-key
+# Conflux Network API (for contract source code)
+CONFLUXSCAN_API_KEY=https://evmapi.confluxscan.org
 
-# Required: Database
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/audit_db
+# Database (PostgreSQL with Prisma)
+DATABASE_URL="postgresql://postgres:mypassword123@localhost:5555/audit_db?schema=public"
+```
 
-# Application
+#### **How to get API Keys:**
+
+1. **OpenAI API Key**: 
+   - Go to [OpenAI Platform](https://platform.openai.com/account/api-keys)
+   - Create new API key and copy it to `OPENAI_API_KEY`
+
+2. **Anthropic API Key**:
+   - Go to [Anthropic Console](https://console.anthropic.com/)
+   - Create new API key and copy it to `ANTHROPIC_API_KEY`
+
+3. **ConfluxScan API**: 
+   - Use `https://evmapi.confluxscan.org` for public contracts
+   - No API key needed for basic usage
+
+#### **Optional Configuration**
+
+```env
+# Application Settings
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 NODE_ENV=development
 
-# Optional: Security
-JWT_SECRET=your-random-jwt-secret
-WEBHOOK_SECRET=your-webhook-secret-key
+# Security (recommended for production)
+JWT_SECRET=your-random-jwt-secret-256-bits-long
+WEBHOOK_SECRET=your-webhook-hmac-secret-key
+
+# Rate Limiting
+RATE_LIMIT_REQUESTS_PER_MINUTE=60
+RATE_LIMIT_WEBHOOK_REQUESTS_PER_MINUTE=30
+```
+
+#### **Database URL Formats:**
+
+```env
+# Local Docker (recommended)
+DATABASE_URL="postgresql://postgres:mypassword123@localhost:5555/audit_db?schema=public"
+
+# Local PostgreSQL installation
+DATABASE_URL="postgresql://username:password@localhost:5432/audit_db?schema=public"
+
+# Vercel Postgres (auto-provided on deployment)
+DATABASE_URL="postgres://default:password@host:5432/verceldb?sslmode=require"
 ```
 
 ### Database Setup
@@ -120,11 +164,11 @@ npm run db:migrate
 npm run db:migrate-data
 ```
 
-See [Database Setup Guide](scripts/setup-db.md) for detailed instructions.
+See the Database Commands section below for detailed setup instructions.
 
 ## 🐳 Docker Deployment
 
-See [README-Docker.md](README-Docker.md) for complete Docker deployment guide.
+The application includes comprehensive Docker support for development and production deployments.
 
 ### Quick Start
 
@@ -467,7 +511,7 @@ __tests__/
 │   ├── confluxScanClient.ts        # ConfluxScan API client
 │   ├── staticAnalyzer.ts           # Slither/Mythril integration
 │   ├── reportGenerator.ts          # Report formatting
-│   ├── supabase.ts                 # Database operations
+│   ├── database.ts                 # Database operations
 │   └── webhooks.ts                 # Webhook delivery system
 ├── components/                     # React Components
 │   ├── AuditForm.tsx              # Main audit form
@@ -482,7 +526,7 @@ __tests__/
 │   └── WEBHOOKS.md                # Webhook documentation
 ├── Dockerfile                      # Container definition
 ├── docker-compose.yml              # Multi-service orchestration
-├── supabase-schema.sql             # Database schema
+├── prisma/schema.prisma            # Database schema
 └── README-Docker.md               # Docker deployment guide
 ```
 
@@ -492,7 +536,7 @@ __tests__/
 - Orchestrates the complete audit pipeline
 - Integrates static analysis tools with AI validation
 - Provides real-time progress tracking via EventEmitter
-- Saves results to Supabase and triggers webhooks
+- Saves results to PostgreSQL and triggers webhooks
 
 #### Static Analyzer (`lib/staticAnalyzer.ts`)
 - Docker-based Slither and Mythril integration
@@ -505,7 +549,7 @@ __tests__/
 - Support for custom headers and timeouts
 - Comprehensive delivery tracking
 
-#### Database Layer (`lib/supabase.ts`)
+#### Database Layer (`lib/database.ts`)
 - Complete CRUD operations for audit reports
 - Webhook configuration management
 - Audit statistics and analytics
@@ -523,7 +567,7 @@ __tests__/
    - AI validates static findings and finds additional issues
    - Parse and normalize AI response
 5. **Report Generation**: Create JSON and Markdown reports
-6. **Database Storage**: Save complete audit data to Supabase
+6. **Database Storage**: Save complete audit data to PostgreSQL
 7. **Webhook Notifications**: Send completion/failure notifications
 8. **Progress Tracking**: Real-time updates via EventEmitter
 
@@ -599,7 +643,7 @@ docker-compose up -d
 | ✅ AI Analysis | Complete | OpenAI GPT-4 & Anthropic Claude integration |
 | ✅ Static Analysis | Complete | Slither & Mythril Docker integration |
 | ✅ Real-time Progress | Complete | EventEmitter-based progress tracking |
-| ✅ Supabase Storage | Complete | Complete audit history persistence |
+| ✅ PostgreSQL Storage | Complete | Complete audit history persistence |
 | ✅ Webhook System | Complete | HMAC-secured notifications with retry |
 | ✅ Batch Processing | Complete | CSV upload for multiple contracts |
 | ✅ Report Export | Complete | JSON & Markdown format downloads |
@@ -669,9 +713,10 @@ WEBHOOK_SECRET=your-webhook-secret
 
 ## 📚 Documentation
 
-- **[README-Docker.md](README-Docker.md)**: Complete Docker deployment guide
-- **[docs/WEBHOOKS.md](docs/WEBHOOKS.md)**: Webhook configuration and usage
-- **[supabase-schema.sql](supabase-schema.sql)**: Database schema and setup
+- **[CONFIGURATION.md](CONFIGURATION.md)**: Complete environment variable setup guide
+- **Docker Configuration**: Complete Docker deployment via docker-compose.yml
+- **Webhook System**: Built-in webhook configuration and usage via API
+- **Database Schema**: PostgreSQL schema managed via Prisma migrations
 - **API Reference**: Comprehensive API documentation above
 
 ## 📝 License
@@ -682,8 +727,8 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ### Documentation
 - Check this README for setup instructions
-- Review [Docker deployment guide](README-Docker.md)
-- Read [webhook documentation](docs/WEBHOOKS.md)
+- Review Docker configuration in docker-compose.yml
+- Use the webhook API endpoints for notification setup
 
 ### Troubleshooting
 ```bash
@@ -701,7 +746,7 @@ curl http://localhost:3000/api/health
 - **GitHub Issues**: Report bugs and request features
 - **API Issues**: Check endpoint documentation and examples
 - **Docker Issues**: Review Docker logs and environment variables
-- **Database Issues**: Verify Supabase configuration and schema
+- **Database Issues**: Verify PostgreSQL connection and Prisma schema
 
 ### Performance Optimization
 - Enable Redis caching for improved response times

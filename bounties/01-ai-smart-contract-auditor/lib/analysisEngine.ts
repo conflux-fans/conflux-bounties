@@ -15,10 +15,13 @@ interface Finding {
   cwe_id?: string;
   title: string;
   description: string;
-  lines?: number[];
+  lines: number[];
+  code_snippet?: string;
   codeSnippet?: string;
   location?: string;
-  recommendation?: string;
+  recommendation: string;
+  confidence: number;
+  impact?: string;
 }
 
 class AIError extends Error {
@@ -728,9 +731,25 @@ async function callAnthropic(prompt: string): Promise<Finding[]> {
 function parseAIResponse(content: string): Finding[] {
   try {
     console.log(`[ParseAI] Parsing AI response, length: ${content.length}`);
+    console.log(`[ParseAI] Raw response (first 500 chars):`, content.substring(0, 500));
+    console.log(`[ParseAI] Raw response (last 100 chars):`, content.substring(Math.max(0, content.length - 100)));
     
     // Try to extract JSON from the response (handle cases where AI adds extra text)
     let jsonStr = content.trim();
+    
+    // If response already starts with [ and looks like JSON, try parsing directly first
+    if (jsonStr.startsWith('[')) {
+      console.log(`[ParseAI] Response starts with [, trying direct parse first`);
+      try {
+        const directParse = JSON.parse(jsonStr);
+        if (Array.isArray(directParse)) {
+          console.log(`[ParseAI] Direct parse successful, found ${directParse.length} findings`);
+          return validateAndTransformFindings(directParse);
+        }
+      } catch (directParseError) {
+        console.log(`[ParseAI] Direct parse failed, trying extraction:`, directParseError);
+      }
+    }
     
     // Try to find JSON between code blocks first
     const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -761,74 +780,97 @@ function parseAIResponse(content: string): Finding[] {
       }
     }
     
-    // Clean up common formatting issues
+    // Clean up common formatting issues but preserve string content
     jsonStr = jsonStr
       .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
       .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
-      .replace(/\n|\r/g, ' ')  // Replace newlines with spaces
-      .replace(/\s+/g, ' ')    // Normalize whitespace
       .trim();
+    
+    // Don't replace newlines inside strings - only normalize outside quotes
+    // This is a safer approach that preserves JSON string content
     
     console.log(`[ParseAI] Cleaned JSON string: ${jsonStr.substring(0, 200)}...`);
     console.log(`[ParseAI] JSON string ends with: ${jsonStr.substring(Math.max(0, jsonStr.length - 50))}`);
     
-    const findings = JSON.parse(jsonStr);
+    let findings;
+    try {
+      findings = JSON.parse(jsonStr);
+    } catch (parseError) {
+      console.log(`[ParseAI] JSON parse failed:`, parseError);
+      console.log(`[ParseAI] Failed JSON string:`, jsonStr);
+      console.log(`[ParseAI] Attempting to fix malformed JSON...`);
+      // Try to fix common JSON issues
+      let fixedJson = jsonStr;
+      
+      // Remove trailing commas before closing brackets
+      fixedJson = fixedJson.replace(/,(\s*[}\]])/g, '$1');
+      
+      // Ensure the JSON ends properly
+      if (!fixedJson.trim().endsWith(']')) {
+        const lastCommaIndex = fixedJson.lastIndexOf(',');
+        if (lastCommaIndex > -1) {
+          fixedJson = fixedJson.substring(0, lastCommaIndex) + ']';
+        } else {
+          fixedJson += ']';
+        }
+      }
+      
+      try {
+        findings = JSON.parse(fixedJson);
+        console.log(`[ParseAI] Successfully parsed fixed JSON`);
+      } catch (secondParseError) {
+        console.log(`[ParseAI] Both JSON parsing attempts failed, using fallback extraction`);
+        findings = extractFindingsFromText(content);
+      }
+    }
     
     if (!Array.isArray(findings)) {
       throw new Error('Response is not an array');
     }
     
-    // Validate and transform findings
-    const validatedFindings: Finding[] = findings.map((finding: any, index: number) => {
-      if (!finding || typeof finding !== 'object') {
-        throw new Error(`Finding ${index} is not an object`);
-      }
-      
-      // Auto-map SWC/CWE IDs if missing
-      const standards = mapFindingToStandards(finding.category, finding.description || '');
-      
-      return {
-        id: finding.id || uuidv4(),
-        category: finding.category || 'Unknown',
-        severity: ['low', 'medium', 'high', 'critical'].includes(finding.severity) 
-          ? finding.severity 
-          : 'medium',
-        swc_id: finding.swc_id || standards.swc_id || undefined,
-        cwe_id: finding.cwe_id || standards.cwe_id || undefined,
-        title: finding.title || 'Security Issue',
-        description: finding.description || 'No description provided',
-        lines: Array.isArray(finding.lines) ? finding.lines : undefined,
-        codeSnippet: finding.codeSnippet || undefined,
-        location: finding.location || undefined,
-        recommendation: finding.recommendation || 'Review and fix this issue'
-      };
-    });
-    
-    console.log(`[ParseAI] Successfully parsed ${validatedFindings.length} findings`);
-    return validatedFindings;
+    return validateAndTransformFindings(findings);
     
   } catch (error) {
     console.error(`[ParseAI] Failed to parse AI response:`, error);
-    console.error(`[ParseAI] Raw content (first 500 chars):`, content.substring(0, 500));
-    console.error(`[ParseAI] Raw content (last 500 chars):`, content.substring(Math.max(0, content.length - 500)));
     
-    // If JSON parsing fails completely, try to extract findings manually or return a fallback
-    try {
-      // Try to extract basic finding information from the text
-      const fallbackFindings = extractFindingsFromText(content);
-      if (fallbackFindings.length > 0) {
-        console.log(`[ParseAI] Used fallback text extraction, found ${fallbackFindings.length} findings`);
-        return fallbackFindings;
-      }
-    } catch (fallbackError) {
-      console.error(`[ParseAI] Fallback extraction also failed:`, fallbackError);
+    // Fallback: try to extract findings from text
+    console.log(`[ParseAI] Attempting text extraction fallback...`);
+    return extractFindingsFromText(content);
+  }
+}
+
+function validateAndTransformFindings(findings: any[]): Finding[] {
+  // Validate and transform findings
+  const validatedFindings: Finding[] = findings.map((finding: any, index: number) => {
+    if (!finding || typeof finding !== 'object') {
+      throw new Error(`Finding ${index} is not an object`);
     }
     
-    throw new AIError(
-      `Failed to parse AI analysis response: ${error instanceof Error ? error.message : 'Invalid JSON'}`,
-      error instanceof Error ? error : undefined
-    );
-  }
+    // Auto-map SWC/CWE IDs if missing
+    const standards = mapFindingToStandards(finding.category, finding.description || '');
+    
+    return {
+      id: finding.id || uuidv4(),
+      category: finding.category || 'Unknown',
+      severity: ['low', 'medium', 'high', 'critical'].includes(finding.severity) 
+        ? finding.severity 
+        : 'medium',
+      swc_id: finding.swc_id || standards.swc_id || undefined,
+      cwe_id: finding.cwe_id || standards.cwe_id || undefined,
+      title: finding.title || 'Security Issue',
+      description: finding.description || 'No description provided',
+      lines: Array.isArray(finding.lines) ? finding.lines : [],
+        code_snippet: finding.code_snippet || finding.codeSnippet || undefined,
+        codeSnippet: finding.codeSnippet || finding.code_snippet || undefined,
+        location: finding.location || undefined,
+        recommendation: finding.recommendation || 'Review and fix this issue',
+        confidence: typeof finding.confidence === 'number' ? finding.confidence : 75,
+        impact: finding.impact || undefined
+      };
+    });
+    
+    console.log(`[ParseAI] Successfully validated ${validatedFindings.length} findings`);
+    return validatedFindings;
 }
 
 /**

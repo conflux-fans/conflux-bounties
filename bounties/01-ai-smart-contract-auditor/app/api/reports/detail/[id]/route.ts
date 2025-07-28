@@ -12,12 +12,18 @@ interface ReportQuery {
 }
 
 /**
- * Validate report ID format (either UUID or report_timestamp_random format)
+ * Validate report ID format (UUID, cuid, or report_timestamp_random format)
  */
 function validateReportId(id: string): boolean {
   // Check for UUID format
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (uuidRegex.test(id)) {
+    return true;
+  }
+  
+  // Check for cuid format (Prisma default) - starts with 'c' followed by 24 alphanumeric chars
+  const cuidRegex = /^c[a-z0-9]{24}$/i;
+  if (cuidRegex.test(id)) {
     return true;
   }
   
@@ -106,7 +112,7 @@ export async function GET(
       return NextResponse.json(
         { 
           error: 'Invalid report ID format',
-          details: 'Report ID must be a valid UUID'
+          details: 'Report ID must be a valid UUID, cuid, or report ID format'
         },
         { status: 400 }
       );
@@ -129,8 +135,11 @@ export async function GET(
 
     console.log(`[Reports] Fetching report ${id}, includeContent: ${includeContent}, includeSourceCode: ${includeSourceCode}, format: ${format}`);
 
-    // Fetch report from file-based database
-    const report = getAuditReportById(id);
+    // Fetch report from PostgreSQL database
+    const report = await getAuditReportById(id);
+    
+    // Debug: Log the raw report data
+    console.log(`[Reports] Raw report data for ${id}:`, JSON.stringify(report, null, 2));
 
     if (!report) {
       return NextResponse.json(
