@@ -11,32 +11,22 @@ interface ReportQuery {
   format?: string;
 }
 
-/**
- * Validate report ID format (UUID, cuid, or report_timestamp_random format)
- */
 function validateReportId(id: string): boolean {
-  // Check for UUID format
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (uuidRegex.test(id)) {
     return true;
   }
   
-  // Check for cuid format (Prisma default) - starts with 'c' followed by 24 alphanumeric chars
   const cuidRegex = /^c[a-z0-9]{24}$/i;
   if (cuidRegex.test(id)) {
     return true;
   }
   
-  // Check for report_timestamp_random format
   const reportIdRegex = /^report_\d+_[a-z0-9]+$/i;
   return reportIdRegex.test(id);
 }
 
-/**
- * Transform report data for API response
- */
 async function transformReportForResponse(report: AuditReport, includeContent: boolean = true, includeSourceCode: boolean = false): Promise<any> {
-  // Parse JSON data if it's stored as string
   let reportJson = null;
   try {
     reportJson = typeof report.report_json === 'string' 
@@ -47,7 +37,6 @@ async function transformReportForResponse(report: AuditReport, includeContent: b
     reportJson = null;
   }
 
-  // Parse static analysis tools if it's a string
   let staticAnalysisTools: string[] = [];
   try {
     staticAnalysisTools = typeof report.static_analysis_tools === 'string' 
@@ -77,15 +66,13 @@ async function transformReportForResponse(report: AuditReport, includeContent: b
     staticAnalysisTools: staticAnalysisTools
   };
 
-  // Include report content based on parameter and status
   if (includeContent && report.audit_status === 'completed') {
     transformed.reportData = {
-      json: reportJson || {}, // Always provide an object, even if parsing failed
+      json: reportJson || {}, 
       markdown: report.report_markdown || ''
     };
   }
 
-  // Include source code if requested
   if (includeSourceCode && report.contract_address) {
     try {
       const sourceCode = await getContractSource(report.contract_address);
@@ -107,7 +94,6 @@ export async function GET(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
 
-    // Validate report ID
     if (!validateReportId(id)) {
       return NextResponse.json(
         { 
@@ -118,7 +104,6 @@ export async function GET(
       );
     }
 
-    // Parse query parameters
     const includeContent = searchParams.get('includeContent') !== 'false'; // Default to true
     const includeSourceCode = searchParams.get('includeSourceCode') === 'true'; // Default to false
     const format = searchParams.get('format') || 'json';
@@ -135,10 +120,8 @@ export async function GET(
 
     console.log(`[Reports] Fetching report ${id}, includeContent: ${includeContent}, includeSourceCode: ${includeSourceCode}, format: ${format}`);
 
-    // Fetch report from PostgreSQL database
     const report = await getAuditReportById(id);
     
-    // Debug: Log the raw report data
     console.log(`[Reports] Raw report data for ${id}:`, JSON.stringify(report, null, 2));
 
     if (!report) {
@@ -151,7 +134,6 @@ export async function GET(
       );
     }
 
-    // Handle different format requests
     if (format === 'markdown' && report.audit_status === 'completed' && report.report_markdown) {
       return new NextResponse(report.report_markdown, {
         headers: {
@@ -162,13 +144,8 @@ export async function GET(
       });
     }
 
-    // Note: Removed the format === 'json' path to always return the full transformed response
-    // The frontend expects the full response with metadata, not just raw JSON data
-
-    // Default response with metadata and optional content
     const response = await transformReportForResponse(report, includeContent, includeSourceCode);
 
-    // Set appropriate cache headers
     const cacheMaxAge = report.audit_status === 'completed' ? 3600 : 60; // 1 hour for completed, 1 minute for others
     const headers = {
       'Cache-Control': `public, max-age=${cacheMaxAge}`,
@@ -192,7 +169,4 @@ export async function GET(
   }
 }
 
-// DELETE method removed - using file-based database
-
-// Export types for use in other modules
 export type { ReportParams, ReportQuery };

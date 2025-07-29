@@ -7,17 +7,16 @@ import {
   ArrowLeft,
   Download,
   FileText,
-  Eye,
   Code,
   AlertCircle,
   CheckCircle,
   Search,
   ExternalLink,
-  Shield,
   BarChart3,
   Clock,
   Target
 } from 'lucide-react';
+import { FunctionBasedCodeViewer } from '@/components/ui/FunctionBasedCodeViewer';
 import './audit-report.css';
 
 interface AuditReportDetail {
@@ -48,7 +47,6 @@ type ViewMode = 'overview' | 'findings' | 'functions' | 'report';
 
 export default function SimplifiedAuditReportPage() {
   const params = useParams();
-  const router = useRouter();
   const jobId = params.jobId as string;
 
   const [report, setReport] = useState<AuditReportDetail | null>(null);
@@ -437,29 +435,22 @@ export default function SimplifiedAuditReportPage() {
       );
     }
 
+    // Extract findings from the report data
+    const findings = report.reportData.json.findings || [];
+
     return (
       <div className="code-analysis">
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">Source Code</h3>
-          </div>
-          <div className="card-content">
-            <pre style={{ 
-              background: 'var(--surface-lighter)',
-              padding: 'var(--space-lg)',
-              borderRadius: 'var(--radius-md)',
-              overflow: 'auto',
-              maxHeight: '600px',
-              fontSize: '0.875rem',
-              lineHeight: '1.4'
-            }}>
-              <code>{report.sourceCode}</code>
-            </pre>
-          </div>
-        </div>
+        <FunctionBasedCodeViewer
+          sourceCode={report.sourceCode}
+          findings={findings}
+          contractAddress={report.contractAddress}
+          language="solidity"
+          theme="light"
+        />
       </div>
     );
   };
+
 
   if (loading) {
     return (
@@ -540,7 +531,7 @@ export default function SimplifiedAuditReportPage() {
                   className="btn btn-primary"
                   onClick={() =>
                     window.open(
-                      `https://confluxscan.io/address/${report.contractAddress}`,
+                      `https://evm.confluxscan.net/address/${report.contractAddress}`,
                       '_blank'
                     )
                   }

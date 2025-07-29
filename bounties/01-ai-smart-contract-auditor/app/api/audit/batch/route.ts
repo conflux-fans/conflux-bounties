@@ -42,27 +42,17 @@ interface BatchAuditResults {
   };
 }
 
-// In-memory storage for batch jobs (in production, use database)
 const batchJobs = new Map<string, BatchAuditJob[]>();
 const batchStatus = new Map<string, { status: string; startTime: Date; endTime?: Date }>();
 
-/**
- * Utility function to generate unique batch ID
- */
 function generateBatchId(): string {
   return `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-/**
- * Utility function to generate unique job ID  
- */
 function generateJobId(address: string): string {
   return `job_${address.slice(-8)}_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 }
 
-/**
- * Validate contract address format
- */
 function validateAddress(address: string): boolean {
   if (!address || typeof address !== 'string') return false;
   
@@ -72,9 +62,6 @@ function validateAddress(address: string): boolean {
   return trimmed.startsWith('cfx:') || trimmed.startsWith('0x');
 }
 
-/**
- * Process audit jobs with controlled concurrency
- */
 async function processAuditsWithConcurrency(
   jobs: BatchAuditJob[], 
   maxConcurrency: number = 5
@@ -115,9 +102,6 @@ async function processAuditsWithConcurrency(
   await Promise.all(workers);
 }
 
-/**
- * Calculate batch summary statistics
- */
 function calculateBatchSummary(jobs: BatchAuditJob[]): BatchAuditResults['summary'] {
   const completedJobs = jobs.filter(job => job.status === 'completed' && job.report);
   const allFindings = completedJobs.flatMap(job => job.report?.findings || []);
@@ -148,7 +132,6 @@ export async function POST(request: NextRequest) {
     const { addresses, options = {} } = body;
     const { maxConcurrency = 5, includeResults = false } = options;
 
-    // Validate request
     if (!addresses || !Array.isArray(addresses)) {
       return NextResponse.json(
         { error: 'addresses must be a non-empty array' },
@@ -177,7 +160,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate and deduplicate addresses
     const validAddresses = new Set<string>();
     const invalidAddresses: string[] = [];
 
@@ -207,7 +189,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate batch ID and create jobs
     const batchId = generateBatchId();
     const jobs: BatchAuditJob[] = Array.from(validAddresses).map(address => ({
       id: generateJobId(address),
@@ -216,7 +197,6 @@ export async function POST(request: NextRequest) {
       startTime: new Date()
     }));
 
-    // Store batch jobs
     batchJobs.set(batchId, jobs);
     batchStatus.set(batchId, {
       status: 'processing',
@@ -225,7 +205,6 @@ export async function POST(request: NextRequest) {
 
     console.log(`[BatchAudit] Starting batch ${batchId} with ${jobs.length} jobs (concurrency: ${maxConcurrency})`);
 
-    // Start processing asynchronously
     processAuditsWithConcurrency(jobs, maxConcurrency)
       .then(() => {
         const status = batchStatus.get(batchId);
@@ -246,7 +225,6 @@ export async function POST(request: NextRequest) {
         }
       });
 
-    // Return response
     const response: BatchAuditResponse = {
       batchId,
       jobIds: jobs.map(job => job.id),
@@ -255,10 +233,8 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString()
     };
 
-    // If includeResults is true, wait for completion and return results
     if (includeResults) {
-      // Wait for all jobs to complete (with timeout)
-      const timeout = 30 * 60 * 1000; // 30 minutes
+      const timeout = 30 * 60 * 1000;
       const startTime = Date.now();
       
       while (Date.now() - startTime < timeout) {
@@ -268,7 +244,6 @@ export async function POST(request: NextRequest) {
         
         if (allCompleted) break;
         
-        // Wait 1 second before checking again
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
@@ -343,5 +318,4 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(results);
 }
 
-// Export types for use in other modules
 export type { BatchAuditRequest, BatchAuditResponse, BatchAuditResults, BatchAuditJob };

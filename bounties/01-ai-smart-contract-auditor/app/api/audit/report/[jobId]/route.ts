@@ -5,9 +5,6 @@ interface AuditReportParams {
   jobId: string;
 }
 
-/**
- * Validate UUID format
- */
 function validateUUID(id: string): boolean {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   return uuidRegex.test(id);
@@ -20,7 +17,6 @@ export async function GET(
   try {
     const { jobId } = await params;
 
-    // Validate job ID format
     if (!jobId) {
       return NextResponse.json(
         { error: 'Job ID is required' },
@@ -40,8 +36,7 @@ export async function GET(
 
     console.log(`[AuditReport] Fetching report for job ID: ${jobId}`);
 
-    // Fetch audit report from file-based database
-    const report = getAuditReportById(jobId);
+    const report = await getAuditReportById(jobId);
 
     if (!report) {
       console.log(`[AuditReport] Report not found for job ID: ${jobId}`);
@@ -54,7 +49,6 @@ export async function GET(
       );
     }
 
-    // Check if audit is completed and has report data
     if (report.audit_status !== 'completed') {
       return NextResponse.json(
         { 
@@ -77,7 +71,6 @@ export async function GET(
       );
     }
 
-    // Parse JSON data since it's stored as string in file-based database
     let reportJson;
     try {
       reportJson = typeof report.report_json === 'string' 
@@ -94,7 +87,6 @@ export async function GET(
       );
     }
 
-    // Parse static analysis tools if it's a string
     let staticAnalysisTools;
     try {
       staticAnalysisTools = typeof report.static_analysis_tools === 'string' 
@@ -104,7 +96,6 @@ export async function GET(
       staticAnalysisTools = [];
     }
 
-    // Return the report data
     const response = {
       json: reportJson,
       markdown: report.report_markdown,
@@ -125,9 +116,8 @@ export async function GET(
       }
     };
 
-    // Set cache headers for completed reports
     const headers = {
-      'Cache-Control': 'public, max-age=3600', // 1 hour cache for completed reports
+      'Cache-Control': 'public, max-age=3600', 
       'Content-Type': 'application/json'
     };
 
@@ -149,5 +139,4 @@ export async function GET(
   }
 }
 
-// Export types for use in other modules
 export type { AuditReportParams };

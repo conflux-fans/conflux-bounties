@@ -12,9 +12,32 @@ interface AuditHistoryQuery {
   status?: string;
 }
 
+interface TransformedAuditReport {
+  id: string;
+  contractAddress: string;
+  auditStatus: string;
+  findingsCount: number;
+  severityBreakdown: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+  processingTimeMs?: number | null;
+  errorMessage?: string | null;
+  auditEngineVersion?: string | null;
+  staticAnalysisTools?: string | null;
+  reportData?: {
+    json: string;
+    markdown: string;
+  };
+}
+
 interface AuditHistoryResponse {
   address: string;
-  reports: AuditReport[];
+  reports: TransformedAuditReport[];
   pagination: {
     limit: number;
     offset: number;
@@ -35,21 +58,15 @@ interface AuditHistoryResponse {
   };
 }
 
-/**
- * Validate contract address format
- */
 function validateAddress(address: string): boolean {
   if (!address || typeof address !== 'string') return false;
   
   const trimmed = address.trim();
   if (trimmed.length < 10) return false;
   
-  return trimmed.startsWith('cfx:') || trimmed.startsWith('0x');
+  return /^0x[a-fA-F0-9]{8,}$/i.test(trimmed);
 }
 
-/**
- * Sanitize and validate query parameters
- */
 function validateQueryParams(searchParams: URLSearchParams): {
   limit: number;
   offset: number;
@@ -61,7 +78,6 @@ function validateQueryParams(searchParams: URLSearchParams): {
   const includeStats = searchParams.get('includeStats') === 'true';
   const status = searchParams.get('status') || undefined;
 
-  // Validate status if provided
   if (status && !['completed', 'failed', 'processing'].includes(status)) {
     throw new Error('Invalid status parameter. Must be one of: completed, failed, processing');
   }
@@ -69,11 +85,7 @@ function validateQueryParams(searchParams: URLSearchParams): {
   return { limit, offset, includeStats, status };
 }
 
-
-/**
- * Transform report data for API response
- */
-function transformReportForResponse(report: AuditReport) {
+function transformReportForResponse(report: AuditReport): TransformedAuditReport {
   return {
     id: report.id,
     contractAddress: report.contract_address,
@@ -91,7 +103,6 @@ function transformReportForResponse(report: AuditReport) {
     errorMessage: report.error_message,
     auditEngineVersion: report.audit_engine_version,
     staticAnalysisTools: report.static_analysis_tools,
-    // Only include report content for completed audits
     reportData: report.audit_status === 'completed' ? {
       json: report.report_json,
       markdown: report.report_markdown
@@ -107,22 +118,29 @@ export async function GET(
     const { address } = await params;
     const { searchParams } = new URL(request.url);
 
-    // Validate address
+    console.log(`[ReportsHistory] Starting search request for address: "${address}"`);
+    console.log(`[ReportsHistory] Full URL: ${request.url}`);
+    console.log(`[ReportsHistory] Search params:`, Object.fromEntries(searchParams.entries()));
+
     if (!validateAddress(address)) {
+      console.log(`[ReportsHistory] Address validation failed for: "${address}"`);
       return NextResponse.json(
         { 
           error: 'Invalid contract address format',
-          details: 'Address must start with "cfx:" or "0x" and be at least 10 characters long'
+          details: 'Address must be a valid EVM address starting with "0x" and containing at least 8 hex characters'
         },
         { status: 400 }
       );
     }
 
-    // Validate and parse query parameters
+    console.log(`[ReportsHistory] Address validation passed for: "${address}"`);
+
     let queryParams;
     try {
       queryParams = validateQueryParams(searchParams);
+      console.log(`[ReportsHistory] Query params validated:`, queryParams);
     } catch (error) {
+      console.log(`[ReportsHistory] Query parameter validation failed:`, error);
       return NextResponse.json(
         { 
           error: 'Invalid query parameters',
@@ -134,23 +152,36 @@ export async function GET(
 
     const { limit, offset, includeStats, status } = queryParams;
 
-    console.log(`[ReportsHistory] Fetching audit history for address: ${address}, limit: ${limit}, offset: ${offset}`);
+    console.log(`[ReportsHistory] Fetching audit history for address: "${address}", limit: ${limit}, offset: ${offset}, status: ${status}, includeStats: ${includeStats}`);
 
-    // Fetch reports from local database
-    const result = getAuditReportsByAddress(address, limit + 1, offset, status);
+    const startTime = Date.now();
+    const result = await getAuditReportsByAddress(address, limit + 1, offset, status);
+    const dbQueryTime = Date.now() - startTime;
     
-    // Determine pagination
-    const hasMore = result.reports.length > limit;
-    const reports = hasMore ? result.reports.slice(0, limit) : result.reports;
+    console.log(`[ReportsHistory] Database query completed in ${dbQueryTime}ms`);
+    console.log(`[ReportsHistory] Database result:`, {
+      totalReports: result.total,
+      returnedReports: result.reports.length,
+      firstReportId: result.reports[0]?.id || 'none',
+      addressMatches: result.reports.map(r => r.contract_address)
+    });
+    
+    const resultReports = result?.reports || [];
+    
+    const hasMore = resultReports.length > limit;
+    const reports = hasMore ? resultReports.slice(0, limit) : resultReports;
 
-    // Transform reports for response
     const transformedReports = reports.map(transformReportForResponse);
 
-    // Fetch stats if requested
     let stats;
     if (includeStats) {
+      console.log(`[ReportsHistory] Fetching stats for address: "${address}"`);
       try {
-        const rawStats = getAuditReportStats(address);
+        const statsStartTime = Date.now();
+        const rawStats = await getAuditReportStats(address);
+        const statsQueryTime = Date.now() - statsStartTime;
+        
+        console.log(`[ReportsHistory] Stats query completed in ${statsQueryTime}ms:`, rawStats);
         
         stats = {
           total: rawStats.total,
@@ -165,8 +196,7 @@ export async function GET(
           }
         };
       } catch (error) {
-        console.warn(`[ReportsHistory] Failed to fetch stats for ${address}:`, error);
-        // Continue without stats rather than failing the entire request
+        console.warn(`[ReportsHistory] Failed to fetch stats for "${address}":`, error);
       }
     }
 
@@ -182,7 +212,13 @@ export async function GET(
       ...(stats && { stats })
     };
 
-    // Add caching headers for successful responses
+    console.log(`[ReportsHistory] Sending response:`, {
+      address: response.address,
+      reportCount: response.reports.length,
+      pagination: response.pagination,
+      hasStats: !!response.stats
+    });
+
     const cacheMaxAge = 300; // 5 minutes
     const headers = {
       'Cache-Control': `public, max-age=${cacheMaxAge}, stale-while-revalidate=600`,
@@ -194,16 +230,22 @@ export async function GET(
   } catch (error) {
     console.error('[ReportsHistory] Error fetching audit history:', error);
     
-    // Determine error type and status code
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     const isValidationError = errorMessage.includes('Invalid') || errorMessage.includes('validation');
     const statusCode = isValidationError ? 400 : 500;
+    
+    let errorAddress = 'unknown';
+    try {
+      const { address: paramAddress } = await params;
+      errorAddress = paramAddress;
+    } catch {
+    }
     
     return NextResponse.json(
       { 
         error: statusCode === 500 ? 'Internal server error occurred while fetching audit history' : errorMessage,
         type: 'audit_history_error',
-        address,
+        address: errorAddress,
         timestamp: new Date().toISOString()
       },
       { status: statusCode }
@@ -211,5 +253,4 @@ export async function GET(
   }
 }
 
-// Export types for use in other modules
-export type { AuditHistoryResponse, AuditHistoryParams, AuditHistoryQuery };
+export type { AuditHistoryResponse, AuditHistoryParams, AuditHistoryQuery, TransformedAuditReport };

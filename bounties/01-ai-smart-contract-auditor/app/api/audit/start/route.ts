@@ -13,7 +13,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Basic address validation
     if (!address.startsWith('cfx:') && !address.startsWith('0x')) {
       return NextResponse.json(
         { error: 'Invalid contract address format. Address should start with "cfx:" or "0x"' },
@@ -28,12 +27,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create a ReadableStream that streams progress updates
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
         
-        // Helper function to send data to the stream
         const sendData = (data: any) => {
           const message = format === 'text' 
             ? `data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`
@@ -42,7 +39,6 @@ export async function POST(request: NextRequest) {
           controller.enqueue(encoder.encode(message));
         };
 
-        // Send initial message
         sendData({
           type: 'start',
           timestamp: new Date().toISOString(),
@@ -51,7 +47,6 @@ export async function POST(request: NextRequest) {
         });
 
         try {
-          // Run audit with progress callback
           const progressCallback = (progress: AuditProgress) => {
             sendData({
               type: 'progress',
@@ -69,7 +64,6 @@ export async function POST(request: NextRequest) {
             onProgress: progressCallback 
           });
 
-          // Send final report
           sendData({
             type: 'complete',
             timestamp: new Date().toISOString(),
@@ -88,7 +82,6 @@ export async function POST(request: NextRequest) {
         } catch (error) {
           console.error(`[AuditStream] Audit failed for address: ${address}`, error);
           
-          // Send error message
           sendData({
             type: 'error',
             timestamp: new Date().toISOString(),
@@ -99,13 +92,11 @@ export async function POST(request: NextRequest) {
             }
           });
         } finally {
-          // Close the stream
           controller.close();
         }
       }
     });
 
-    // Return the streaming response
     const headers = new Headers({
       'Content-Type': format === 'text' ? 'text/event-stream' : 'application/x-ndjson',
       'Cache-Control': 'no-cache',
@@ -116,7 +107,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (format === 'text') {
-      headers.set('X-Accel-Buffering', 'no'); // Disable nginx buffering
+      headers.set('X-Accel-Buffering', 'no'); 
     }
 
     return new Response(stream, { headers });
@@ -134,7 +125,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Optional: Add GET endpoint for Server-Sent Events compatibility
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const address = searchParams.get('address');
@@ -146,7 +136,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Basic address validation
   if (!address.startsWith('cfx:') && !address.startsWith('0x')) {
     return NextResponse.json(
       { error: 'Invalid contract address format. Address should start with "cfx:" or "0x"' },
@@ -161,7 +150,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Create Server-Sent Events stream
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
@@ -171,7 +159,6 @@ export async function GET(request: NextRequest) {
         controller.enqueue(encoder.encode(message));
       };
 
-      // Send initial event
       sendEvent('start', {
         timestamp: new Date().toISOString(),
         message: 'Starting smart contract audit...',

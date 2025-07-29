@@ -1,12 +1,3 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync, readdirSync, statSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import { v4 as uuidv4 } from 'uuid';
-
-const execAsync = promisify(exec);
-
 export interface StaticFinding {
   id: string;
   tool: 'slither' | 'mythril';
@@ -26,16 +17,7 @@ export interface SourceFile {
   content: string;
 }
 
-class StaticAnalysisError extends Error {
-  constructor(message: string, public tool: string, public cause?: Error) {
-    super(message);
-    this.name = 'StaticAnalysisError';
-  }
-}
 
-/**
- * Run static analysis (Docker-based tools disabled, returns empty array for AI-only analysis)
- */
 export async function runStaticAnalysis(sourceFiles: SourceFile[]): Promise<StaticFinding[]> {
   console.log(`[StaticAnalysis] Static analysis tools (Slither/Mythril) disabled - using AI-only analysis`);
   
@@ -50,4 +32,3 @@ export async function runStaticAnalysis(sourceFiles: SourceFile[]): Promise<Stat
   return [];
 }
 
-// Docker-based functions removed - using AI-only analysis

@@ -64,6 +64,25 @@ export default function SimplifiedHistoryPage() {
   const [hasMore, setHasMore] = useState(false);
   const reportsPerPage = 20;
 
+  // Address validation function - EVM addresses only, case-insensitive, more flexible for search
+  const isValidAddressForSearch = (address: string): boolean => {
+    if (!address || typeof address !== 'string') return false;
+    const trimmed = address.trim();
+    if (trimmed.length < 10) return false; // At least 10 characters for search (0x + 8 hex chars)
+    
+    // Allow partial EVM addresses (hex strings starting with 0x) - case insensitive
+    return /^0x[a-fA-F0-9]{8,}$/i.test(trimmed);
+  };
+
+  // Validation for EVM addresses - case insensitive, matches API validation
+  const isExactAddress = (address: string): boolean => {
+    if (!address || typeof address !== 'string') return false;
+    const trimmed = address.trim();
+    if (trimmed.length < 10) return false;
+    // Accept EVM addresses with at least 8 hex characters (matches API validation)
+    return /^0x[a-fA-F0-9]{8,}$/i.test(trimmed);
+  };
+
   const fetchReports = async (address?: string, page = 1, append = false) => {
     try {
       if (!append) setLoading(true);
@@ -130,20 +149,31 @@ export default function SimplifiedHistoryPage() {
     }
   };
 
+  // Debounced search effect
   useEffect(() => {
-    fetchReports(searchAddress, 1, false);
+    const timeoutId = setTimeout(() => {
+      // Allow search for partial addresses or show all if empty
+      const validSearchAddress = searchAddress && isValidAddressForSearch(searchAddress) ? searchAddress : undefined;
+      fetchReports(validSearchAddress, 1, false);
+    }, 800); // 800ms debounce to reduce API calls
+    
+    return () => clearTimeout(timeoutId);
   }, [searchAddress, statusFilter, sortField, sortOrder]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentPage(1);
-    fetchReports(searchAddress, 1, false);
+    // Allow search for partial addresses or show all if empty
+    const validSearchAddress = searchAddress && isValidAddressForSearch(searchAddress) ? searchAddress : undefined;
+    fetchReports(validSearchAddress, 1, false);
   };
 
   const handleLoadMore = () => {
     const next = currentPage + 1;
     setCurrentPage(next);
-    fetchReports(searchAddress, next, true);
+    // Allow search for partial addresses or show all if empty
+    const validSearchAddress = searchAddress && isValidAddressForSearch(searchAddress) ? searchAddress : undefined;
+    fetchReports(validSearchAddress, next, true);
   };
 
   const handleSort = (field: SortField) => {
@@ -203,13 +233,25 @@ export default function SimplifiedHistoryPage() {
 
       {/* Search & Filters */}
       <form onSubmit={handleSearch} className="history-filters">
-        <input
-          type="text"
-          value={searchAddress}
-          onChange={e => setSearchAddress(e.target.value)}
-          placeholder="Search by contract address..."
-          className="input-address"
-        />
+        <div className="search-input-container">
+          <input
+            type="text"
+            value={searchAddress}
+            onChange={e => setSearchAddress(e.target.value)}
+            placeholder="Search by EVM contract address (0x...)"
+            className="input-address"
+          />
+          {searchAddress && !isValidAddressForSearch(searchAddress) && (
+            <small className="search-hint">
+              Enter at least 10 characters (0x + 8 hex digits)
+            </small>
+          )}
+          {searchAddress && isValidAddressForSearch(searchAddress) && !isExactAddress(searchAddress) && (
+            <small className="search-hint">
+              Searching for partial match...
+            </small>
+          )}
+        </div>
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as StatusFilter)}

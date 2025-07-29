@@ -250,6 +250,33 @@ export function FunctionBasedCodeViewer({
                           showLineNumbers
                           startingLineNumber={group.function.startLine}
                           className="fv__syntax"
+                          lineProps={(lineNumber: number) => {
+                            // Check if this line has findings
+                            const hasFindings = group.findings.some(finding => 
+                              finding.lines && finding.lines.includes(lineNumber)
+                            );
+                            
+                            if (hasFindings) {
+                              // Get the highest severity for this line
+                              const lineFindings = group.findings.filter(finding =>
+                                finding.lines && finding.lines.includes(lineNumber)
+                              );
+                              const severities = lineFindings.map(f => f.severity);
+                              const highestSeverity = severities.includes('critical') ? 'critical' :
+                                                    severities.includes('high') ? 'high' :
+                                                    severities.includes('medium') ? 'medium' : 'low';
+                              
+                              return {
+                                className: `code-line-vulnerable ${highestSeverity}`,
+                                'data-line-number': lineNumber,
+                                title: `Vulnerability found: ${lineFindings.map(f => f.title).join(', ')}`
+                              };
+                            }
+                            
+                            return {
+                              'data-line-number': lineNumber
+                            };
+                          }}
                         >
                           {getFunctionContext(sourceCode, group.function, 0)}
                         </SyntaxHighlighter>

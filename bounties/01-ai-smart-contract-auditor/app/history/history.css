@@ -178,6 +178,12 @@
   z-index: 1;
 }
 
+.search-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .input-address,
 .select-status {
   padding: var(--space-md);
@@ -190,6 +196,10 @@
   outline: none;
 }
 
+.input-address {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
 .input-address:focus,
 .select-status:focus {
   border-color: var(--primary);
@@ -198,6 +208,13 @@
 
 .input-address::placeholder {
   color: var(--text-muted);
+}
+
+.search-hint {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+  font-style: italic;
 }
 
 .btn-search {

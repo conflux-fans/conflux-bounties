@@ -21,27 +21,20 @@ export interface WebhookPayload {
   };
 }
 
-/**
- * Generate HMAC signature for webhook payload
- */
 function generateHmacSignature(payload: string, secret: string): string {
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(payload, 'utf8');
   return `sha256=${hmac.digest('hex')}`;
 }
 
-/**
- * Send webhook to a specific configuration
- */
 async function sendWebhook(
   config: WebhookConfiguration,
   payload: WebhookPayload,
   auditReportId: string
 ): Promise<{ success: boolean; httpStatus?: number; error?: string; responseBody?: string }> {
   const payloadJson = JSON.stringify(payload);
-  const signature = generateHmacSignature(payloadJson, config.secret_hmac);
+  const signature = generateHmacSignature(payloadJson, config.secret_hmac || '');
 
-  // Prepare headers
   const customHeaders = config.custom_headers ? JSON.parse(config.custom_headers) : {};
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -73,14 +66,13 @@ async function sendWebhook(
 
     console.log(`[Webhook] Response ${response.status} from ${config.webhook_url}: ${success ? 'success' : 'failed'}`);
 
-    // Record webhook delivery
     const deliveryRecord: WebhookDeliveryInsert = {
       webhook_id: config.id,
       audit_id: auditReportId,
       event_type: payload.event,
       payload: payload as any,
       response_status: response.status,
-      response_body: responseBody.slice(0, 1000), // Truncate long responses
+      response_body: responseBody.slice(0, 1000),
       delivery_attempts: 1,
       delivered_at: success ? new Date().toISOString() : undefined
     };
@@ -90,23 +82,19 @@ async function sendWebhook(
     return {
       success,
       httpStatus: response.status,
-      responseBody: responseBody.slice(0, 500) // Return truncated response
+      responseBody: responseBody.slice(0, 500)
     };
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[Webhook] Failed to send webhook to ${config.webhook_url}:`, errorMessage);
 
-    // Record failed delivery
     const deliveryRecord: WebhookDeliveryInsert = {
-      webhook_config_id: config.id,
-      audit_report_id: auditReportId,
+      webhook_id: config.id,
+      audit_id: auditReportId,
       event_type: payload.event,
       payload: payload as any,
-      webhook_url: config.webhook_url,
-      attempt_number: 1,
-      failed_at: new Date().toISOString(),
-      error_message: errorMessage
+      delivery_attempts: 1
     };
 
     await insertWebhookDelivery(deliveryRecord);
@@ -118,9 +106,6 @@ async function sendWebhook(
   }
 }
 
-/**
- * Send webhooks to all configured endpoints for a specific event
- */
 export async function sendWebhookNotifications(
   event: WebhookPayload['event'],
   auditReportId: string,
@@ -130,7 +115,6 @@ export async function sendWebhookNotifications(
   try {
     console.log(`[Webhook] Sending ${event} notifications for audit ${auditReportId}`);
 
-    // Get all active webhook configurations
     const webhookConfigs = await getActiveWebhookConfigurations();
     
     if (webhookConfigs.length === 0) {
@@ -138,7 +122,6 @@ export async function sendWebhookNotifications(
       return;
     }
 
-    // Filter configurations that are subscribed to this event
     const relevantConfigs = webhookConfigs.filter(config => {
       const events = JSON.parse(config.events || '[]');
       return events.includes(event);
@@ -149,7 +132,6 @@ export async function sendWebhookNotifications(
       return;
     }
 
-    // Prepare webhook payload
     const payload: WebhookPayload = {
       event,
       audit_id: auditReportId,
@@ -157,7 +139,6 @@ export async function sendWebhookNotifications(
       timestamp: new Date().toISOString(),
       data: {
         ...data,
-        // Add report URL if audit completed successfully
         ...(event === 'audit_completed' && data.status === 'completed' && {
           report_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/audit/report/${auditReportId}`
         })
@@ -166,14 +147,12 @@ export async function sendWebhookNotifications(
 
     console.log(`[Webhook] Sending to ${relevantConfigs.length} webhook(s)`);
 
-    // Send webhooks concurrently
     const webhookPromises = relevantConfigs.map(config => 
       sendWebhook(config, payload, auditReportId)
     );
 
     const results = await Promise.allSettled(webhookPromises);
 
-    // Log results
     let successCount = 0;
     let failureCount = 0;
 
@@ -200,9 +179,6 @@ export async function sendWebhookNotifications(
   }
 }
 
-/**
- * Send audit completed notification
- */
 export async function sendAuditCompletedWebhook(
   auditReportId: string,
   contractAddress: string,
@@ -218,9 +194,6 @@ export async function sendAuditCompletedWebhook(
   });
 }
 
-/**
- * Send audit failed notification
- */
 export async function sendAuditFailedWebhook(
   auditReportId: string,
   contractAddress: string,
@@ -234,9 +207,6 @@ export async function sendAuditFailedWebhook(
   });
 }
 
-/**
- * Send audit started notification
- */
 export async function sendAuditStartedWebhook(
   auditReportId: string,
   contractAddress: string
@@ -246,9 +216,6 @@ export async function sendAuditStartedWebhook(
   });
 }
 
-/**
- * Verify webhook signature (for incoming webhook verification)
- */
 export function verifyWebhookSignature(
   payload: string,
   signature: string,
@@ -257,7 +224,6 @@ export function verifyWebhookSignature(
   try {
     const expectedSignature = generateHmacSignature(payload, secret);
     
-    // Use timing-safe comparison
     return crypto.timingSafeEqual(
       Buffer.from(signature),
       Buffer.from(expectedSignature)

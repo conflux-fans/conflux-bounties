@@ -1,9 +1,4 @@
-/**
- * SWC (Smart Contract Weakness Classification) and CWE (Common Weakness Enumeration) mappings
- * Based on SWC-Registry and MITRE CWE database
- */
 
-// SWC Registry mapping - descriptions of smart contract weaknesses
 export const swcToDescription: Record<string, string> = {
   'SWC-100': 'Function Default Visibility - Functions that do not have a function visibility type specified are public by default',
   'SWC-101': 'Integer Overflow and Underflow - An overflow/underflow happens when an arithmetic operation reaches the maximum or minimum size of a type',
@@ -44,19 +39,18 @@ export const swcToDescription: Record<string, string> = {
   'SWC-136': 'Unencrypted Private Data On-Chain - It is a common misconception that private type variables cannot be read'
 };
 
-// CWE (Common Weakness Enumeration) mapping - links to MITRE CWE database
 export const cweToLink: Record<string, string> = {
-  'CWE-20': 'https://cwe.mitre.org/data/definitions/20.html',     // Improper Input Validation
-  'CWE-22': 'https://cwe.mitre.org/data/definitions/22.html',     // Improper Limitation of a Pathname to a Restricted Directory
-  'CWE-78': 'https://cwe.mitre.org/data/definitions/78.html',     // Improper Neutralization of Special Elements used in an OS Command
-  'CWE-79': 'https://cwe.mitre.org/data/definitions/79.html',     // Improper Neutralization of Input During Web Page Generation
-  'CWE-89': 'https://cwe.mitre.org/data/definitions/89.html',     // Improper Neutralization of Special Elements used in an SQL Command
-  'CWE-94': 'https://cwe.mitre.org/data/definitions/94.html',     // Improper Control of Generation of Code
-  'CWE-119': 'https://cwe.mitre.org/data/definitions/119.html',   // Improper Restriction of Operations within the Bounds of a Memory Buffer
-  'CWE-120': 'https://cwe.mitre.org/data/definitions/120.html',   // Buffer Copy without Checking Size of Input
-  'CWE-125': 'https://cwe.mitre.org/data/definitions/125.html',   // Out-of-bounds Read
-  'CWE-129': 'https://cwe.mitre.org/data/definitions/129.html',   // Improper Validation of Array Index
-  'CWE-134': 'https://cwe.mitre.org/data/definitions/134.html',   // Use of Externally-Controlled Format String
+  'CWE-20': 'https://cwe.mitre.org/data/definitions/20.html',
+  'CWE-22': 'https://cwe.mitre.org/data/definitions/22.html',
+  'CWE-78': 'https://cwe.mitre.org/data/definitions/78.html',
+  'CWE-79': 'https://cwe.mitre.org/data/definitions/79.html',
+  'CWE-89': 'https://cwe.mitre.org/data/definitions/89.html',
+  'CWE-94': 'https://cwe.mitre.org/data/definitions/94.html',
+  'CWE-119': 'https://cwe.mitre.org/data/definitions/119.html',
+  'CWE-120': 'https://cwe.mitre.org/data/definitions/120.html',
+  'CWE-125': 'https://cwe.mitre.org/data/definitions/125.html',
+  'CWE-129': 'https://cwe.mitre.org/data/definitions/129.html',
+  'CWE-134': 'https://cwe.mitre.org/data/definitions/134.html',
   'CWE-190': 'https://cwe.mitre.org/data/definitions/190.html',   // Integer Overflow or Wraparound
   'CWE-191': 'https://cwe.mitre.org/data/definitions/191.html',   // Integer Underflow
   'CWE-200': 'https://cwe.mitre.org/data/definitions/200.html',   // Exposure of Sensitive Information to an Unauthorized Actor
@@ -119,44 +113,34 @@ export const cweToLink: Record<string, string> = {
   'CWE-1275': 'https://cwe.mitre.org/data/definitions/1275.html'  // Sensitive Cookie with Improper SameSite Attribute
 };
 
-// Common SWC to CWE mappings for smart contracts
 export const swcToCweMapping: Record<string, string[]> = {
-  'SWC-101': ['CWE-190', 'CWE-191'], // Integer Overflow/Underflow
-  'SWC-104': ['CWE-703'],           // Unchecked Call Return Value
-  'SWE-105': ['CWE-284', 'CWE-862'], // Unprotected Ether Withdrawal
-  'SWC-106': ['CWE-284'],           // Unprotected SELFDESTRUCT
-  'SWC-107': ['CWE-841'],           // Reentrancy
-  'SWC-109': ['CWE-665'],           // Uninitialized Storage Pointer
-  'SWC-112': ['CWE-829'],           // Delegatecall to Untrusted Callee
-  'SWC-113': ['CWE-400'],           // DoS with Failed Call
-  'SWC-114': ['CWE-362'],           // Transaction Order Dependence
-  'SWC-115': ['CWE-290'],           // Authorization through tx.origin
-  'SWC-116': ['CWE-829'],           // Block values as proxy for time
-  'SWC-120': ['CWE-330'],           // Weak Sources of Randomness
-  'SWC-124': ['CWE-123'],           // Write to Arbitrary Storage Location
-  'SWC-128': ['CWE-400'],           // DoS With Block Gas Limit
-  'SWC-132': ['CWE-682'],           // Unexpected Ether balance
-  'SWC-133': ['CWE-693'],           // Hash Collisions
-  'SWC-136': ['CWE-200']            // Unencrypted Private Data On-Chain
+  'SWC-101': ['CWE-190', 'CWE-191'],
+  'SWC-104': ['CWE-703'],
+  'SWE-105': ['CWE-284', 'CWE-862'],
+  'SWC-106': ['CWE-284'],
+  'SWC-107': ['CWE-841'],
+  'SWC-109': ['CWE-665'],
+  'SWC-112': ['CWE-829'],
+  'SWC-113': ['CWE-400'],
+  'SWC-114': ['CWE-362'],
+  'SWC-115': ['CWE-290'],
+  'SWC-116': ['CWE-829'],
+  'SWC-120': ['CWE-330'],
+  'SWC-124': ['CWE-123'],
+  'SWC-128': ['CWE-400'],
+  'SWC-132': ['CWE-682'],
+  'SWC-133': ['CWE-693'],
+  'SWC-136': ['CWE-200']
 };
 
-/**
- * Get SWC description by ID
- */
 export function getSWCDescription(swcId: string): string | undefined {
   return swcToDescription[swcId];
 }
 
-/**
- * Get CWE link by ID
- */
 export function getCWELink(cweId: string): string | undefined {
   return cweToLink[cweId];
 }
 
-/**
- * Get related CWE IDs for a given SWC ID
- */
 export function getRelatedCWEs(swcId: string): string[] {
   return swcToCweMapping[swcId] || [];
 }

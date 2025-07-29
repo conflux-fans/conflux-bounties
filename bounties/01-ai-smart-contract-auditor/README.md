@@ -2,122 +2,65 @@
 
 A comprehensive AI-powered smart contract auditor with static analysis, webhook notifications, and advanced reporting capabilities.
 
-## 🚀 Features
-
-### Core Analysis
-- **AI-Powered Analysis**: OpenAI GPT-4 and Anthropic Claude integration for intelligent vulnerability detection
-- **Static Analysis**: Integrated Slither and Mythril tools for comprehensive code analysis
-- **Multi-Tool Validation**: AI validates and enhances static analysis findings
-- **Real-time Progress**: Live progress tracking with detailed stage information
-
-### User Interface
-- **Modern React UI**: Intuitive interface with custom CSS styling
-- **Batch Processing**: CSV upload for multiple contract audits
-- **Audit History**: Complete audit history with search and filtering
-- **Report Viewer**: Interactive report display with multiple formats
-
-### Data & Storage
-- **PostgreSQL + Prisma**: Production-ready database with type-safe ORM
-- **Audit History API**: RESTful endpoints for accessing historical audit data
-- **Report Export**: JSON and Markdown format downloads
-- **Vercel Deployment Ready**: Seamless deployment with Vercel Postgres
-
-### Notifications & Webhooks
-- **Webhook System**: Real-time notifications for audit completion/failure
-- **HMAC Security**: Secure webhook delivery with signature verification
-- **Retry Logic**: Automatic retry with exponential backoff
-- **Custom Headers**: Configurable webhook headers and timeouts
-
-### Infrastructure
-- **Standalone Application**: Runs with just `npm run dev`
-- **Optional Docker**: Docker deployment available for production
-- **Local First**: No external services required
-
-### Testing & Quality
-- **Comprehensive Tests**: Jest test suite with 80%+ coverage target
-- **API Testing**: Complete API endpoint testing
-- **Mock LLM Testing**: Simulated AI responses for reliable testing
-
-## 🛠️ Setup
+## 🚀 Quick Start
 
 ### Prerequisites
-
 - Node.js 18+
-- npm or yarn
-- PostgreSQL (via Docker or local installation)
-- Docker (recommended for database)
+- PostgreSQL (via Docker recommended)
+- At least one AI API key (Anthropic Claude recommended)
 
-### Local Installation
+### Installation
 
 ```bash
-# Clone the repository
+# Clone and setup
 git clone <repository-url>
 cd bounties/01-ai-smart-contract-auditor
-
-# Install dependencies
 npm install
 
-# Copy environment file
+# Setup environment
 cp .env.example .env.local
+# Edit .env.local with your API keys (see configuration below)
 
-# Edit .env.local with your API keys (see below)
-
-# Set up database (choose one option):
-
-# Option 1: Docker (Recommended)
+# Setup database (Docker recommended)
 docker-compose up -d
 npm run db:migrate
 
-# Option 2: Local PostgreSQL
-# Install PostgreSQL, create 'audit_db' database
-npm run db:migrate
-
-# Run the application
+# Start application
 npm run dev
 ```
 
-The application will be available at `http://localhost:3000`
+Visit `http://localhost:3000` to use the auditor.
 
-### Environment Variables
+## ⚙️ Configuration
 
-Create `.env.local` by copying the example file and configuring your values:
+### Required Environment Variables
 
-```bash
-# Copy the example configuration
-cp .env.example .env.local
-```
-
-Then edit `.env.local` with your actual values. For detailed configuration instructions, see [CONFIGURATION.md](CONFIGURATION.md).
-
-#### **Required Configuration**
+Edit `.env.local` with your values:
 
 ```env
-# AI API Keys (You need AT LEAST ONE of these)
-OPENAI_API_KEY=sk-your-openai-api-key-here
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
+# AI API Keys (You need AT LEAST ONE)
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-key-here  # RECOMMENDED
+OPENAI_API_KEY=sk-your-openai-key-here             # Alternative
 
-# Conflux Network API (for contract source code)
-CONFLUXSCAN_API_KEY=https://evmapi.confluxscan.org
+# Conflux Network API
+CONFLUXSCAN_API_URL=https://evmapi.confluxscan.org
 
-# Database (PostgreSQL with Prisma)
+# Database
 DATABASE_URL="postgresql://postgres:mypassword123@localhost:5555/audit_db?schema=public"
 ```
 
-#### **How to get API Keys:**
+### Getting API Keys
 
-1. **OpenAI API Key**: 
-   - Go to [OpenAI Platform](https://platform.openai.com/account/api-keys)
-   - Create new API key and copy it to `OPENAI_API_KEY`
+**Anthropic Claude (Recommended)**
+- Superior code analysis and security auditing capabilities
+- Get your key at [Anthropic Console](https://console.anthropic.com/)
+- Create API key → Copy the `sk-ant-` key
 
-2. **Anthropic API Key**:
-   - Go to [Anthropic Console](https://console.anthropic.com/)
-   - Create new API key and copy it to `ANTHROPIC_API_KEY`
+**OpenAI (Alternative)**
+- Get your key at [OpenAI Platform](https://platform.openai.com/account/api-keys)
+- Create API key → Copy the `sk-` key
 
-3. **ConfluxScan API**: 
-   - Use `https://evmapi.confluxscan.org` for public contracts
-   - No API key needed for basic usage
-
-#### **Optional Configuration**
+### Optional Configuration
 
 ```env
 # Application Settings
@@ -130,626 +73,177 @@ WEBHOOK_SECRET=your-webhook-hmac-secret-key
 
 # Rate Limiting
 RATE_LIMIT_REQUESTS_PER_MINUTE=60
-RATE_LIMIT_WEBHOOK_REQUESTS_PER_MINUTE=30
 ```
-
-#### **Database URL Formats:**
-
-```env
-# Local Docker (recommended)
-DATABASE_URL="postgresql://postgres:mypassword123@localhost:5555/audit_db?schema=public"
-
-# Local PostgreSQL installation
-DATABASE_URL="postgresql://username:password@localhost:5432/audit_db?schema=public"
-
-# Vercel Postgres (auto-provided on deployment)
-DATABASE_URL="postgres://default:password@host:5432/verceldb?sslmode=require"
-```
-
-### Database Setup
-
-The application uses PostgreSQL with Prisma ORM:
-- **PostgreSQL**: Production-ready relational database
-- **Prisma**: Type-safe database client with migrations
-- **Docker Support**: Easy setup with `docker-compose up -d`
-- **Vercel Ready**: Seamless deployment with Vercel Postgres
-
-#### Quick Database Setup
-```bash
-# Using Docker (recommended)
-docker-compose up -d
-npm run db:migrate
-
-# Migrate existing JSON data (if any)
-npm run db:migrate-data
-```
-
-See the Database Commands section below for detailed setup instructions.
 
 ## 🐳 Docker Deployment
 
-The application includes comprehensive Docker support for development and production deployments.
-
-### Quick Start
+Complete production setup:
 
 ```bash
-# Copy Docker environment file
-cp .env.docker .env.local
+# Copy Docker environment
+cp .env.example .env.local
 # Edit .env.local with your API keys
 
-# Start all services (web, db, redis, vector-db)
+# Start all services
 docker-compose up -d
 
-# View logs
-docker-compose logs -f web
-
-# Access application
-# Web: http://localhost:3000
-# DB: localhost:5432
-# Redis: localhost:6379
-# Vector DB: localhost:5433
+# Services available:
+# - Web app: http://localhost:3000
+# - Database: localhost:5432
+# - Redis: localhost:6379
 ```
 
-### Production Deployment
+## 🔧 Features
 
+### Core Capabilities
+- **AI-Powered Analysis**: Claude/GPT-4 integration for intelligent vulnerability detection
+- **Static Analysis**: Integrated Slither and Mythril tools
+- **Real-time Progress**: Live progress tracking during audits
+- **Batch Processing**: CSV upload for multiple contract audits
+- **Webhook Notifications**: Real-time audit completion notifications
+
+### Technical Features
+- **PostgreSQL + Prisma**: Production-ready database with migrations
+- **Modern React UI**: Intuitive interface with custom styling
+- **RESTful APIs**: Comprehensive API for integration
+- **Docker Support**: Complete containerized deployment
+- **Test Suite**: Jest tests with 80%+ coverage target
+
+## 📚 API Usage
+
+### Start an Audit
 ```bash
-# Start with Nginx proxy and SSL
-docker-compose --profile production up -d
-
-# Scale web service
-docker-compose up -d --scale web=2
+curl -X POST http://localhost:3000/api/audit/start \
+  -H "Content-Type: application/json" \
+  -d '{"address":"cfx:123456789abcdef"}'
 ```
 
-### Available Services
-
-- **web**: Next.js application (port 3000)
-- **db**: PostgreSQL database (port 5432)
-- **redis**: Redis cache (port 6379)
-- **vector-db**: pgvector database (port 5433)
-- **analysis-tools**: Mythril/Slither container
-- **nginx**: Reverse proxy (ports 80/443) - production profile
-
-## 📚 API Reference
-
-### Core Audit APIs
-
-#### 1. Start Audit
+### Check Progress
 ```bash
-POST /api/audit/start
-Content-Type: application/json
-
-{
-  "address": "cfx:123456789abcdef" // or "0x123456789abcdef"
-}
+curl http://localhost:3000/api/audit/status/JOB_ID
 ```
 
-**Response:**
-```json
-{
-  "jobId": "uuid-v4-job-id",
-  "status": "started",
-  "message": "Audit started successfully"
-}
-```
-
-#### 2. Check Audit Status
+### Get Report
 ```bash
-GET /api/audit/status/{jobId}
+curl http://localhost:3000/api/audit/report/JOB_ID
 ```
 
-**Response:**
-```json
-{
-  "id": "uuid-v4-job-id",
-  "address": "cfx:123456789abcdef",
-  "status": "processing", // pending | processing | completed | failed
-  "progress": 75,
-  "createdAt": "2024-01-01T00:00:00.000Z",
-  "findings": [], // when completed
-  "reports": {}, // when completed
-  "errorMessage": "..." // when failed
-}
-```
-
-#### 3. Get Audit Report
+### Configure Webhooks
 ```bash
-GET /api/audit/report/{jobId}
-```
-
-**Response:**
-```json
-{
-  "json": {
-    "findings": [
-      {
-        "id": "finding-1",
-        "category": "Access Control",
-        "severity": "high",
-        "swc_id": "SWC-105",
-        "cwe_id": "CWE-284",
-        "title": "Missing Access Control",
-        "description": "Function lacks proper access control",
-        "lines": [10, 11],
-        "recommendation": "Add onlyOwner modifier"
-      }
-    ],
-    "summary": {
-      "totalFindings": 1,
-      "severityCounts": {
-        "critical": 0,
-        "high": 1,
-        "medium": 0,
-        "low": 0
-      },
-      "contractAddress": "cfx:123456789abcdef",
-      "analysisDate": "2024-01-01T00:00:00.000Z",
-      "toolsUsed": ["AI Analysis", "Slither", "Mythril"]
-    }
-  },
-  "markdown": "# Smart Contract Audit Report..."
-}
-```
-
-### Audit History APIs
-
-#### 4. Get Audit History by Address
-```bash
-GET /api/reports/{address}/history?limit=50&offset=0&status=completed
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "reports": [...],
-  "pagination": {
-    "total": 100,
-    "limit": 50,
-    "offset": 0,
-    "hasMore": true
-  },
-  "stats": {
-    "total": 100,
-    "completed": 95,
-    "failed": 5,
-    "avgFindings": 3.2
-  }
-}
-```
-
-#### 5. Get All Reports
-```bash
-GET /api/reports?sort=created_at&order=desc&limit=20
-```
-
-#### 6. Get Single Report
-```bash
-GET /api/reports/{reportId}?format=json // or markdown
-```
-
-### Webhook APIs
-
-#### 7. Configure Webhook
-```bash
-POST /api/webhook/configure
-Content-Type: application/json
-X-User-ID: your-user-id
-
-{
-  "webhook_url": "https://your-server.com/webhook",
-  "events": ["audit_completed", "audit_failed"],
-  "secret_hmac": "optional-secret-key",
-  "retry_count": 3,
-  "timeout_seconds": 30,
-  "custom_headers": {
-    "Authorization": "Bearer your-token"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Webhook configuration created successfully",
-  "webhook": {
-    "id": "webhook-id",
+curl -X POST http://localhost:3000/api/webhook/configure \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: your-user-id" \
+  -d '{
     "webhook_url": "https://your-server.com/webhook",
-    "events": ["audit_completed", "audit_failed"],
-    "is_active": true,
-    "created_at": "2024-01-01T00:00:00Z"
-  },
-  "secret_hmac": "generated-or-provided-secret"
-}
+    "events": ["audit_completed", "audit_failed"]
+  }'
 ```
-
-#### 8. List Webhooks
-```bash
-GET /api/webhook/configure
-X-User-ID: your-user-id
-```
-
-#### 9. Delete Webhook
-```bash
-DELETE /api/webhook/configure?id=webhook-id
-X-User-ID: your-user-id
-```
-
-### Contract Source API
-
-#### 10. Get Contract Source
-```bash
-GET /api/contracts/{address}
-```
-
-**Response:**
-```json
-{
-  "address": "cfx:123456789abcdef",
-  "source": "pragma solidity ^0.8.0; contract Test { ... }",
-  "contractName": "Test",
-  "compiler": "0.8.19"
-}
-```
-
-### Webhook Payload Format
-
-When audits complete, webhooks receive:
-
-```json
-{
-  "event": "audit_completed", // or "audit_failed", "audit_started"
-  "audit_id": "report-id",
-  "contract_address": "cfx:123456789abcdef",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "data": {
-    "status": "completed",
-    "findings_count": 5,
-    "severity_breakdown": {
-      "critical": 1,
-      "high": 2,
-      "medium": 1,
-      "low": 1
-    },
-    "processing_time_ms": 45000,
-    "report_url": "https://your-app.com/audit/report/report-id"
-  }
-}
-```
-
-### Error Responses
-
-All APIs return consistent error format:
-```json
-{
-  "error": "Error message",
-  "details": "Additional context",
-  "type": "error_type",
-  "timestamp": "2024-01-01T00:00:00Z"
-}
-```
-
-Common HTTP status codes:
-- `400`: Bad Request (invalid input)
-- `404`: Resource not found
-- `429`: Rate limit exceeded
-- `500`: Internal server error
 
 ## 🧪 Testing
 
 ```bash
-# Run all tests with coverage
+# Run all tests
 npm test
 
-# Run tests in watch mode
-npm run test:watch
-
-# Run specific test file
-npm test confluxScanClient.test.ts
-
-# Generate coverage report
+# Run with coverage
 npm run test:coverage
 
-# Run tests with verbose output
-npm test -- --verbose
-```
-
-### Test Coverage
-
-The test suite targets 80%+ coverage and includes:
-
-- **Unit Tests**: Core library functions (confluxScanClient, analysisEngine, staticAnalyzer)
-- **API Tests**: All REST endpoints with mocked dependencies
-- **Integration Tests**: End-to-end audit workflows
-- **Mock Testing**: AI API responses and external service calls
-
-### Test Files
-
-```
-__tests__/
-├── lib/
-│   ├── confluxScanClient.test.ts   # ConfluxScan API tests
-│   ├── staticAnalyzer.test.ts      # Static analysis tests
-│   └── analysisEngine.test.ts      # Core audit engine tests
-├── api/
-│   ├── audit/
-│   │   ├── start.test.ts           # Audit start endpoint
-│   │   └── status.test.ts          # Audit status endpoint
-│   └── webhook/
-│       └── configure.test.ts       # Webhook configuration tests
-└── reportGenerator.test.ts         # Report generation tests
+# Watch mode
+npm run test:watch
 ```
 
 ## 🏗️ Architecture
 
-### Project Structure
-
 ```
-├── app/                            # Next.js App Router
-│   ├── api/                        # API Routes
-│   │   ├── audit/
-│   │   │   ├── start/route.ts      # Start audit
-│   │   │   ├── status/[jobId]/route.ts # Audit status
-│   │   │   └── report/[jobId]/route.ts # Get audit report
-│   │   ├── reports/
-│   │   │   ├── route.ts            # List all reports
-│   │   │   ├── [id]/route.ts       # Get single report
-│   │   │   └── [address]/history/route.ts # Address history
-│   │   ├── webhook/
-│   │   │   └── configure/route.ts  # Webhook management
-│   │   ├── contracts/[address]/route.ts # Contract source
-│   │   └── health/route.ts         # Health check
-│   ├── audit/
-│   │   └── report/[jobId]/page.tsx # Report viewer page
-│   ├── history/
-│   │   └── page.tsx                # Audit history page
-│   ├── globals.css
-│   ├── layout.tsx
-│   └── page.tsx                    # Main audit interface
-├── lib/                            # Core Libraries
-│   ├── analysisEngine.ts           # AI + Static analysis engine
-│   ├── confluxScanClient.ts        # ConfluxScan API client
-│   ├── staticAnalyzer.ts           # Slither/Mythril integration
-│   ├── reportGenerator.ts          # Report formatting
-│   ├── database.ts                 # Database operations
-│   └── webhooks.ts                 # Webhook delivery system
-├── components/                     # React Components
-│   ├── AuditForm.tsx              # Main audit form
-│   ├── BatchAuditMode.tsx         # CSV upload interface
-│   ├── AuditProgress.tsx          # Progress tracking
-│   └── ReportViewer.tsx           # Report display
-├── __tests__/                      # Test Suite
-├── docker/                         # Docker Configuration
-│   ├── nginx.conf                  # Nginx configuration
-│   └── vector-db-init.sql         # Vector DB schema
-├── docs/                          # Documentation
-│   └── WEBHOOKS.md                # Webhook documentation
-├── Dockerfile                      # Container definition
-├── docker-compose.yml              # Multi-service orchestration
-├── prisma/schema.prisma            # Database schema
-└── README-Docker.md               # Docker deployment guide
+├── app/                    # Next.js App Router
+│   ├── api/               # API Routes
+│   │   ├── audit/         # Audit endpoints
+│   │   ├── reports/       # Report management
+│   │   └── webhook/       # Webhook configuration
+│   ├── audit/report/      # Report viewer pages
+│   └── page.tsx           # Main interface
+├── lib/                   # Core Libraries
+│   ├── analysisEngine.ts  # Main audit engine
+│   ├── confluxScanClient.ts # Contract source fetching
+│   ├── database.ts        # Database operations
+│   └── webhooks.ts        # Webhook system
+├── components/            # React Components
+├── __tests__/            # Test Suite
+└── docker-compose.yml    # Docker configuration
 ```
 
-### Core Components
+## 🔄 Audit Process
 
-#### Analysis Engine (`lib/analysisEngine.ts`)
-- Orchestrates the complete audit pipeline
-- Integrates static analysis tools with AI validation
-- Provides real-time progress tracking via EventEmitter
-- Saves results to PostgreSQL and triggers webhooks
-
-#### Static Analyzer (`lib/staticAnalyzer.ts`)
-- Docker-based Slither and Mythril integration
-- Parses tool outputs and normalizes findings
-- Handles tool failures gracefully
-
-#### Webhook System (`lib/webhooks.ts`)
-- HMAC-secured webhook delivery
-- Configurable retry logic with exponential backoff
-- Support for custom headers and timeouts
-- Comprehensive delivery tracking
-
-#### Database Layer (`lib/database.ts`)
-- Complete CRUD operations for audit reports
-- Webhook configuration management
-- Audit statistics and analytics
-- Type-safe database operations
-
-## 🔄 Audit Workflow
-
-### Complete Audit Pipeline
-
-1. **Input Validation**: Contract address format verification
-2. **Source Retrieval**: Fetch source code from ConfluxScan API
-3. **Static Analysis**: Run Slither and Mythril via Docker
-4. **AI Analysis**: 
-   - Send source + static findings to OpenAI/Anthropic
-   - AI validates static findings and finds additional issues
-   - Parse and normalize AI response
+1. **Input Validation**: Verify contract address format
+2. **Source Retrieval**: Fetch source code from ConfluxScan
+3. **Static Analysis**: Run Slither/Mythril via Docker
+4. **AI Analysis**: Claude/GPT-4 validates and enhances findings
 5. **Report Generation**: Create JSON and Markdown reports
-6. **Database Storage**: Save complete audit data to PostgreSQL
-7. **Webhook Notifications**: Send completion/failure notifications
-8. **Progress Tracking**: Real-time updates via EventEmitter
-
-### Audit Statuses
-
-- `pending`: Audit queued for processing
-- `processing`: Analysis in progress (with progress percentage)
-- `completed`: Audit finished successfully with results
-- `failed`: Audit failed with error message
-
-### Finding Categories
-
-The system detects vulnerabilities across categories:
-- **Access Control**: Missing modifiers, unauthorized access
-- **Reentrancy**: State changes after external calls
-- **Integer Issues**: Overflow/underflow vulnerabilities
-- **External Calls**: Unchecked return values
-- **Gas Issues**: DoS via gas limit, expensive operations
-- **Logic Errors**: Business logic flaws
-- **Best Practices**: Code quality and optimization
-
-### AI Integration
-
-The system supports multiple AI providers:
-- **OpenAI**: GPT-4 with 4000 token responses
-- **Anthropic**: Claude Haiku with structured analysis
-- **Fallback Logic**: Automatic failover between providers
-- **Validation**: AI validates and enhances static analysis findings
-
-## 🚀 Quick Start Examples
-
-### Basic Audit
-```bash
-# Start an audit
-curl -X POST http://localhost:3000/api/audit/start \
-  -H "Content-Type: application/json" \
-  -d '{"address":"cfx:123456789abcdef"}'
-
-# Check progress  
-curl http://localhost:3000/api/audit/status/RETURNED_JOB_ID
-
-# Get report when complete
-curl http://localhost:3000/api/audit/report/RETURNED_JOB_ID
-```
-
-### Webhook Setup
-```bash
-# Configure webhook notifications
-curl -X POST http://localhost:3000/api/webhook/configure \
-  -H "Content-Type: application/json" \
-  -H "X-User-ID: my-user" \
-  -d '{
-    "webhook_url": "https://my-server.com/webhooks",
-    "events": ["audit_completed", "audit_failed"],
-    "retry_count": 3
-  }'
-```
-
-### Docker Deployment
-```bash
-# Complete deployment with all services
-git clone <repo>
-cd bounties/01-ai-smart-contract-auditor
-cp .env.docker .env.local
-# Edit .env.local with your API keys
-docker-compose up -d
-```
-
-## 📊 Features Overview
-
-| Feature | Status | Description |
-|---------|--------|-------------|
-| ✅ AI Analysis | Complete | OpenAI GPT-4 & Anthropic Claude integration |
-| ✅ Static Analysis | Complete | Slither & Mythril Docker integration |
-| ✅ Real-time Progress | Complete | EventEmitter-based progress tracking |
-| ✅ PostgreSQL Storage | Complete | Complete audit history persistence |
-| ✅ Webhook System | Complete | HMAC-secured notifications with retry |
-| ✅ Batch Processing | Complete | CSV upload for multiple contracts |
-| ✅ Report Export | Complete | JSON & Markdown format downloads |
-| ✅ Docker Deployment | Complete | Multi-service production setup |
-| ✅ Test Suite | Complete | 80%+ coverage with Jest |
-| ✅ API Documentation | Complete | RESTful endpoints with examples |
-
-## 🔧 Configuration
-
-### Required Environment Variables
-```env
-# At least one AI provider required
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Required for Conflux network
-CONFLUX_SCAN_API_KEY=your-key
-```
-
-### Optional Features
-```env
-# Application settings
-NEXT_PUBLIC_BASE_URL=http://localhost:3000
-NODE_ENV=development
-
-# Security (optional)
-JWT_SECRET=your-random-secret
-WEBHOOK_SECRET=your-webhook-secret
-```
+6. **Database Storage**: Save complete audit data
+7. **Webhook Notifications**: Send completion notifications
 
 ## 🛡️ Security Features
 
-- **HMAC Webhook Signatures**: Cryptographically signed webhook payloads
-- **Input Validation**: Comprehensive request validation and sanitization  
-- **Rate Limiting**: Nginx-based API rate limiting (configurable)
-- **Environment Isolation**: Docker container isolation
-- **Secret Management**: Environment-based secret configuration
-- **HTTPS Enforcement**: SSL/TLS configuration for production
+- **HMAC Webhook Signatures**: Cryptographically signed payloads
+- **Input Validation**: Comprehensive request validation
+- **Rate Limiting**: Configurable API rate limits
+- **Environment Isolation**: Docker container security
+- **Secret Management**: Environment-based configuration
 
-## 🎥 Demo
+## 🚨 Troubleshooting
 
-### Live Demo
-> **Coming Soon**: Public demo deployment
+### Common Issues
 
-### Video Walkthrough
-> **Coming Soon**: Feature demonstration video
+**Missing API Key Error**
+- Ensure you have at least one AI API key configured
+- Verify the key format (`sk-ant-` for Anthropic, `sk-` for OpenAI)
 
-### Screenshots
-> **Coming Soon**: UI screenshots and workflow examples
+**Database Connection Error**
+- Check PostgreSQL is running: `docker-compose ps`
+- Verify DATABASE_URL format is correct
+- Run migrations: `npm run db:migrate`
 
-## 🤝 Contributing
+**Contract Not Found**
+- Verify contract address is valid and verified on ConfluxScan
+- Check CONFLUXSCAN_API_URL is set correctly
 
-1. Fork the project
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Install dependencies (`npm install`)
-4. Run tests (`npm test`)
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+### Testing Configuration
+```bash
+# Test database connection
+npm run db:studio
 
-### Development Guidelines
-- Follow TypeScript best practices
-- Maintain 80%+ test coverage
-- Use conventional commit messages
-- Update documentation for new features
-- Test Docker deployment locally
+# Test API health
+curl http://localhost:3000/api/health
 
-## 📚 Documentation
+# Check logs
+docker-compose logs -f web
+```
 
-- **[CONFIGURATION.md](CONFIGURATION.md)**: Complete environment variable setup guide
-- **Docker Configuration**: Complete Docker deployment via docker-compose.yml
-- **Webhook System**: Built-in webhook configuration and usage via API
-- **Database Schema**: PostgreSQL schema managed via Prisma migrations
-- **API Reference**: Comprehensive API documentation above
+## 📊 Database Commands
+
+```bash
+# Run migrations
+npm run db:migrate
+
+# Reset database
+npm run db:reset
+
+# View database
+npm run db:studio
+
+# Generate Prisma client
+npm run db:generate
+```
 
 ## 📝 License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ## 🆘 Support
 
-### Documentation
-- Check this README for setup instructions
-- Review Docker configuration in docker-compose.yml
-- Use the webhook API endpoints for notification setup
-
-### Troubleshooting
-```bash
-# Check application logs
-docker-compose logs -f web
-
-# Verify database connection
-docker-compose exec web npm run db:test
-
-# Test API endpoints
-curl http://localhost:3000/api/health
-```
-
-### Issues & Questions
 - **GitHub Issues**: Report bugs and request features
-- **API Issues**: Check endpoint documentation and examples
-- **Docker Issues**: Review Docker logs and environment variables
-- **Database Issues**: Verify PostgreSQL connection and Prisma schema
+- **Documentation**: This README covers setup and usage
+- **API Testing**: Use the curl examples above
+- **Docker Issues**: Check `docker-compose logs -f web`
 
-### Performance Optimization
-- Enable Redis caching for improved response times
-- Use Nginx proxy for production deployments  
-- Configure database connection pooling
-- Monitor webhook delivery success rates
+For additional help, please create an issue with detailed error messages and configuration details.

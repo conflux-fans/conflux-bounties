@@ -20,9 +20,6 @@ interface ReportFormats {
   markdown: string;
 }
 
-/**
- * Generates comprehensive audit reports in JSON and Markdown formats
- */
 export function generateReports(findings: Finding[]): ReportFormats {
   const jsonReport = generateJSONReport(findings);
   const markdownReport = generateMarkdownReport(findings);
@@ -33,9 +30,6 @@ export function generateReports(findings: Finding[]): ReportFormats {
   };
 }
 
-/**
- * Generates structured JSON report
- */
 function generateJSONReport(findings: Finding[]) {
   const severityCounts = {
     critical: findings.filter(f => f.severity === 'critical').length,
@@ -76,9 +70,6 @@ function generateJSONReport(findings: Finding[]) {
   };
 }
 
-/**
- * Generates human-readable Markdown report
- */
 function generateMarkdownReport(findings: Finding[]): string {
   const severityCounts = {
     critical: findings.filter(f => f.severity === 'critical').length,
@@ -107,7 +98,6 @@ This security audit identified **${findings.length} findings** across multiple c
 
 `;
 
-  // Group findings by severity
   const severityOrder = ['critical', 'high', 'medium', 'low'];
   const severityEmojis = {
     critical: '🔴',
@@ -162,7 +152,6 @@ This security audit identified **${findings.length} findings** across multiple c
     });
   });
 
-  // Add categories summary
   const categories = [...new Set(findings.map(f => f.category))];
   markdown += `## Categories Summary\n\n`;
   categories.forEach(category => {
@@ -176,9 +165,6 @@ This security audit identified **${findings.length} findings** across multiple c
   return markdown;
 }
 
-/**
- * Determines overall risk level based on severity counts
- */
 function determineOverallRisk(severityCounts: { critical: number; high: number; medium: number; low: number }): string {
   if (severityCounts.critical > 0) {
     return 'CRITICAL';
@@ -197,13 +183,9 @@ function determineOverallRisk(severityCounts: { critical: number; high: number; 
   }
 }
 
-/**
- * Generates reference links for findings
- */
 function generateReferences(finding: Finding): Array<{ title: string; url: string }> {
   const references = [];
 
-  // Add SWC reference
   if (finding.swc_id) {
     const description = getSWCDescription(finding.swc_id);
     if (description) {
@@ -214,7 +196,6 @@ function generateReferences(finding: Finding): Array<{ title: string; url: strin
     }
   }
 
-  // Add CWE reference
   if (finding.cwe_id) {
     const cweLink = getCWELink(finding.cwe_id);
     if (cweLink) {
@@ -225,7 +206,6 @@ function generateReferences(finding: Finding): Array<{ title: string; url: strin
     }
   }
 
-  // Add related CWEs if SWC is provided
   if (finding.swc_id) {
     const relatedCWEs = getRelatedCWEs(finding.swc_id);
     relatedCWEs.forEach(cweId => {

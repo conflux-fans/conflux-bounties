@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getActiveWebhookConfigurations, WebhookConfigurationInsert } from '@/lib/database';
+import { WebhookConfigurationInsert, getWebhookConfigurationsByUserId, insertWebhookConfiguration } from '@/lib/database';
 import crypto from 'crypto';
 
 interface WebhookConfigureRequest {
@@ -9,7 +9,7 @@ interface WebhookConfigureRequest {
   retry_count?: number;
   timeout_seconds?: number;
   custom_headers?: Record<string, string>;
-  user_id?: string; // For multi-tenant support
+  user_id?: string; 
 }
 
 interface WebhookConfigureResponse {
@@ -23,9 +23,6 @@ interface WebhookConfigureResponse {
   custom_headers: Record<string, string>;
 }
 
-/**
- * Validate webhook URL format
- */
 function validateWebhookUrl(url: string): boolean {
   try {
     const parsedUrl = new URL(url);
@@ -35,30 +32,16 @@ function validateWebhookUrl(url: string): boolean {
   }
 }
 
-/**
- * Generate a secure HMAC secret if not provided
- */
 function generateHmacSecret(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-/**
- * Validate events array
- */
 function validateEvents(events: string[]): boolean {
   const validEvents = ['audit_completed', 'audit_failed', 'audit_started'];
   return events.every(event => validEvents.includes(event));
 }
 
-/**
- * Get user ID from request (placeholder for authentication)
- */
 function getUserIdFromRequest(request: NextRequest): string {
-  // In a real application, you would extract this from:
-  // - JWT token
-  // - API key
-  // - Session
-  // For now, we'll use a header or generate a default
   const userIdHeader = request.headers.get('x-user-id');
   const apiKeyHeader = request.headers.get('x-api-key');
   
@@ -67,19 +50,13 @@ function getUserIdFromRequest(request: NextRequest): string {
   }
   
   if (apiKeyHeader) {
-    // Use API key as user ID (you might want to hash this)
     return crypto.createHash('sha256').update(apiKeyHeader).digest('hex').slice(0, 16);
   }
   
-  // Default user ID for development/testing
   return 'default_user';
 }
 
-/**
- * Validate custom headers
- */
 function validateCustomHeaders(headers: Record<string, string>): boolean {
-  // Check for dangerous headers
   const dangerousHeaders = ['authorization', 'cookie', 'host', 'content-length'];
   const headerKeys = Object.keys(headers).map(key => key.toLowerCase());
   
@@ -91,10 +68,7 @@ export async function POST(request: NextRequest) {
     const body: WebhookConfigureRequest = await request.json();
     const { webhook_url, secret_hmac, events, retry_count, timeout_seconds, custom_headers } = body;
 
-    // Get user ID from request
     const userId = body.user_id || getUserIdFromRequest(request);
-
-    // Validate required fields
     if (!webhook_url) {
       return NextResponse.json(
         { 
@@ -105,7 +79,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate webhook URL
     if (!validateWebhookUrl(webhook_url)) {
       return NextResponse.json(
         { 
@@ -116,7 +89,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate events if provided
     const webhookEvents = events || ['audit_completed', 'audit_failed'];
     if (!validateEvents(webhookEvents)) {
       return NextResponse.json(
@@ -128,7 +100,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate retry count
     const retryCount = retry_count ?? 3;
     if (retryCount < 0 || retryCount > 10) {
       return NextResponse.json(
@@ -140,7 +111,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate timeout
     const timeoutSeconds = timeout_seconds ?? 30;
     if (timeoutSeconds < 5 || timeoutSeconds > 120) {
       return NextResponse.json(
@@ -152,7 +122,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate custom headers if provided
     const customHeaders = custom_headers || {};
     if (!validateCustomHeaders(customHeaders)) {
       return NextResponse.json(
@@ -164,19 +133,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate HMAC secret if not provided
     const hmacSecret = secret_hmac || generateHmacSecret();
 
     console.log(`[WebhookConfigure] Configuring webhook for user: ${userId}, URL: ${webhook_url}`);
-
-    // Check if user already has a webhook configuration for this URL
     const existingConfigs = await getWebhookConfigurationsByUserId(userId);
-    const existingConfig = existingConfigs.find(config => config.webhook_url === webhook_url);
+    const existingConfig = existingConfigs.find((config: any) => config.webhook_url === webhook_url);
 
     let webhookConfig;
 
     if (existingConfig) {
-      // Update existing configuration
       const updates: Partial<WebhookConfigurationInsert> = {
         secret_hmac: hmacSecret,
         events: webhookEvents,
@@ -186,7 +151,6 @@ export async function POST(request: NextRequest) {
         is_active: true
       };
 
-      // For now, webhook configuration is read-only in file-based storage
       console.log('[Webhook] Update webhook configuration not implemented in file-based storage');
       webhookConfig = existingConfig;
       
@@ -202,7 +166,6 @@ export async function POST(request: NextRequest) {
 
       console.log(`[WebhookConfigure] Updated existing webhook configuration: ${webhookConfig.id}`);
     } else {
-      // Create new configuration
       const newConfig: WebhookConfigurationInsert = {
         user_id: userId,
         webhook_url,
@@ -229,23 +192,21 @@ export async function POST(request: NextRequest) {
       console.log(`[WebhookConfigure] Created new webhook configuration: ${webhookConfig.id}`);
     }
 
-    // Return response (excluding sensitive secret)
     const response: WebhookConfigureResponse = {
       id: webhookConfig.id,
       webhook_url: webhookConfig.webhook_url,
-      events: webhookConfig.events,
+      events: JSON.parse(webhookConfig.events),
       is_active: webhookConfig.is_active,
       created_at: webhookConfig.created_at,
       retry_count: webhookConfig.retry_count,
       timeout_seconds: webhookConfig.timeout_seconds,
-      custom_headers: webhookConfig.custom_headers
+      custom_headers: webhookConfig.custom_headers ? JSON.parse(webhookConfig.custom_headers) : {}
     };
 
     return NextResponse.json({
       success: true,
       message: existingConfig ? 'Webhook configuration updated successfully' : 'Webhook configuration created successfully',
       webhook: response,
-      // Only return the secret if it was generated (not updated)
       ...((!secret_hmac || !existingConfig) && { secret_hmac: hmacSecret })
     });
 
@@ -271,19 +232,17 @@ export async function GET(request: NextRequest) {
     
     const webhookConfigs = await getWebhookConfigurationsByUserId(userId);
     
-    // Transform response to exclude sensitive data
-    const safeConfigs = webhookConfigs.map(config => ({
+    const safeConfigs = webhookConfigs.map((config: any) => ({
       id: config.id,
       webhook_url: config.webhook_url,
-      events: config.events,
+      events: JSON.parse(config.events),
       is_active: config.is_active,
       created_at: config.created_at,
       updated_at: config.updated_at,
       last_used_at: config.last_used_at,
       retry_count: config.retry_count,
       timeout_seconds: config.timeout_seconds,
-      custom_headers: config.custom_headers
-      // Exclude secret_hmac for security
+      custom_headers: config.custom_headers ? JSON.parse(config.custom_headers) : {}
     }));
 
     return NextResponse.json({
@@ -321,9 +280,8 @@ export async function DELETE(request: NextRequest) {
 
     console.log(`[WebhookConfigure] Deleting webhook configuration: ${webhookId} for user: ${userId}`);
 
-    // Verify the webhook belongs to the user
     const userConfigs = await getWebhookConfigurationsByUserId(userId);
-    const webhookExists = userConfigs.some(config => config.id === webhookId);
+    const webhookExists = userConfigs.some((config: any) => config.id === webhookId);
 
     if (!webhookExists) {
       return NextResponse.json(
@@ -335,7 +293,6 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // For now, webhook deletion is not implemented in file-based storage
     console.log('[Webhook] Delete webhook configuration not implemented in file-based storage');
     const success = true;
 
@@ -369,5 +326,4 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// Export types for use in other modules
 export type { WebhookConfigureRequest, WebhookConfigureResponse };

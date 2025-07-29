@@ -1,6 +1,3 @@
-/**
- * Utilities for parsing Solidity functions and organizing findings by function
- */
 
 export interface SolidityFunction {
   name: string;
@@ -28,9 +25,6 @@ export interface FunctionGroup {
   }>;
 }
 
-/**
- * Parse Solidity source code to extract function definitions
- */
 export function parseSolidityFunctions(sourceCode: string): SolidityFunction[] {
   const lines = sourceCode.split('\n');
   const functions: SolidityFunction[] = [];
@@ -38,30 +32,26 @@ export function parseSolidityFunctions(sourceCode: string): SolidityFunction[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     
-    // Skip comments and empty lines
     if (line.startsWith('//') || line.startsWith('/*') || !line) {
       continue;
     }
     
-    // Function pattern matching
     const functionMatch = line.match(
       /^\s*(function|constructor|modifier|fallback|receive)\s*([a-zA-Z_][a-zA-Z0-9_]*)?/
     );
     
     if (functionMatch) {
       const type = functionMatch[1] as SolidityFunction['type'];
-      const name = functionMatch[2] || type; // Use type as name for constructor/fallback/receive
+      const name = functionMatch[2] || type;
       
-      // Extract visibility and mutability
       const visibility = extractVisibility(line);
       const mutability = extractMutability(line);
       
-      // Find the end of the function by counting braces
       const endLine = findFunctionEnd(lines, i);
       
       functions.push({
         name,
-        startLine: i + 1, // 1-indexed
+        startLine: i + 1,
         endLine,
         signature: line,
         type,
@@ -74,9 +64,6 @@ export function parseSolidityFunctions(sourceCode: string): SolidityFunction[] {
   return functions;
 }
 
-/**
- * Extract visibility from function signature
- */
 function extractVisibility(line: string): SolidityFunction['visibility'] {
   if (line.includes('public')) return 'public';
   if (line.includes('private')) return 'private';
@@ -85,9 +72,6 @@ function extractVisibility(line: string): SolidityFunction['visibility'] {
   return '';
 }
 
-/**
- * Extract mutability from function signature
- */
 function extractMutability(line: string): SolidityFunction['mutability'] {
   if (line.includes('pure')) return 'pure';
   if (line.includes('view')) return 'view';
@@ -95,9 +79,6 @@ function extractMutability(line: string): SolidityFunction['mutability'] {
   return 'nonpayable';
 }
 
-/**
- * Find the end line of a function by counting braces
- */
 function findFunctionEnd(lines: string[], startIndex: number): number {
   let braceCount = 0;
   let foundOpenBrace = false;
@@ -105,7 +86,6 @@ function findFunctionEnd(lines: string[], startIndex: number): number {
   for (let i = startIndex; i < lines.length; i++) {
     const line = lines[i];
     
-    // Count braces
     for (const char of line) {
       if (char === '{') {
         braceCount++;
@@ -113,26 +93,20 @@ function findFunctionEnd(lines: string[], startIndex: number): number {
       } else if (char === '}') {
         braceCount--;
         
-        // If we've found the opening brace and braces are balanced, this is the end
         if (foundOpenBrace && braceCount === 0) {
-          return i + 1; // 1-indexed
+          return i + 1;
         }
       }
     }
     
-    // Handle abstract functions (no body)
     if (!foundOpenBrace && line.includes(';')) {
       return i + 1;
     }
   }
   
-  // If no closing brace found, assume it goes to the end
   return lines.length;
 }
 
-/**
- * Group findings by the function they belong to
- */
 export function groupFindingsByFunction(
   sourceCode: string,
   findings: Array<{
@@ -154,20 +128,16 @@ export function groupFindingsByFunction(
   
   console.log(`[FunctionParser] Found ${functions.length} functions`);
   
-  // Group findings by function
   for (const func of functions) {
     const functionFindings = findings.filter(finding => {
-      // Method 1: Check if any line of the finding is within the function
       if (finding.lines && finding.lines.length > 0) {
         return finding.lines.some(line => line >= func.startLine && line <= func.endLine);
       }
       
-      // Method 2: Check if the location mentions the function name
       if (finding.location) {
         return finding.location.toLowerCase().includes(func.name.toLowerCase());
       }
       
-      // Method 3: Check if the title/description mentions the function
       const text = `${finding.title} ${finding.description}`.toLowerCase();
       return text.includes(func.name.toLowerCase());
     });
@@ -180,7 +150,6 @@ export function groupFindingsByFunction(
     }
   }
   
-  // Handle findings that don't belong to any specific function
   const groupedFindingIds = new Set(
     functionGroups.flatMap(group => group.findings.map(f => f.id))
   );
@@ -188,7 +157,6 @@ export function groupFindingsByFunction(
   const orphanFindings = findings.filter(finding => !groupedFindingIds.has(finding.id));
   
   if (orphanFindings.length > 0) {
-    // Create a special group for contract-level findings
     functionGroups.push({
       function: {
         name: 'Contract Level',
@@ -203,7 +171,6 @@ export function groupFindingsByFunction(
     });
   }
   
-  // Sort by severity (most severe first)
   functionGroups.forEach(group => {
     group.findings.sort((a, b) => {
       const severityOrder = { 'critical': 4, 'high': 3, 'medium': 2, 'low': 1 };
@@ -211,7 +178,6 @@ export function groupFindingsByFunction(
     });
   });
   
-  // Sort groups by highest severity finding
   functionGroups.sort((a, b) => {
     const severityOrder = { 'critical': 4, 'high': 3, 'medium': 2, 'low': 1 };
     const aMaxSeverity = Math.max(...a.findings.map(f => severityOrder[f.severity]));
@@ -224,9 +190,6 @@ export function groupFindingsByFunction(
   return functionGroups;
 }
 
-/**
- * Get a clean function signature for display
- */
 export function getDisplaySignature(func: SolidityFunction): string {
   if (func.type === 'constructor') {
     return `constructor`;
@@ -238,7 +201,6 @@ export function getDisplaySignature(func: SolidityFunction): string {
     return `receive()`;
   }
   
-  // Extract just the function name and parameters
   const match = func.signature.match(/function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)/);
   if (match) {
     return match[0];
@@ -247,9 +209,6 @@ export function getDisplaySignature(func: SolidityFunction): string {
   return func.signature.split('{')[0].trim();
 }
 
-/**
- * Get function context (lines around the function for better understanding)
- */
 export function getFunctionContext(sourceCode: string, func: SolidityFunction, contextLines: number = 2): string {
   const lines = sourceCode.split('\n');
   const startLine = Math.max(0, func.startLine - 1 - contextLines);

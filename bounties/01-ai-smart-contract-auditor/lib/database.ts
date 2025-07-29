@@ -2,7 +2,6 @@ import { PrismaClient, AuditStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// Database types - keep compatibility with existing code
 export interface AuditReport {
   id: string;
   contract_address: string;
@@ -38,7 +37,6 @@ export interface AuditReportInsert {
   static_analysis_tools?: string[];
 }
 
-// Webhook types
 export interface WebhookConfiguration {
   id: string;
   user_id: string;
@@ -57,6 +55,7 @@ export interface WebhookConfigurationInsert {
   user_id: string;
   webhook_url: string;
   events: string[];
+  is_active?: boolean;
   secret_hmac?: string;
   retry_count?: number;
   timeout_seconds?: number;
@@ -87,7 +86,6 @@ export interface WebhookDeliveryInsert {
   delivered_at?: string;
 }
 
-// Helper function to convert Prisma enum to string
 function auditStatusToString(status: AuditStatus): 'completed' | 'failed' | 'processing' {
   switch (status) {
     case AuditStatus.COMPLETED:
@@ -99,7 +97,6 @@ function auditStatusToString(status: AuditStatus): 'completed' | 'failed' | 'pro
   }
 }
 
-// Helper function to convert string to Prisma enum
 function stringToAuditStatus(status: 'completed' | 'failed' | 'processing'): AuditStatus {
   switch (status) {
     case 'completed':
@@ -111,7 +108,6 @@ function stringToAuditStatus(status: 'completed' | 'failed' | 'processing'): Aud
   }
 }
 
-// Helper function to transform Prisma result to interface
 function transformPrismaAuditReport(report: any): AuditReport {
   return {
     id: report.id,
@@ -133,7 +129,6 @@ function transformPrismaAuditReport(report: any): AuditReport {
   };
 }
 
-// Database operations
 export async function insertAuditReport(report: AuditReportInsert): Promise<AuditReport | null> {
   try {
     const result = await prisma.auditReport.create({
@@ -181,13 +176,18 @@ export async function getAuditReportsByAddress(
   status?: string
 ): Promise<{ reports: AuditReport[]; total: number }> {
   try {
+    
     const where: any = {
-      contractAddress: address
+      contractAddress: {
+        equals: address,
+        mode: 'insensitive'
+      }
     };
 
     if (status) {
       where.auditStatus = stringToAuditStatus(status as 'completed' | 'failed' | 'processing');
     }
+
 
     const [reports, total] = await Promise.all([
       prisma.auditReport.findMany({
@@ -198,6 +198,7 @@ export async function getAuditReportsByAddress(
       }),
       prisma.auditReport.count({ where })
     ]);
+
 
     return {
       reports: reports.map(transformPrismaAuditReport),
@@ -230,7 +231,6 @@ export function getAllReports(
   order: 'asc' | 'desc' = 'desc'
 ): Promise<{ reports: AuditReport[]; total: number }> {
   try {
-    // Map sortBy to Prisma field names
     const sortFieldMap: Record<string, string> = {
       'created_at': 'createdAt',
       'updated_at': 'updatedAt',
@@ -260,7 +260,12 @@ export function getAllReports(
 
 export async function getAuditReportStats(address?: string) {
   try {
-    const where = address ? { contractAddress: address } : {};
+    const where = address ? { 
+      contractAddress: {
+        equals: address,
+        mode: 'insensitive' as const
+      }
+    } : {};
 
     const [
       total,
@@ -321,7 +326,6 @@ export async function getAuditReportStats(address?: string) {
   }
 }
 
-// Webhook functions
 export async function getActiveWebhookConfigurations(): Promise<WebhookConfiguration[]> {
   try {
     const results = await prisma.webhookConfiguration.findMany({
@@ -344,6 +348,65 @@ export async function getActiveWebhookConfigurations(): Promise<WebhookConfigura
   } catch (error) {
     console.error('Error getting active webhook configurations:', error);
     return [];
+  }
+}
+
+export async function getWebhookConfigurationsByUserId(userId: string): Promise<WebhookConfiguration[]> {
+  try {
+    const results = await prisma.webhookConfiguration.findMany({
+      where: { userId: userId }
+    });
+
+    return results.map(config => ({
+      id: config.id,
+      user_id: config.userId,
+      webhook_url: config.webhookUrl,
+      events: config.events,
+      is_active: config.isActive,
+      secret_hmac: config.secretHmac,
+      retry_count: config.retryCount,
+      timeout_seconds: config.timeoutSeconds,
+      custom_headers: config.customHeaders,
+      created_at: config.createdAt.toISOString(),
+      updated_at: config.updatedAt.toISOString()
+    }));
+  } catch (error) {
+    console.error('Error getting webhook configurations by user ID:', error);
+    return [];
+  }
+}
+
+export async function insertWebhookConfiguration(config: WebhookConfigurationInsert): Promise<WebhookConfiguration | null> {
+  try {
+    const result = await prisma.webhookConfiguration.create({
+      data: {
+        userId: config.user_id,
+        webhookUrl: config.webhook_url,
+        events: JSON.stringify(config.events),
+        isActive: config.is_active ?? true,
+        secretHmac: config.secret_hmac,
+        retryCount: config.retry_count ?? 3,
+        timeoutSeconds: config.timeout_seconds ?? 30,
+        customHeaders: config.custom_headers ? JSON.stringify(config.custom_headers) : null
+      }
+    });
+
+    return {
+      id: result.id,
+      user_id: result.userId,
+      webhook_url: result.webhookUrl,
+      events: result.events,
+      is_active: result.isActive,
+      secret_hmac: result.secretHmac,
+      retry_count: result.retryCount,
+      timeout_seconds: result.timeoutSeconds,
+      custom_headers: result.customHeaders,
+      created_at: result.createdAt.toISOString(),
+      updated_at: result.updatedAt.toISOString()
+    };
+  } catch (error) {
+    console.error('Error inserting webhook configuration:', error);
+    return null;
   }
 }
 
@@ -406,8 +469,6 @@ export async function getWebhookDeliveryById(id: string): Promise<WebhookDeliver
   }
 }
 
-// Export Prisma client for advanced usage
 export { prisma };
 
-// Default export for compatibility
 export default { prisma };
