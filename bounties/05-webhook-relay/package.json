@@ -1,0 +1,45 @@
+{
+  "name": "webhook-relay-system",
+  "version": "1.0.0",
+  "description": "A backend service that monitors Conflux eSpace blockchain events and delivers real-time notifications via webhooks",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "migrate": "ts-node scripts/migrate.ts",
+    "migrate:up": "ts-node scripts/migrate.ts up",
+    "migrate:down": "ts-node scripts/migrate.ts down",
+    "migrate:status": "ts-node scripts/migrate.ts status"
+  },
+  "keywords": ["blockchain", "webhook", "conflux", "automation", "events"],
+  "author": "aiqubit@hotmail.com",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.8.0",
+    "pg": "^8.11.0",
+    "redis": "^4.6.0",
+    "winston": "^3.11.0",
+    "express": "^4.18.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "@types/pg": "^8.10.0",
+    "@types/express": "^4.17.0",
+    "@types/jest": "^29.5.0",
+    "@typescript-eslint/eslint-plugin": "^6.9.0",
+    "@typescript-eslint/parser": "^6.9.0",
+    "eslint": "^8.52.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.2.0"
+  }
+}

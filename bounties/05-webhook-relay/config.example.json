@@ -1,0 +1,55 @@
+{
+  "network": {
+    "rpcUrl": "https://evm.confluxrpc.com",
+    "wsUrl": "wss://evm.confluxrpc.com/ws",
+    "chainId": 1030,
+    "confirmations": 12
+  },
+  "subscriptions": [
+    {
+      "id": "usdt-transfers",
+      "contractAddress": "0x14b2d3bc65e74dae1030eafd8ac30c533c976a9b",
+      "eventSignature": "Transfer(address,address,uint256)",
+      "filters": {
+        "value": {
+          "operator": "gt",
+          "value": "1000000000000000000"
+        }
+      },
+      "webhooks": [
+        {
+          "id": "zapier-webhook",
+          "url": "https://hooks.zapier.com/hooks/catch/123456/abcdef/",
+          "format": "zapier",
+          "headers": {
+            "Authorization": "Bearer your-token-here"
+          },
+          "timeout": 30000,
+          "retryAttempts": 3
+        }
+      ]
+    }
+  ],
+  "database": {
+    "url": "postgresql://user:password@localhost:5432/webhook_relay",
+    "poolSize": 10,
+    "connectionTimeout": 5000
+  },
+  "redis": {
+    "url": "redis://localhost:6379",
+    "keyPrefix": "webhook-relay:",
+    "ttl": 3600
+  },
+  "monitoring": {
+    "logLevel": "info",
+    "metricsEnabled": true,
+    "healthCheckPort": 3001
+  },
+  "options": {
+    "maxConcurrentWebhooks": 10,
+    "defaultRetryAttempts": 3,
+    "defaultRetryDelay": 1000,
+    "webhookTimeout": 30000,
+    "queueProcessingInterval": 5000
+  }
+}
