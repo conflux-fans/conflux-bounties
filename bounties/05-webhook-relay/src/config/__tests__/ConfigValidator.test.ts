@@ -137,6 +137,24 @@ describe('ConfigValidator', () => {
         expect(result.isValid).toBe(true);
       });
     });
+
+    it('should return error for non-string WebSocket URL', () => {
+      const config = {
+        rpcUrl: 'https://evm.confluxrpc.com',
+        wsUrl: 123, // non-string value
+        chainId: 1030,
+        confirmations: 12
+      };
+
+      const result = validator.validateNetworkConfig(config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'network.wsUrl',
+        message: 'WebSocket URL must be a string',
+        value: 123
+      });
+    });
   });
 
   describe('validateDatabaseConfig', () => {
@@ -229,6 +247,22 @@ describe('ConfigValidator', () => {
         field: 'database.connectionTimeout',
         message: 'Connection timeout must be a positive number',
         value: -1
+      });
+    });
+
+    it('should return error for missing database URL', () => {
+      const config = {
+        poolSize: 10,
+        connectionTimeout: 5000
+      };
+
+      const result = validator.validateDatabaseConfig(config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'database.url',
+        message: 'Database URL is required and must be a string',
+        value: undefined
       });
     });
   });
@@ -464,6 +498,172 @@ describe('ConfigValidator', () => {
           })
         );
       });
+    });
+
+    it('should return error for non-object subscription', () => {
+      const subscriptions = [
+        'not-an-object' // This should trigger line 99
+      ];
+
+      const result = validator.validateSubscriptions(subscriptions as any);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'subscriptions[0]',
+        message: 'Subscription must be an object',
+        value: 'not-an-object'
+      });
+    });
+
+    it('should return error for missing subscription fields', () => {
+      const subscriptions = [
+        {
+          // Missing id, contractAddress, eventSignature
+          filters: {},
+          webhooks: []
+        }
+      ];
+
+      const result = validator.validateSubscriptions(subscriptions);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: 'subscriptions[0].id',
+            message: 'Subscription ID is required and must be a string',
+            value: undefined
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].contractAddress',
+            message: 'Contract address is required and must be a string',
+            value: undefined
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].eventSignature',
+            message: 'Event signature is required and must be a string',
+            value: undefined
+          })
+        ])
+      );
+    });
+
+    it('should return error for non-string subscription fields', () => {
+      const subscriptions = [
+        {
+          id: 123, // non-string
+          contractAddress: 456, // non-string
+          eventSignature: 789, // non-string
+          filters: 'not-an-object', // non-object
+          webhooks: 'not-an-array' // non-array
+        }
+      ];
+
+      const result = validator.validateSubscriptions(subscriptions);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: 'subscriptions[0].id',
+            message: 'Subscription ID is required and must be a string',
+            value: 123
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].contractAddress',
+            message: 'Contract address is required and must be a string',
+            value: 456
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].eventSignature',
+            message: 'Event signature is required and must be a string',
+            value: 789
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].filters',
+            message: 'Filters must be an object',
+            value: 'not-an-object'
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].webhooks',
+            message: 'Webhooks must be an array',
+            value: 'not-an-array'
+          })
+        ])
+      );
+    });
+
+    it('should return error for non-object webhook', () => {
+      const subscriptions = [
+        {
+          id: 'test-subscription',
+          contractAddress: '0x1234567890123456789012345678901234567890',
+          eventSignature: 'Transfer(address,address,uint256)',
+          filters: {},
+          webhooks: [
+            'not-an-object' // This should trigger line 142
+          ]
+        }
+      ];
+
+      const result = validator.validateSubscriptions(subscriptions);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'subscriptions[0].webhooks[0]',
+        message: 'Webhook must be an object',
+        value: 'not-an-object'
+      });
+    });
+
+    it('should return error for missing webhook fields', () => {
+      const subscriptions = [
+        {
+          id: 'test-subscription',
+          contractAddress: '0x1234567890123456789012345678901234567890',
+          eventSignature: 'Transfer(address,address,uint256)',
+          filters: {},
+          webhooks: [
+            {
+              // Missing id, url, format, timeout, retryAttempts
+              headers: {}
+            }
+          ]
+        }
+      ];
+
+      const result = validator.validateSubscriptions(subscriptions);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: 'subscriptions[0].webhooks[0].id',
+            message: 'Webhook ID is required and must be a string',
+            value: undefined
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].webhooks[0].url',
+            message: 'Webhook URL is required and must be a string',
+            value: undefined
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].webhooks[0].format',
+            message: 'Webhook format must be one of: zapier, make, n8n, generic',
+            value: undefined
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].webhooks[0].timeout',
+            message: 'Webhook timeout must be a positive number',
+            value: undefined
+          }),
+          expect.objectContaining({
+            field: 'subscriptions[0].webhooks[0].retryAttempts',
+            message: 'Webhook retry attempts must be a non-negative number',
+            value: undefined
+          })
+        ])
+      );
     });
   });
 });
