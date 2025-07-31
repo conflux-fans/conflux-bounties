@@ -17,23 +17,31 @@
     "migrate:down": "ts-node scripts/migrate.ts down",
     "migrate:status": "ts-node scripts/migrate.ts status"
   },
-  "keywords": ["blockchain", "webhook", "conflux", "automation", "events"],
+  "keywords": [
+    "blockchain",
+    "webhook",
+    "conflux",
+    "automation",
+    "events"
+  ],
   "author": "aiqubit@hotmail.com",
   "license": "MIT",
   "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.0",
     "ethers": "^6.8.0",
+    "express": "^4.18.0",
     "pg": "^8.11.0",
     "redis": "^4.6.0",
-    "winston": "^3.11.0",
-    "express": "^4.18.0",
-    "axios": "^1.6.0",
-    "dotenv": "^16.3.0"
+    "uuid": "^11.1.0",
+    "winston": "^3.11.0"
   },
   "devDependencies": {
-    "@types/node": "^20.8.0",
-    "@types/pg": "^8.10.0",
     "@types/express": "^4.17.0",
     "@types/jest": "^29.5.0",
+    "@types/node": "^20.8.0",
+    "@types/pg": "^8.10.0",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^6.9.0",
     "@typescript-eslint/parser": "^6.9.0",
     "eslint": "^8.52.0",
