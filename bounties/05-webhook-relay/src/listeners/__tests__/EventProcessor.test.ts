@@ -99,33 +99,58 @@ describe('EventProcessor', () => {
 
   describe('Lifecycle Management', () => {
     it('should start successfully', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+      
       await eventProcessor.start();
 
       expect(mockEventListener.start).toHaveBeenCalled();
       expect(mockDeliveryQueue.startProcessing).toHaveBeenCalled();
       expect(eventProcessor.isProcessing()).toBe(true);
+      expect(consoleSpy).toHaveBeenCalledWith('EventProcessor started successfully');
+      
+      consoleSpy.mockRestore();
     });
 
     it('should stop successfully', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+      
       await eventProcessor.start();
       await eventProcessor.stop();
 
       expect(mockDeliveryQueue.stopProcessing).toHaveBeenCalled();
       expect(mockEventListener.stop).toHaveBeenCalled();
       expect(eventProcessor.isProcessing()).toBe(false);
+      expect(consoleSpy).toHaveBeenCalledWith('EventProcessor stopped');
+      
+      consoleSpy.mockRestore();
     });
 
     it('should not start if already running', async () => {
+      // Start the processor first
       await eventProcessor.start();
-      await eventProcessor.start(); // Second call
+      expect(eventProcessor.isProcessing()).toBe(true);
+      
+      // Clear the mock calls from the first start
+      mockEventListener.start.mockClear();
+      mockDeliveryQueue.startProcessing.mockClear();
+      
+      // Try to start again - should return early without calling dependencies
+      const result = await eventProcessor.start();
+      expect(result).toBeUndefined(); // Should return undefined from early return
 
-      expect(mockEventListener.start).toHaveBeenCalledTimes(1);
+      expect(mockEventListener.start).not.toHaveBeenCalled();
+      expect(mockDeliveryQueue.startProcessing).not.toHaveBeenCalled();
     });
 
     it('should not stop if not running', async () => {
+      // Ensure processor is not running
+      expect(eventProcessor.isProcessing()).toBe(false);
+      
+      // Try to stop when not running - should return early
       await eventProcessor.stop();
 
       expect(mockEventListener.stop).not.toHaveBeenCalled();
+      expect(mockDeliveryQueue.stopProcessing).not.toHaveBeenCalled();
     });
   });
 
@@ -176,6 +201,7 @@ describe('EventProcessor', () => {
 
     it('should process matching events successfully', async () => {
       mockFilterEngine.evaluateFilters.mockReturnValue(true);
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
       // Simulate event from EventListener
       const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
@@ -190,10 +216,16 @@ describe('EventProcessor', () => {
         mockSubscription.filters
       );
       expect(mockDeliveryQueue.enqueue).toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Event matches filters for subscription')
+      );
+      
+      consoleSpy.mockRestore();
     });
 
     it('should filter out non-matching events', async () => {
       mockFilterEngine.evaluateFilters.mockReturnValue(false);
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
       const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
         .find(call => call[0] === 'event')?.[1];
@@ -205,6 +237,11 @@ describe('EventProcessor', () => {
         mockSubscription.filters
       );
       expect(mockDeliveryQueue.enqueue).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Event filtered out for subscription')
+      );
+      
+      consoleSpy.mockRestore();
     });
 
     it('should create webhook deliveries for all webhooks in subscription', async () => {
@@ -260,14 +297,23 @@ describe('EventProcessor', () => {
       const startedHandler = onCalls.find(call => call[0] === 'started')?.[1];
       const stoppedHandler = onCalls.find(call => call[0] === 'stopped')?.[1];
       const errorHandler = onCalls.find(call => call[0] === 'error')?.[1];
+      const connectionFailedHandler = onCalls.find(call => call[0] === 'connectionFailed')?.[1];
+      const subscriptionErrorHandler = onCalls.find(call => call[0] === 'subscriptionError')?.[1];
+      const eventErrorHandler = onCalls.find(call => call[0] === 'eventError')?.[1];
 
       startedHandler();
       stoppedHandler();
       errorHandler(new Error('test error'));
+      connectionFailedHandler();
+      subscriptionErrorHandler('sub-1', new Error('subscription error'));
+      eventErrorHandler('sub-1', new Error('event error'));
 
       expect(eventProcessorSpy).toHaveBeenCalledWith('listenerStarted');
       expect(eventProcessorSpy).toHaveBeenCalledWith('listenerStopped');
       expect(eventProcessorSpy).toHaveBeenCalledWith('listenerError', expect.any(Error));
+      expect(eventProcessorSpy).toHaveBeenCalledWith('connectionFailed');
+      expect(eventProcessorSpy).toHaveBeenCalledWith('subscriptionError', 'sub-1', expect.any(Error));
+      expect(eventProcessorSpy).toHaveBeenCalledWith('eventError', 'sub-1', expect.any(Error));
     });
   });
 
@@ -319,6 +365,86 @@ describe('EventProcessor', () => {
         expect.stringContaining('Error creating webhook delivery'),
         expect.any(Error)
       );
+      
+      consoleSpy.mockRestore();
+    });
+
+    it('should handle createWebhookDeliveries Promise.allSettled errors', async () => {
+      // Create a subscription with multiple webhooks where one will fail
+      const multiWebhookSubscription: EventSubscription = {
+        ...mockSubscription,
+        webhooks: [
+          mockWebhookConfig,
+          { ...mockWebhookConfig, id: 'webhook-2', url: 'https://example2.com/webhook' }
+        ]
+      };
+
+      eventProcessor.removeSubscription(mockSubscription.id);
+      eventProcessor.addSubscription(multiWebhookSubscription);
+
+      // Mock enqueue to fail for the second webhook
+      mockDeliveryQueue.enqueue
+        .mockResolvedValueOnce(undefined) // First webhook succeeds
+        .mockRejectedValueOnce(new Error('Second webhook fails')); // Second webhook fails
+
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+      
+      const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
+        .find(call => call[0] === 'event')?.[1];
+      
+      await eventHandler(multiWebhookSubscription, mockEvent);
+
+      // Should still process both webhooks despite one failing
+      expect(mockDeliveryQueue.enqueue).toHaveBeenCalledTimes(2);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error creating webhook delivery'),
+        expect.any(Error)
+      );
+      
+      consoleSpy.mockRestore();
+    });
+
+    // Note: Lines 201-202 in createWebhookDeliveries cannot be covered because
+    // Promise.allSettled never throws - it always resolves with results/errors
+    // Lines 63, 84 are early return statements that are being executed but
+    // may not be properly tracked by the coverage tool
+  });
+
+  describe('Webhook Processing', () => {
+    it('should process webhook deliveries', async () => {
+      const mockDelivery = {
+        id: 'delivery-1',
+        subscriptionId: 'sub-1',
+        webhookId: 'webhook-1',
+        event: mockEvent,
+        payload: mockEvent,
+        attempts: 0,
+        maxAttempts: 3,
+        status: 'pending' as const
+      };
+
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+      const eventProcessorSpy = jest.spyOn(eventProcessor, 'emit');
+
+      // Start the event processor to trigger startProcessing call
+      await eventProcessor.start();
+
+      // Get the processor function that was passed to startProcessing
+      const processorCall = (mockDeliveryQueue.startProcessing as jest.Mock).mock.calls[0];
+      expect(processorCall).toBeDefined();
+      
+      const processor = processorCall[0];
+      
+      // Call the processor function directly
+      await processor(mockDelivery);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Processing webhook delivery')
+      );
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Completed webhook delivery')
+      );
+      expect(eventProcessorSpy).toHaveBeenCalledWith('deliveryProcessed', mockDelivery);
       
       consoleSpy.mockRestore();
     });
