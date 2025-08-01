@@ -79,8 +79,10 @@ describe('MigrationManager', () => {
 
       const result = await migrationManager.getPendingMigrations();
 
-      // Should return empty array since we only have one migration (001) and it's applied
-      expect(result).toEqual([]);
+      // Should return migration 002 since only 001 is applied
+      expect(result).toHaveLength(1);
+      expect(result[0]?.version).toBe('002');
+      expect(result[0]?.name).toBe('add_dead_letter_queue');
     });
 
     it('should return all migrations when none have been applied', async () => {
@@ -88,9 +90,11 @@ describe('MigrationManager', () => {
 
       const result = await migrationManager.getPendingMigrations();
 
-      expect(result).toHaveLength(1);
+      expect(result).toHaveLength(2);
       expect(result[0]?.version).toBe('001');
       expect(result[0]?.name).toBe('initial_schema');
+      expect(result[1]?.version).toBe('002');
+      expect(result[1]?.name).toBe('add_dead_letter_queue');
     });
   });
 
@@ -176,14 +180,14 @@ describe('MigrationManager', () => {
       await migrationManager.migrate();
 
       expect(mockDb.transaction).toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalledWith('Running 1 pending migrations...');
+      expect(consoleSpy).toHaveBeenCalledWith('Running 2 pending migrations...');
       expect(consoleSpy).toHaveBeenCalledWith('All migrations completed successfully');
     });
 
     it('should do nothing when no pending migrations', async () => {
-      // Mock that migration 001 is already applied
+      // Mock that both migrations are already applied
       mockDb.query.mockResolvedValue({
-        rows: [{ version: '001' }]
+        rows: [{ version: '001' }, { version: '002' }]
       });
 
       await migrationManager.migrate();
@@ -250,7 +254,7 @@ describe('MigrationManager', () => {
 
       expect(status).toEqual({
         applied: ['001'],
-        pending: []
+        pending: ['002']
       });
     });
 
@@ -261,7 +265,7 @@ describe('MigrationManager', () => {
 
       expect(status).toEqual({
         applied: [],
-        pending: ['001']
+        pending: ['001', '002']
       });
     });
   });

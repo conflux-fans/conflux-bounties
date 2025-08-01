@@ -2,11 +2,13 @@ import type { IWebhookSender, IHttpClient, IDeliveryTracker } from './interfaces
 import type { WebhookDelivery, WebhookConfig, DeliveryResult, ValidationResult } from '../types';
 import { HttpClient } from './HttpClient';
 import { DeliveryTracker } from './DeliveryTracker';
+import { CircuitBreaker } from './CircuitBreaker';
 import { createFormatter, getSupportedFormats } from '../formatting';
 
 export class WebhookSender implements IWebhookSender {
   private httpClient: IHttpClient;
   private deliveryTracker: IDeliveryTracker;
+  private circuitBreakers: Map<string, CircuitBreaker> = new Map();
 
   constructor(
     httpClient?: IHttpClient,
@@ -44,6 +46,20 @@ export class WebhookSender implements IWebhookSender {
       return result;
     }
 
+    // Check circuit breaker before attempting delivery
+    const circuitBreaker = this.getCircuitBreaker(delivery.webhookId);
+    if (!circuitBreaker.canExecute()) {
+      const stats = circuitBreaker.getStats();
+      const result: DeliveryResult = {
+        success: false,
+        responseTime: 0,
+        error: `Circuit breaker is ${stats.state} for webhook ${delivery.webhookId}. Next attempt: ${stats.nextAttemptTime}`,
+      };
+
+      await this.deliveryTracker.trackDelivery(delivery, result);
+      return result;
+    }
+
     try {
       // Format the payload based on webhook configuration
       const formattedPayload = this.formatPayload(delivery.event, webhookConfig.format);
@@ -55,11 +71,21 @@ export class WebhookSender implements IWebhookSender {
         webhookConfig.timeout
       );
 
+      // Record success in circuit breaker
+      if (result.success) {
+        circuitBreaker.recordSuccess();
+      } else {
+        circuitBreaker.recordFailure();
+      }
+
       // Track the delivery result
       await this.deliveryTracker.trackDelivery(delivery, result);
 
       return result;
     } catch (error) {
+      // Record failure in circuit breaker
+      circuitBreaker.recordFailure();
+
       const result: DeliveryResult = {
         success: false,
         responseTime: 0,
@@ -228,5 +254,37 @@ export class WebhookSender implements IWebhookSender {
   // Method to get delivery statistics
   async getDeliveryStats(webhookId: string) {
     return this.deliveryTracker.getDeliveryStats(webhookId);
+  }
+
+  // Get or create circuit breaker for webhook
+  private getCircuitBreaker(webhookId: string): CircuitBreaker {
+    if (!this.circuitBreakers.has(webhookId)) {
+      this.circuitBreakers.set(webhookId, new CircuitBreaker({
+        failureThreshold: 5,
+        resetTimeout: 60000, // 1 minute
+        monitoringWindow: 300000 // 5 minutes
+      }));
+    }
+    return this.circuitBreakers.get(webhookId)!;
+  }
+
+  // Get circuit breaker stats for monitoring
+  getCircuitBreakerStats(webhookId: string) {
+    const circuitBreaker = this.circuitBreakers.get(webhookId);
+    return circuitBreaker ? circuitBreaker.getStats() : null;
+  }
+
+  // Reset circuit breaker for webhook
+  resetCircuitBreaker(webhookId: string): void {
+    const circuitBreaker = this.circuitBreakers.get(webhookId);
+    if (circuitBreaker) {
+      circuitBreaker.reset();
+    }
+  }
+
+  // Force circuit breaker to open state
+  forceCircuitBreakerOpen(webhookId: string): void {
+    const circuitBreaker = this.getCircuitBreaker(webhookId);
+    circuitBreaker.forceOpen();
   }
 }

@@ -1,0 +1,634 @@
+import { Application } from '../Application';
+import { ConfigManager } from '../config/ConfigManager';
+import { DatabaseConnection } from '../database/connection';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { SystemConfig } from '../types/config';
+import express from 'express';
+
+// Mock external dependencies
+jest.mock('../config/ConfigManager');
+jest.mock('../database/connection');
+jest.mock('../listeners/BlockchainConnection');
+jest.mock('../listeners/EventListener');
+jest.mock('../listeners/EventProcessor');
+jest.mock('../filtering/FilterEngine');
+jest.mock('../webhooks/queue/DeliveryQueue');
+jest.mock('../webhooks/queue/QueuePersistence');
+jest.mock('../webhooks/queue/RetryScheduler');
+jest.mock('../webhooks/WebhookSender');
+jest.mock('../webhooks/HttpClient');
+jest.mock('../webhooks/DeliveryTracker');
+jest.mock('../webhooks/QueueProcessor');
+jest.mock('express');
+
+const MockedConfigManager = ConfigManager as jest.MockedClass<typeof ConfigManager>;
+const MockedDatabaseConnection = DatabaseConnection as jest.MockedClass<typeof DatabaseConnection>;
+const MockedExpress = express as jest.MockedFunction<typeof express>;
+
+describe('Application', () => {
+  let app: Application;
+  let mockConfig: SystemConfig;
+  let configPath: string;
+
+  beforeEach(async () => {
+    // Set test environment
+    process.env['NODE_ENV'] = 'test';
+
+    // Create a temporary config file for testing
+    configPath = path.join(__dirname, 'test-config.json');
+    mockConfig = {
+      network: {
+        rpcUrl: 'https://evm.confluxrpc.com',
+        wsUrl: 'wss://evm.confluxrpc.com/ws',
+        chainId: 1030,
+        confirmations: 1
+      },
+      subscriptions: [
+        {
+          id: 'test-subscription',
+          contractAddress: '0x1234567890123456789012345678901234567890',
+          eventSignature: 'Transfer(address,address,uint256)',
+          filters: {},
+          webhooks: [
+            {
+              id: 'test-webhook',
+              url: 'https://example.com/webhook',
+              format: 'generic' as const,
+              headers: {},
+              timeout: 30000,
+              retryAttempts: 3
+            }
+          ]
+        }
+      ],
+      database: {
+        url: 'postgresql://test:test@localhost:5432/test',
+        poolSize: 10,
+        connectionTimeout: 5000
+      },
+      redis: {
+        url: 'redis://localhost:6379',
+        keyPrefix: 'webhook-relay:',
+        ttl: 3600
+      },
+      monitoring: {
+        logLevel: 'info',
+        metricsEnabled: true,
+        healthCheckPort: 3001
+      },
+      options: {
+        maxConcurrentWebhooks: 10,
+        defaultRetryAttempts: 3,
+        defaultRetryDelay: 1000,
+        webhookTimeout: 30000,
+        queueProcessingInterval: 1000
+      }
+    };
+
+    await fs.writeFile(configPath, JSON.stringify(mockConfig, null, 2));
+
+    // Setup mocks
+    MockedConfigManager.prototype.loadConfig = jest.fn().mockResolvedValue(mockConfig);
+    MockedConfigManager.prototype.onConfigChange = jest.fn();
+    MockedConfigManager.prototype.on = jest.fn();
+
+    MockedDatabaseConnection.prototype.healthCheck = jest.fn().mockResolvedValue(true);
+    MockedDatabaseConnection.prototype.close = jest.fn().mockResolvedValue(undefined);
+
+    // Setup express mock
+    const mockServer = {
+      close: jest.fn().mockImplementation((callback) => {
+        if (callback) callback();
+      })
+    };
+
+    const mockApp = {
+      get: jest.fn(),
+      listen: jest.fn().mockImplementation((_port, callback) => {
+        if (callback) callback();
+        return mockServer;
+      })
+    };
+
+    MockedExpress.mockReturnValue(mockApp as any);
+
+    app = new Application({
+      configPath,
+      enableHealthEndpoint: false, // Disable for testing to avoid port conflicts
+      gracefulShutdownTimeout: 5000
+    });
+  });
+
+  afterEach(async () => {
+    // Clean up
+    try {
+      // Remove all listeners to prevent memory leaks
+      app.removeAllListeners();
+      await app.stop();
+    } catch (error) {
+      // Ignore errors during cleanup
+    }
+
+    try {
+      await fs.unlink(configPath);
+    } catch (error) {
+      // Ignore if file doesn't exist
+    }
+
+    jest.clearAllMocks();
+    jest.resetAllMocks();
+  });
+
+  describe('Application Lifecycle', () => {
+    it('should start successfully with valid configuration', async () => {
+      const startedSpy = jest.fn();
+      app.on('started', startedSpy);
+
+      await app.start();
+
+      expect(startedSpy).toHaveBeenCalled();
+      expect(app.getStatus().status).toBe('running');
+      expect(app.getStatus().startTime).toBeDefined();
+      expect(app.getStatus().uptime).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should stop gracefully', async () => {
+      const stoppedSpy = jest.fn();
+      app.on('stopped', stoppedSpy);
+
+      await app.start();
+      await app.stop();
+
+      expect(stoppedSpy).toHaveBeenCalled();
+      expect(app.getStatus().status).toBe('stopped');
+    });
+
+    it('should handle startup errors gracefully', async () => {
+      // Create a new app instance with failing config
+      const failingApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Mock configuration loading to fail for this specific instance
+      const mockConfigManager = (failingApp as any).configManager;
+      mockConfigManager.loadConfig = jest.fn().mockRejectedValue(new Error('Config load failed'));
+
+      const errorSpy = jest.fn();
+      failingApp.on('error', errorSpy);
+
+      await expect(failingApp.start()).rejects.toThrow('Config load failed');
+      expect(errorSpy).toHaveBeenCalled();
+      expect(failingApp.getStatus().status).toBe('error');
+    });
+
+    it('should handle database connection failure', async () => {
+      // Mock database health check to fail
+      MockedDatabaseConnection.prototype.healthCheck = jest.fn().mockResolvedValue(false);
+
+      await expect(app.start()).rejects.toThrow('Database health check failed');
+      expect(app.getStatus().status).toBe('error');
+    });
+
+    it('should not start if already running', async () => {
+      await app.start();
+
+      // Try to start again
+      await app.start(); // Should not throw, just log warning
+
+      expect(app.getStatus().status).toBe('running');
+    });
+
+    it('should not stop if already stopped', async () => {
+      // Try to stop without starting
+      await app.stop(); // Should not throw, just log warning
+
+      expect(app.getStatus().status).toBe('stopped');
+    });
+
+    it('should emit lifecycle events', async () => {
+      const startingSpy = jest.fn();
+      const startedSpy = jest.fn();
+      const stoppingSpy = jest.fn();
+      const stoppedSpy = jest.fn();
+
+      app.on('starting', startingSpy);
+      app.on('started', startedSpy);
+      app.on('stopping', stoppingSpy);
+      app.on('stopped', stoppedSpy);
+
+      await app.start();
+      await app.stop();
+
+      expect(startingSpy).toHaveBeenCalled();
+      expect(startedSpy).toHaveBeenCalled();
+      expect(stoppingSpy).toHaveBeenCalled();
+      expect(stoppedSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('Configuration Management', () => {
+    it('should load configuration on startup', async () => {
+      await app.start();
+
+      expect(MockedConfigManager.prototype.loadConfig).toHaveBeenCalled();
+      expect(app.getStatus().components.config).toBe(true);
+    });
+
+    it('should handle configuration reload', async () => {
+      const configReloadedSpy = jest.fn();
+      app.on('configReloaded', configReloadedSpy);
+
+      await app.start();
+
+      // Mock the event processor with proper methods
+      const mockEventProcessor = {
+        getSubscriptions: jest.fn().mockReturnValue([
+          { id: 'existing-subscription' }
+        ]),
+        removeSubscription: jest.fn(),
+        addSubscription: jest.fn(),
+        stop: jest.fn()
+      };
+      (app as any).eventProcessor = mockEventProcessor;
+
+      // Simulate configuration change
+      const configChangeCallback = (MockedConfigManager.prototype.onConfigChange as jest.Mock).mock.calls[0][0];
+      const newConfig = { ...mockConfig, monitoring: { ...mockConfig.monitoring, logLevel: 'debug' } };
+
+      await configChangeCallback(newConfig);
+
+      expect(configReloadedSpy).toHaveBeenCalledWith(newConfig);
+    });
+
+    it('should handle configuration reload errors', async () => {
+      const configReloadErrorSpy = jest.fn();
+      app.on('configReloadError', configReloadErrorSpy);
+
+      await app.start();
+
+      // Simulate configuration change with invalid config
+      const configChangeCallback = (MockedConfigManager.prototype.onConfigChange as jest.Mock).mock.calls[0][0];
+
+      // Mock event processor to throw error
+      const mockEventProcessor = {
+        getSubscriptions: jest.fn().mockReturnValue([]),
+        removeSubscription: jest.fn(),
+        addSubscription: jest.fn().mockImplementation(() => {
+          throw new Error('Subscription error');
+        })
+      };
+
+      (app as any).eventProcessor = mockEventProcessor;
+
+      await configChangeCallback(mockConfig);
+
+      expect(configReloadErrorSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('Component Status', () => {
+    it('should report component status correctly', async () => {
+      const initialStatus = app.getStatus();
+      expect(initialStatus.components.config).toBe(false);
+      expect(initialStatus.components.database).toBe(false);
+      expect(initialStatus.components.eventProcessor).toBe(false);
+      expect(initialStatus.components.queueProcessor).toBe(false);
+
+      await app.start();
+
+      const runningStatus = app.getStatus();
+      expect(runningStatus.components.config).toBe(true);
+      expect(runningStatus.components.database).toBe(true);
+      // Note: eventProcessor and queueProcessor status depend on mocked implementations
+    });
+
+    it('should calculate uptime correctly', async () => {
+      await app.start();
+
+      // Wait a bit
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const status = app.getStatus();
+      expect(status.uptime).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should skip signal handlers in test environment', () => {
+      // In test environment, signal handlers should be skipped
+      // This test verifies that the application doesn't crash when signal handlers are not set up
+      expect(process.env['NODE_ENV']).toBe('test');
+
+      // The application should start and stop normally without signal handlers
+      expect(app).toBeDefined();
+    });
+
+    it('should handle configuration errors gracefully', async () => {
+      // Create a new app instance with failing config
+      const failingApp = new Application({
+        configPath: 'non-existent-config.json',
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Mock configuration loading to fail for this specific instance
+      const mockConfigManager = (failingApp as any).configManager;
+      mockConfigManager.loadConfig = jest.fn().mockRejectedValue(new Error('Config load failed'));
+
+      const errorSpy = jest.fn();
+      failingApp.on('error', errorSpy);
+
+      await expect(failingApp.start()).rejects.toThrow('Configuration initialization failed: Config load failed');
+      expect(errorSpy).toHaveBeenCalled();
+      expect(failingApp.getStatus().status).toBe('error');
+    });
+
+    it('should handle component initialization failures', async () => {
+      const failingApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+      const errorSpy = jest.fn();
+      failingApp.on('error', errorSpy);
+      // Mock the initializeComponents method to throw an error
+      const originalInitializeComponents = (failingApp as any).initializeComponents;
+      (failingApp as any).initializeComponents = jest.fn().mockRejectedValue(new Error('Component initialization failed'));
+      await expect(failingApp.start()).rejects.toThrow('Component initialization failed');
+      expect(errorSpy).toHaveBeenCalled();
+      expect(failingApp.getStatus().status).toBe('error');
+      // Restore the original method
+      (failingApp as any).initializeComponents = originalInitializeComponents;
+    });
+
+    it('should handle health server startup failure', async () => {
+      const healthApp = new Application({
+        configPath,
+        enableHealthEndpoint: true,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Mock express app.listen to fail
+      const mockApp = {
+        get: jest.fn(),
+        listen: jest.fn().mockImplementation((_port, callback) => {
+          if (callback) callback(new Error('Port already in use'));
+        })
+      };
+      MockedExpress.mockReturnValue(mockApp as any);
+
+      const errorSpy = jest.fn();
+      healthApp.on('error', errorSpy);
+
+      await expect(healthApp.start()).rejects.toThrow('Failed to start health server: Port already in use');
+      expect(errorSpy).toHaveBeenCalled();
+      expect(healthApp.getStatus().status).toBe('error');
+    });
+
+    it('should handle event processing startup failure', async () => {
+      const failingApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+      const errorSpy = jest.fn();
+      failingApp.on('error', errorSpy);
+      // Mock the startEventProcessing method to throw an error
+      const originalStartEventProcessing = (failingApp as any).startEventProcessing;
+      (failingApp as any).startEventProcessing = jest.fn().mockRejectedValue(new Error('Event processing failed'));
+      await expect(failingApp.start()).rejects.toThrow('Event processing failed');
+      expect(errorSpy).toHaveBeenCalled();
+      // Restore the original method
+      (failingApp as any).startEventProcessing = originalStartEventProcessing;
+    });
+
+    it('should handle queue processing startup failure', async () => {
+      const failingApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+      const errorSpy = jest.fn();
+      failingApp.on('error', errorSpy);
+      // Mock the startQueueProcessing method to throw an error
+      const originalStartQueueProcessing = (failingApp as any).startQueueProcessing;
+      (failingApp as any).startQueueProcessing = jest.fn().mockRejectedValue(new Error('Queue processing failed'));
+      await expect(failingApp.start()).rejects.toThrow('Queue processing failed');
+      expect(errorSpy).toHaveBeenCalled();
+      // Restore the original method
+      (failingApp as any).startQueueProcessing = originalStartQueueProcessing;
+    });
+
+    it('should handle shutdown errors gracefully', async () => {
+      await app.start();
+
+      // Mock components to throw errors during shutdown
+      const mockEventProcessor = (app as any).eventProcessor;
+      const mockQueueProcessor = (app as any).queueProcessor;
+      const mockBlockchainConnection = (app as any).blockchainConnection;
+      const mockDatabaseConnection = (app as any).databaseConnection;
+
+      mockEventProcessor.stop = jest.fn().mockRejectedValue(new Error('Event processor stop failed'));
+      mockQueueProcessor.stop = jest.fn().mockRejectedValue(new Error('Queue processor stop failed'));
+      mockBlockchainConnection.disconnect = jest.fn().mockRejectedValue(new Error('Blockchain disconnect failed'));
+      mockDatabaseConnection.close = jest.fn().mockRejectedValue(new Error('Database close failed'));
+
+      // Should not throw, but should log errors
+      await app.stop();
+
+      expect(app.getStatus().status).toBe('stopped');
+    });
+  });
+
+  describe('Signal Handling', () => {
+    it('should skip signal handlers in test environment', () => {
+      // Signal handlers are skipped in test environment to prevent worker crashes
+      expect(process.env['NODE_ENV']).toBe('test');
+
+      // Verify that the application can be created without setting up signal handlers
+      const testApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+
+      expect(testApp).toBeDefined();
+    });
+
+    it('should provide graceful shutdown timeout option', () => {
+      const testApp = new Application({
+        configPath,
+        gracefulShutdownTimeout: 10000
+      });
+
+      expect(testApp).toBeDefined();
+      // The timeout is stored in private options, but we can verify the app was created successfully
+    });
+  });
+
+  describe('Health Server', () => {
+    it('should start health server when enabled', async () => {
+      const healthApp = new Application({
+        configPath,
+        enableHealthEndpoint: true,
+        gracefulShutdownTimeout: 5000
+      });
+
+      await healthApp.start();
+      await healthApp.stop();
+
+      // The express mock was set up in beforeEach, so we can check if it was called
+      const mockApp = MockedExpress.mock.results[MockedExpress.mock.results.length - 1]?.value;
+      expect(mockApp.listen).toHaveBeenCalledWith(3001, expect.any(Function));
+    });
+
+    it('should handle health endpoint errors', async () => {
+      const healthApp = new Application({
+        configPath,
+        enableHealthEndpoint: true,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Mock health checker to throw error
+      const mockHealthChecker = (healthApp as any).healthChecker;
+      mockHealthChecker.checkHealth = jest.fn().mockRejectedValue(new Error('Health check failed'));
+
+      await healthApp.start();
+
+      // Get the health endpoint handler
+      const mockApp = MockedExpress.mock.results[MockedExpress.mock.results.length - 1]?.value;
+      const healthHandler = mockApp.get.mock.calls.find((call: any) => call[0] === '/health')[1];
+
+      // Mock request and response
+      const mockReq = {};
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn()
+      };
+
+      await healthHandler(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        status: 'error',
+        error: 'Health check failed',
+        timestamp: expect.any(Date)
+      });
+
+      await healthApp.stop();
+    });
+
+    it('should handle metrics endpoint when enabled', async () => {
+      const healthApp = new Application({
+        configPath,
+        enableHealthEndpoint: true,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Mock metrics collector
+      const mockMetricsCollector = (healthApp as any).metricsCollector;
+      mockMetricsCollector.getMetrics = jest.fn().mockResolvedValue({ test: 'metrics' });
+
+      await healthApp.start();
+
+      // Get the metrics endpoint handler
+      const mockApp = MockedExpress.mock.results[MockedExpress.mock.results.length - 1]?.value;
+      const metricsHandler = mockApp.get.mock.calls.find((call: any) => call[0] === '/metrics')[1];
+
+      // Mock request and response
+      const mockReq = {};
+      const mockRes = {
+        json: jest.fn(),
+        status: jest.fn().mockReturnThis()
+      };
+
+      await metricsHandler(mockReq, mockRes);
+
+      expect(mockRes.json).toHaveBeenCalledWith({ test: 'metrics' });
+
+      await healthApp.stop();
+    });
+
+    it('should handle metrics endpoint errors', async () => {
+      const healthApp = new Application({
+        configPath,
+        enableHealthEndpoint: true,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Mock metrics collector to throw error
+      const mockMetricsCollector = (healthApp as any).metricsCollector;
+      mockMetricsCollector.getMetrics = jest.fn().mockRejectedValue(new Error('Metrics failed'));
+
+      await healthApp.start();
+
+      // Get the metrics endpoint handler
+      const mockApp = MockedExpress.mock.results[MockedExpress.mock.results.length - 1]?.value;
+      const metricsHandler = mockApp.get.mock.calls.find((call: any) => call[0] === '/metrics')[1];
+
+      // Mock request and response
+      const mockReq = {};
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn()
+      };
+
+      await metricsHandler(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        error: 'Metrics failed'
+      });
+
+      await healthApp.stop();
+    });
+
+    it('should return different status codes based on health status', async () => {
+      const healthApp = new Application({
+        configPath,
+        enableHealthEndpoint: true,
+        gracefulShutdownTimeout: 5000
+      });
+
+      const mockHealthChecker = (healthApp as any).healthChecker;
+      
+      await healthApp.start();
+
+      // Get the health endpoint handler
+      const mockApp = MockedExpress.mock.results[MockedExpress.mock.results.length - 1]?.value;
+      const healthHandler = mockApp.get.mock.calls.find((call: any) => call[0] === '/health')[1];
+
+      // Test healthy status
+      mockHealthChecker.checkHealth = jest.fn().mockResolvedValue({ status: 'healthy' });
+      let mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn()
+      };
+      await healthHandler({}, mockRes);
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+
+      // Test degraded status
+      mockHealthChecker.checkHealth = jest.fn().mockResolvedValue({ status: 'degraded' });
+      mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn()
+      };
+      await healthHandler({}, mockRes);
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+
+      // Test unhealthy status
+      mockHealthChecker.checkHealth = jest.fn().mockResolvedValue({ status: 'unhealthy' });
+      mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn()
+      };
+      await healthHandler({}, mockRes);
+      expect(mockRes.status).toHaveBeenCalledWith(503);
+
+      await healthApp.stop();
+    });
+  });
+});

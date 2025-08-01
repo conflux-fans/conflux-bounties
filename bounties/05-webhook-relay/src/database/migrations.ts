@@ -99,6 +99,34 @@ export class MigrationManager {
         DROP TABLE IF EXISTS migrations CASCADE;
       `
     });
+
+    // Migration 002: Add dead letter queue
+    this.migrations.push({
+      version: '002',
+      name: 'add_dead_letter_queue',
+      up: `
+        -- Dead letter queue for failed deliveries
+        CREATE TABLE dead_letter_queue (
+          id UUID PRIMARY KEY,
+          subscription_id UUID,
+          webhook_id UUID,
+          event_data JSONB NOT NULL,
+          payload JSONB NOT NULL,
+          failure_reason VARCHAR(500) NOT NULL,
+          failed_at TIMESTAMP DEFAULT NOW(),
+          attempts INTEGER NOT NULL,
+          last_error TEXT
+        );
+
+        -- Indexes for dead letter queue
+        CREATE INDEX idx_dead_letter_failed_at ON dead_letter_queue(failed_at);
+        CREATE INDEX idx_dead_letter_webhook_id ON dead_letter_queue(webhook_id);
+        CREATE INDEX idx_dead_letter_failure_reason ON dead_letter_queue(failure_reason);
+      `,
+      down: `
+        DROP TABLE IF EXISTS dead_letter_queue CASCADE;
+      `
+    });
   }
 
   async initializeMigrationsTable(): Promise<void> {

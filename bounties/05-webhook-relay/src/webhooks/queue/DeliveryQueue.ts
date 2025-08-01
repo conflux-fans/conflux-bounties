@@ -8,10 +8,14 @@ import type {
 import { RetryScheduler } from './RetryScheduler';
 import { QueuePersistence } from './QueuePersistence';
 import { DatabaseConnection } from '../../database/connection';
+import { DeadLetterQueue } from './DeadLetterQueue';
+import { Logger } from '../../monitoring/Logger';
 
 export class DeliveryQueue implements IDeliveryQueue {
   private retryScheduler: IRetryScheduler;
   private persistence: IQueuePersistence;
+  private deadLetterQueue: DeadLetterQueue | undefined;
+  private logger: Logger | undefined;
   private processingCount: number = 0;
   private isProcessing: boolean = false;
   private processingInterval?: ReturnType<typeof setInterval> | undefined;
@@ -20,7 +24,9 @@ export class DeliveryQueue implements IDeliveryQueue {
 
   constructor(
     db: DatabaseConnection,
-    options: Partial<QueueProcessorOptions> = {}
+    options: Partial<QueueProcessorOptions> = {},
+    deadLetterQueue?: DeadLetterQueue,
+    logger?: Logger
   ) {
     this.options = {
       maxConcurrentDeliveries: 10,
@@ -37,6 +43,8 @@ export class DeliveryQueue implements IDeliveryQueue {
       this.options.maxRetryDelay
     );
     this.persistence = new QueuePersistence(db);
+    this.deadLetterQueue = deadLetterQueue;
+    this.logger = logger;
   }
 
   async enqueue(delivery: WebhookDelivery): Promise<void> {
@@ -174,7 +182,47 @@ export class DeliveryQueue implements IDeliveryQueue {
         await this.persistence.updateRetrySchedule(delivery.id, nextRetry, delivery.attempts);
         this.processingCount = Math.max(0, this.processingCount - 1);
       } else {
-        await this.markFailed(delivery.id, error instanceof Error ? error.message : String(error));
+        // Max retries exceeded - move to dead letter queue if available
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        if (this.deadLetterQueue) {
+          try {
+            await this.deadLetterQueue.addFailedDelivery(
+              delivery,
+              'Max retry attempts exceeded',
+              errorMessage
+            );
+            
+            if (this.logger) {
+              this.logger.warn('Delivery moved to dead letter queue after max retries', {
+                deliveryId: delivery.id,
+                webhookId: delivery.webhookId,
+                attempts: delivery.attempts,
+                maxAttempts: delivery.maxAttempts,
+                error: errorMessage
+              });
+            }
+          } catch (dlqError) {
+            if (this.logger) {
+              this.logger.error('Failed to add delivery to dead letter queue', dlqError as Error, {
+                deliveryId: delivery.id,
+                webhookId: delivery.webhookId
+              });
+            }
+          }
+        } else {
+          if (this.logger) {
+            this.logger.error('Delivery failed permanently - no dead letter queue configured', undefined, {
+              deliveryId: delivery.id,
+              webhookId: delivery.webhookId,
+              attempts: delivery.attempts,
+              maxAttempts: delivery.maxAttempts,
+              error: errorMessage
+            });
+          }
+        }
+
+        await this.markFailed(delivery.id, errorMessage);
       }
     }
   }
