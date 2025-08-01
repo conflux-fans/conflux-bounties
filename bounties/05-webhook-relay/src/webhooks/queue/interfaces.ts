@@ -9,6 +9,8 @@ export interface IDeliveryQueue {
   scheduleRetry(deliveryId: string, retryAt: Date): Promise<void>;
   getQueueSize(): Promise<number>;
   getProcessingCount(): Promise<number>;
+  startProcessing(processor: (delivery: WebhookDelivery) => Promise<void>): void;
+  stopProcessing(): void;
 }
 
 export interface IRetryScheduler {
