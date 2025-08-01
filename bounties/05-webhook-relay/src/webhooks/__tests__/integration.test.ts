@@ -141,10 +141,18 @@ describe('Queue to Delivery Integration', () => {
       // Wait for processing to complete
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Verify HTTP client was called with correct parameters
+      // Verify HTTP client was called with correct parameters (formatted payload)
       expect(mockHttpClient.post).toHaveBeenCalledWith(
         'https://example.com/webhook',
-        sampleDelivery.payload,
+        expect.objectContaining({
+          contractAddress: sampleDelivery.event.contractAddress,
+          eventName: sampleDelivery.event.eventName,
+          blockNumber: sampleDelivery.event.blockNumber,
+          transactionHash: sampleDelivery.event.transactionHash,
+          logIndex: sampleDelivery.event.logIndex,
+          args: sampleDelivery.event.args,
+          timestamp: expect.any(String),
+        }),
         sampleWebhookConfig.headers,
         sampleWebhookConfig.timeout
       );

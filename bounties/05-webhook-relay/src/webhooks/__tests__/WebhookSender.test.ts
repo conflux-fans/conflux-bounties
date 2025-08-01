@@ -95,7 +95,15 @@ describe('WebhookSender', () => {
 
       expect(mockHttpClient.post).toHaveBeenCalledWith(
         validConfig.url,
-        delivery.payload,
+        expect.objectContaining({
+          contractAddress: delivery.event.contractAddress,
+          eventName: delivery.event.eventName,
+          blockNumber: delivery.event.blockNumber,
+          transactionHash: delivery.event.transactionHash,
+          logIndex: delivery.event.logIndex,
+          args: delivery.event.args,
+          timestamp: expect.any(String),
+        }),
         validConfig.headers,
         validConfig.timeout
       );
@@ -152,7 +160,15 @@ describe('WebhookSender', () => {
 
       expect(mockHttpClient.post).toHaveBeenCalledWith(
         validConfig.url,
-        delivery.payload,
+        expect.objectContaining({
+          contractAddress: delivery.event.contractAddress,
+          eventName: delivery.event.eventName,
+          blockNumber: delivery.event.blockNumber,
+          transactionHash: delivery.event.transactionHash,
+          logIndex: delivery.event.logIndex,
+          args: delivery.event.args,
+          timestamp: expect.any(String),
+        }),
         validConfig.headers,
         validConfig.timeout
       );

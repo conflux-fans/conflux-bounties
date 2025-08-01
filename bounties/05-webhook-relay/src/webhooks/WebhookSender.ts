@@ -2,6 +2,7 @@ import type { IWebhookSender, IHttpClient, IDeliveryTracker } from './interfaces
 import type { WebhookDelivery, WebhookConfig, DeliveryResult, ValidationResult } from '../types';
 import { HttpClient } from './HttpClient';
 import { DeliveryTracker } from './DeliveryTracker';
+import { createFormatter, getSupportedFormats } from '../formatting';
 
 export class WebhookSender implements IWebhookSender {
   private httpClient: IHttpClient;
@@ -18,14 +19,14 @@ export class WebhookSender implements IWebhookSender {
   async sendWebhook(delivery: WebhookDelivery): Promise<DeliveryResult> {
     // Get webhook config from delivery (assuming it's embedded or we have access to it)
     const webhookConfig = this.getWebhookConfig(delivery.webhookId);
-    
+
     if (!webhookConfig) {
       const result: DeliveryResult = {
         success: false,
         responseTime: 0,
         error: `Webhook configuration not found for ID: ${delivery.webhookId}`,
       };
-      
+
       await this.deliveryTracker.trackDelivery(delivery, result);
       return result;
     }
@@ -38,22 +39,25 @@ export class WebhookSender implements IWebhookSender {
         responseTime: 0,
         error: `Invalid webhook configuration: ${validation.errors.map(e => e.message).join(', ')}`,
       };
-      
+
       await this.deliveryTracker.trackDelivery(delivery, result);
       return result;
     }
 
     try {
+      // Format the payload based on webhook configuration
+      const formattedPayload = this.formatPayload(delivery.event, webhookConfig.format);
+
       const result = await this.httpClient.post(
         webhookConfig.url,
-        delivery.payload,
+        formattedPayload,
         webhookConfig.headers,
         webhookConfig.timeout
       );
 
       // Track the delivery result
       await this.deliveryTracker.trackDelivery(delivery, result);
-      
+
       return result;
     } catch (error) {
       const result: DeliveryResult = {
@@ -64,6 +68,23 @@ export class WebhookSender implements IWebhookSender {
 
       await this.deliveryTracker.trackDelivery(delivery, result);
       return result;
+    }
+  }
+
+  // Method to format payload based on webhook format
+  private formatPayload(event: any, format: string): any {
+    try {
+      // Validate format is supported
+      const supportedFormats = getSupportedFormats();
+      if (!supportedFormats.includes(format as any)) {
+        throw new Error(`Unsupported webhook format: ${format}`);
+      }
+
+      // Create formatter and format the payload
+      const formatter = createFormatter(format as any);
+      return formatter.formatPayload(event);
+    } catch (error) {
+      throw new Error(`Failed to format payload: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -97,7 +118,7 @@ export class WebhookSender implements IWebhookSender {
     }
 
     // Validate format
-    const validFormats = ['zapier', 'make', 'n8n', 'generic'];
+    const validFormats = getSupportedFormats();
     if (!validFormats.includes(config.format)) {
       errors.push({
         field: 'format',
@@ -176,7 +197,7 @@ export class WebhookSender implements IWebhookSender {
     if (this.testWebhookConfigs && this.testWebhookConfigs.has(webhookId)) {
       return this.testWebhookConfigs.get(webhookId) || null;
     }
-    
+
     // This is a placeholder - in a real implementation, you would fetch
     // the webhook configuration from your data store
     // For now, return null to indicate config not found
