@@ -77,14 +77,20 @@ export class WebhookSender implements IWebhookSender {
       // Validate format is supported
       const supportedFormats = getSupportedFormats();
       if (!supportedFormats.includes(format as any)) {
-        throw new Error(`Unsupported webhook format: ${format}`);
+        throw new Error(`Unsupported webhook format: ${format}. Supported formats: ${supportedFormats.join(', ')}`);
       }
 
       // Create formatter and format the payload
       const formatter = createFormatter(format as any);
+      
+      // Validate the formatter before using it
+      if (!formatter.validateFormat()) {
+        throw new Error(`Formatter validation failed for format: ${format}`);
+      }
+
       return formatter.formatPayload(event);
     } catch (error) {
-      throw new Error(`Failed to format payload: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to format payload for format '${format}': ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
