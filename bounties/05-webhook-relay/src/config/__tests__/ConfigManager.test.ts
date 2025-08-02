@@ -69,7 +69,7 @@ describe('ConfigManager', () => {
         ttl: 3600
       },
       monitoring: {
-        logLevel: 'info',
+        logLevel: 'error', // Set to match test environment
         metricsEnabled: true,
         healthCheckPort: 3001
       },

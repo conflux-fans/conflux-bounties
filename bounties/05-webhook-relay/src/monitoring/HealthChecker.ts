@@ -1,6 +1,7 @@
 import { IHealthChecker, HealthStatus } from './interfaces';
 import { Logger } from './Logger';
 import { Pool } from 'pg';
+import * as os from 'os';
 
 export class HealthChecker implements IHealthChecker {
   private healthChecks: Map<string, HealthCheck> = new Map();
@@ -68,7 +69,8 @@ export class HealthChecker implements IHealthChecker {
     const healthStatus: HealthStatus = {
       status,
       checks,
-      timestamp: new Date()
+      timestamp: new Date(),
+      system: await this.getSystemInfo()
     };
 
     this.logger.info('Health check completed', {
@@ -197,6 +199,46 @@ export class HealthChecker implements IHealthChecker {
 
     // Memory health check with default limit
     this.registerMemoryHealthCheck();
+  }
+
+  async getDetailedStatus(): Promise<import('./interfaces').DetailedHealthStatus> {
+    const healthStatus = await this.checkHealth();
+    
+    return {
+      ...healthStatus,
+      uptime: process.uptime(),
+      version: process.env['npm_package_version'] || '1.0.0',
+      environment: process.env['NODE_ENV'] || 'development',
+      memory: {
+        used: process.memoryUsage().heapUsed,
+        total: process.memoryUsage().heapTotal,
+        external: process.memoryUsage().external,
+        rss: process.memoryUsage().rss
+      },
+      cpu: {
+        usage: process.cpuUsage(),
+        loadAverage: process.platform !== 'win32' ? os.loadavg() : [0, 0, 0]
+      }
+    };
+  }
+
+  private async getSystemInfo(): Promise<import('./interfaces').SystemInfo> {
+    const memUsage = process.memoryUsage();
+    
+    return {
+      uptime: process.uptime(),
+      memory: {
+        used: memUsage.heapUsed,
+        total: memUsage.heapTotal,
+        usage: (memUsage.heapUsed / memUsage.heapTotal) * 100
+      },
+      cpu: {
+        usage: process.cpuUsage(),
+        loadAverage: process.platform !== 'win32' ? os.loadavg() : [0, 0, 0]
+      },
+      platform: process.platform,
+      nodeVersion: process.version
+    };
   }
 
   private async timeoutPromise(timeoutMs: number): Promise<boolean> {

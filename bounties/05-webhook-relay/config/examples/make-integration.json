@@ -1,0 +1,64 @@
+{
+  "network": {
+    "rpcUrl": "https://evm.confluxrpc.com",
+    "wsUrl": "wss://evm.confluxrpc.com/ws",
+    "chainId": 1030,
+    "confirmations": 1
+  },
+  "database": {
+    "url": "postgresql://user:password@localhost:5432/webhook_relay",
+    "poolSize": 20,
+    "connectionTimeout": 10000
+  },
+  "subscriptions": [
+    {
+      "id": "defi-swaps",
+      "contractAddress": "0xabcdef1234567890abcdef1234567890abcdef12",
+      "eventSignature": "Swap(address,uint256,uint256,uint256,uint256,address)",
+      "filters": {},
+      "webhooks": [
+        {
+          "id": "make-swap-notifications",
+          "url": "https://hook.eu1.make.com/your-webhook-id",
+          "format": "make",
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Make-Source": "conflux-webhook-relay"
+          },
+          "timeout": 30000,
+          "retryAttempts": 3
+        }
+      ]
+    },
+    {
+      "id": "governance-votes",
+      "contractAddress": "0x9876543210987654321098765432109876543210",
+      "eventSignature": "VoteCast(address,uint256,uint8,uint256,string)",
+      "filters": {},
+      "webhooks": [
+        {
+          "id": "make-governance-alerts",
+          "url": "https://hook.eu1.make.com/governance-webhook-id",
+          "format": "make",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "timeout": 30000,
+          "retryAttempts": 3
+        }
+      ]
+    }
+  ],
+  "monitoring": {
+    "logLevel": "info",
+    "metricsEnabled": true,
+    "healthCheckPort": 3001
+  },
+  "options": {
+    "maxConcurrentWebhooks": 10,
+    "defaultRetryAttempts": 3,
+    "defaultRetryDelay": 5000,
+    "webhookTimeout": 30000,
+    "queueProcessingInterval": 1000
+  }
+}

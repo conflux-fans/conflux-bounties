@@ -39,14 +39,15 @@ async function main() {
         await migrationManager.rollback();
         break;
       
-      case 'status':
+      case 'status': {
         const status = await migrationManager.getStatus();
         console.log('Migration Status:');
         console.log('Applied:', status.applied);
         console.log('Pending:', status.pending);
         break;
+      }
       
-      case 'rollback':
+      case 'rollback': {
         const targetVersion = process.argv[3];
         if (!targetVersion) {
           console.error('Please specify target version for rollback');
@@ -54,6 +55,7 @@ async function main() {
         }
         await migrationManager.rollback(targetVersion);
         break;
+      }
       
       default:
         console.error(`Unknown command: ${command}`);

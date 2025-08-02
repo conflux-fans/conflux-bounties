@@ -18,13 +18,13 @@ import { DeliveryQueue } from './webhooks/queue/DeliveryQueue';
 
 import { WebhookSender } from './webhooks/WebhookSender';
 import { HttpClient } from './webhooks/HttpClient';
-import { DeliveryTracker } from './webhooks/DeliveryTracker';
-import { QueueProcessor } from './webhooks/QueueProcessor';
 
 // Monitoring
+import { HealthChecker } from './monitoring/HealthChecker';
 import { Logger } from './monitoring/Logger';
 import { MetricsCollector } from './monitoring/MetricsCollector';
-import { HealthChecker } from './monitoring/HealthChecker';
+import { DeliveryTracker } from './webhooks/DeliveryTracker';
+import { QueueProcessor } from './webhooks/QueueProcessor';
 
 
 export interface ApplicationOptions {
@@ -74,7 +74,7 @@ export class Application extends EventEmitter {
   private startTime: Date | null = null;
   private options: Required<ApplicationOptions>;
   private shutdownInProgress = false;
-  private signalHandlers: Map<NodeJS.Signals, (...args: any[]) => void> = new Map();
+  private signalHandlers: Map<string, (...args: any[]) => void> = new Map();
   private processHandlers: { event: string; handler: (...args: any[]) => void }[] = [];
 
   constructor(options: ApplicationOptions = {}) {
@@ -198,6 +198,13 @@ export class Application extends EventEmitter {
       // Clean up signal handlers
       this.removeSignalHandlers();
     }
+  }
+
+  /**
+   * Check if application is running
+   */
+  isRunning(): boolean {
+    return this.status === 'running';
   }
 
   /**
@@ -535,7 +542,7 @@ export class Application extends EventEmitter {
       return;
     }
 
-    const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT', 'SIGUSR2'];
+    const signals: string[] = ['SIGTERM', 'SIGINT', 'SIGUSR2'];
 
     signals.forEach(signal => {
       const handler = async () => {

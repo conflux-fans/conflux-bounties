@@ -1,5 +1,6 @@
 import winston from 'winston';
 import { ILogger } from './interfaces';
+import { correlationIdManager } from './CorrelationId';
 
 export class Logger implements ILogger {
   private logger: winston.Logger;
@@ -23,15 +24,33 @@ export class Logger implements ILogger {
     // Add error stack traces
     formats.push(winston.format.errors({ stack: true }));
     
-    // Format based on preference
-    if (format === 'json') {
-      formats.push(winston.format.json());
-    } else {
-      formats.push(winston.format.printf(({ timestamp, level, message, ...meta }) => {
+    // Add correlation ID to all log entries
+    formats.push(winston.format.printf((info) => {
+      const context = correlationIdManager.getContext();
+      const logEntry: any = {
+        ...info,
+        correlationId: context?.correlationId,
+        requestId: context?.requestId,
+        userId: context?.userId
+      };
+      
+      // Remove undefined values
+      Object.keys(logEntry).forEach(key => {
+        if (logEntry[key] === undefined) {
+          delete logEntry[key];
+        }
+      });
+      
+      if (format === 'json') {
+        return JSON.stringify(logEntry);
+      } else {
+        const { timestamp, level, message, correlationId, requestId, userId, ...meta } = logEntry;
+        const contextStr = [correlationId, requestId, userId].filter(Boolean).join('|');
         const metaStr = Object.keys(meta).length ? JSON.stringify(meta) : '';
-        return `${timestamp} [${level.toUpperCase()}]: ${message} ${metaStr}`;
-      }));
-    }
+        const contextPart = contextStr ? `[${contextStr}]` : '';
+        return `${timestamp} [${level.toUpperCase()}]${contextPart}: ${message} ${metaStr}`;
+      }
+    }));
 
     const transports: winston.transport[] = [];
 
