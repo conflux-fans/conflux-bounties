@@ -102,35 +102,35 @@ export class ConfigManager extends EventEmitter implements IConfigManager {
     const overriddenConfig = JSON.parse(JSON.stringify(config)); // Deep clone
 
     // Network overrides
-    if (process.env['CONFLUX_RPC_URL']) {
+    if (process.env['CONFLUX_RPC_URL'] && overriddenConfig.network) {
       overriddenConfig.network.rpcUrl = process.env['CONFLUX_RPC_URL'];
     }
-    if (process.env['CONFLUX_WS_URL']) {
+    if (process.env['CONFLUX_WS_URL'] && overriddenConfig.network) {
       overriddenConfig.network.wsUrl = process.env['CONFLUX_WS_URL'];
     }
-    if (process.env['CONFLUX_CHAIN_ID']) {
+    if (process.env['CONFLUX_CHAIN_ID'] && overriddenConfig.network) {
       overriddenConfig.network.chainId = parseInt(process.env['CONFLUX_CHAIN_ID'], 10);
     }
-    if (process.env['CONFLUX_CONFIRMATIONS']) {
+    if (process.env['CONFLUX_CONFIRMATIONS'] && overriddenConfig.network) {
       overriddenConfig.network.confirmations = parseInt(process.env['CONFLUX_CONFIRMATIONS'], 10);
     }
 
     // Database overrides
-    if (process.env['DATABASE_URL']) {
+    if (process.env['DATABASE_URL'] && overriddenConfig.database) {
       overriddenConfig.database.url = process.env['DATABASE_URL'];
     }
-    if (process.env['DATABASE_POOL_SIZE']) {
+    if (process.env['DATABASE_POOL_SIZE'] && overriddenConfig.database) {
       overriddenConfig.database.poolSize = parseInt(process.env['DATABASE_POOL_SIZE'], 10);
     }
-    if (process.env['DATABASE_CONNECTION_TIMEOUT']) {
+    if (process.env['DATABASE_CONNECTION_TIMEOUT'] && overriddenConfig.database) {
       overriddenConfig.database.connectionTimeout = parseInt(process.env['DATABASE_CONNECTION_TIMEOUT'], 10);
     }
 
     // Redis overrides
-    if (process.env['REDIS_URL']) {
+    if (process.env['REDIS_URL'] && overriddenConfig.redis) {
       overriddenConfig.redis.url = process.env['REDIS_URL'];
     }
-    if (process.env['REDIS_KEY_PREFIX']) {
+    if (process.env['REDIS_KEY_PREFIX'] && overriddenConfig.redis) {
       overriddenConfig.redis.keyPrefix = process.env['REDIS_KEY_PREFIX'];
     }
     if (process.env['REDIS_TTL']) {

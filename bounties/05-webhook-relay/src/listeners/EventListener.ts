@@ -132,10 +132,13 @@ export class EventListener extends EventEmitter implements IEventListener {
         throw new Error('Provider not available');
       }
 
-      // Create contract instance
+      // Convert event signature string to proper ABI fragment
+      const eventFragment = this.parseEventSignatureToABI(subscription.eventSignature);
+      
+      // Create contract instance with proper ABI
       const contract = new ethers.Contract(
         subscription.contractAddress,
-        [subscription.eventSignature], // ABI with just the event signature
+        [eventFragment], // ABI with proper event fragment
         provider
       );
 
@@ -204,6 +207,57 @@ export class EventListener extends EventEmitter implements IEventListener {
     // Extract event name from signature like "Transfer(address,address,uint256)"
     const match = eventSignature.match(/^(\w+)\(/);
     return match && match[1] ? match[1] : 'UnknownEvent';
+  }
+
+  private parseEventSignatureToABI(eventSignature: string): any {
+    // Parse event signature like "Transfer(address,address,uint256)" into proper ABI fragment
+    const match = eventSignature.match(/^(\w+)\(([^)]*)\)$/);
+    if (!match) {
+      throw new Error(`Invalid event signature: ${eventSignature}`);
+    }
+
+    const eventName = match[1];
+    const paramString = match[2] || '';
+    
+    // Parse parameters
+    const inputs: any[] = [];
+    if (paramString.trim()) {
+      const params = paramString.split(',').map(p => p.trim());
+      params.forEach((param, index) => {
+        // Handle different parameter formats:
+        // - "address" -> {type: "address", name: `param${index}`, indexed: false}
+        // - "address indexed from" -> {type: "address", name: "from", indexed: true}
+        // - "address from" -> {type: "address", name: "from", indexed: false}
+        
+        const parts = param.split(/\s+/);
+        const type = parts[0];
+        let indexed = false;
+        let name = `param${index}`;
+        
+        if (parts.length > 1) {
+          if (parts[1] === 'indexed') {
+            indexed = true;
+            if (parts.length > 2 && parts[2]) {
+              name = parts[2];
+            }
+          } else if (parts[1]) {
+            name = parts[1];
+          }
+        }
+        
+        inputs.push({
+          type,
+          name,
+          indexed
+        });
+      });
+    }
+    
+    return {
+      type: 'event',
+      name: eventName,
+      inputs
+    };
   }
 
   private parseEventArgs(eventSignature: string, args: any[]): Record<string, any> {

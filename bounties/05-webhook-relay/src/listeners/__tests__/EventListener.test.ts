@@ -109,9 +109,30 @@ describe('EventListener', () => {
       
       await eventListener.start();
 
+      // The EventListener now creates an ABI fragment from the event signature
       expect(MockedContract).toHaveBeenCalledWith(
         testSubscription.contractAddress,
-        [testSubscription.eventSignature],
+        [{
+          type: 'event',
+          name: 'Transfer',
+          inputs: [
+            {
+              type: 'address',
+              name: 'from',
+              indexed: true
+            },
+            {
+              type: 'address',
+              name: 'to',
+              indexed: true
+            },
+            {
+              type: 'uint256',
+              name: 'value',
+              indexed: false
+            }
+          ]
+        }],
         {}
       );
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
@@ -177,9 +198,30 @@ describe('EventListener', () => {
       
       eventListener.addSubscription(testSubscription);
 
+      // The EventListener now creates an ABI fragment from the event signature
       expect(MockedContract).toHaveBeenCalledWith(
         testSubscription.contractAddress,
-        [testSubscription.eventSignature],
+        [{
+          type: 'event',
+          name: 'Transfer',
+          inputs: [
+            {
+              type: 'address',
+              name: 'from',
+              indexed: true
+            },
+            {
+              type: 'address',
+              name: 'to',
+              indexed: true
+            },
+            {
+              type: 'uint256',
+              name: 'value',
+              indexed: false
+            }
+          ]
+        }],
         {}
       );
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
@@ -368,7 +410,27 @@ describe('EventListener', () => {
 
       expect(MockedContract).toHaveBeenCalledWith(
         testSubscription.contractAddress,
-        [testSubscription.eventSignature],
+        [{
+          type: 'event',
+          name: 'Transfer',
+          inputs: [
+            {
+              type: 'address',
+              name: 'from',
+              indexed: true
+            },
+            {
+              type: 'address',
+              name: 'to',
+              indexed: true
+            },
+            {
+              type: 'uint256',
+              name: 'value',
+              indexed: false
+            }
+          ]
+        }],
         {}
       );
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));

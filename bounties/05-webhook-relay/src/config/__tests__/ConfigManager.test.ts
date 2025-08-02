@@ -21,6 +21,16 @@ describe('ConfigManager', () => {
   const originalNodeEnv = process.env['NODE_ENV'];
 
   beforeEach(() => {
+    // Clean up any environment overrides from previous tests
+    const envKeysToCleanup = [
+      "CONFLUX_RPC_URL", "CONFLUX_WS_URL", "CONFLUX_CHAIN_ID", "CONFLUX_CONFIRMATIONS",
+      "DATABASE_URL", "DATABASE_POOL_SIZE", "DATABASE_CONNECTION_TIMEOUT",
+      "REDIS_URL", "REDIS_KEY_PREFIX", "REDIS_TTL",
+      "LOG_LEVEL", "METRICS_ENABLED", "HEALTH_CHECK_PORT",
+      "MAX_CONCURRENT_WEBHOOKS", "DEFAULT_RETRY_ATTEMPTS", "DEFAULT_RETRY_DELAY",
+      "WEBHOOK_TIMEOUT", "QUEUE_PROCESSING_INTERVAL"
+    ];
+    envKeysToCleanup.forEach(key => delete process.env[key]);
     jest.clearAllMocks();
     process.env['NODE_ENV'] = 'test';
 
@@ -99,8 +109,7 @@ describe('ConfigManager', () => {
     });
 
     it('should throw error when config file does not exist', async () => {
-      // eslint-disable-next-line no-undef
-      const error = new Error('File not found') as NodeJS.ErrnoException;
+      const error = new Error('File not found') as Error & { code: string };
       error.code = 'ENOENT';
       mockFs.readFile.mockRejectedValue(error);
 
@@ -123,7 +132,7 @@ describe('ConfigManager', () => {
     });
 
     it('should apply environment variable overrides', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = {
         ...originalEnv,
         CONFLUX_RPC_URL: 'https://override.rpc.url',
@@ -344,7 +353,7 @@ describe('ConfigManager', () => {
 
     envTestCases.forEach(({ env, expectedPath, expectedValue }) => {
       it(`should override ${expectedPath} with environment variable`, async () => {
-        const originalEnv = process.env;
+        const originalEnv = { ...process.env };
         process.env = { ...originalEnv, ...env };
 
         mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -364,7 +373,7 @@ describe('ConfigManager', () => {
 
     // Additional environment variable overrides to cover uncovered lines
     it('should override network.confirmations with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, CONFLUX_CONFIRMATIONS: '24' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -376,7 +385,7 @@ describe('ConfigManager', () => {
     });
 
     it('should override database.poolSize with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, DATABASE_POOL_SIZE: '20' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -388,7 +397,7 @@ describe('ConfigManager', () => {
     });
 
     it('should override database.connectionTimeout with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, DATABASE_CONNECTION_TIMEOUT: '10000' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -400,7 +409,7 @@ describe('ConfigManager', () => {
     });
 
     it('should override redis.keyPrefix with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, REDIS_KEY_PREFIX: 'test-prefix:' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -412,7 +421,7 @@ describe('ConfigManager', () => {
     });
 
     it('should override redis.ttl with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, REDIS_TTL: '7200' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -424,7 +433,7 @@ describe('ConfigManager', () => {
     });
 
     it('should override monitoring.healthCheckPort with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, HEALTH_CHECK_PORT: '4000' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -436,7 +445,7 @@ describe('ConfigManager', () => {
     });
 
     it('should override options.defaultRetryAttempts with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, DEFAULT_RETRY_ATTEMPTS: '5' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -448,7 +457,7 @@ describe('ConfigManager', () => {
     });
 
     it('should override options.defaultRetryDelay with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, DEFAULT_RETRY_DELAY: '2000' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -460,7 +469,7 @@ describe('ConfigManager', () => {
     });
 
     it('should override options.webhookTimeout with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, WEBHOOK_TIMEOUT: '60000' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -472,7 +481,7 @@ describe('ConfigManager', () => {
     });
 
     it('should override options.queueProcessingInterval with environment variable', async () => {
-      const originalEnv = process.env;
+      const originalEnv = { ...process.env };
       process.env = { ...originalEnv, QUEUE_PROCESSING_INTERVAL: '10000' };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -685,7 +694,7 @@ describe('ConfigManager', () => {
     it('should handle watcher errors that are not AbortError', async () => {
       const mockAsyncIterator = {
         [Symbol.asyncIterator]: async function* () {
-          yield; // Add yield before throwing
+          yield;
           throw new Error('Watcher error');
         }
       };
@@ -711,7 +720,6 @@ describe('ConfigManager', () => {
     it('should ignore AbortError from watcher', async () => {
       const mockAsyncIterator = {
         [Symbol.asyncIterator]: async function* () {
-          // Yield one event first, then throw AbortError
           yield { eventType: 'change', filename: 'config.json' };
           const error = new Error('AbortError');
           (error as any).name = 'AbortError';
