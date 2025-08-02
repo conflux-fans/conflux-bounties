@@ -1,0 +1,65 @@
+version: '3.8'
+
+# Development override for docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # Development version of the main application
+  webhook-relay-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder  # Use builder stage for development
+    container_name: webhook-relay-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"  # Main app port
+      - "3001:3001"  # Health check port
+      - "9229:9229"  # Debug port
+    environment:
+      - NODE_ENV=development
+      - CONFIG_PATH=/app/config.json
+      - DATABASE_URL=postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=debug
+      - METRICS_ENABLED=true
+      - HEALTH_CHECK_PORT=3001
+    volumes:
+      - ./src:/app/src:ro
+      - ./config.json:/app/config.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - webhook-logs:/app/logs
+      - webhook-data:/app/data
+      - /app/node_modules  # Anonymous volume to prevent overwriting
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - webhook-network
+    command: ["npm", "run", "dev"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Override postgres for development (enable logging)
+  postgres:
+    environment:
+      - POSTGRES_DB=webhook_relay
+      - POSTGRES_USER=webhook_user
+      - POSTGRES_PASSWORD=webhook_pass
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    command: >
+      postgres
+      -c log_statement=all
+      -c log_destination=stderr
+      -c log_min_messages=info
+      -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+
+  # Override redis for development (disable password for easier access)
+  redis:
+    command: redis-server --appendonly yes

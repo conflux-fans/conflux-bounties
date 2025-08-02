@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  # Main application service
+  webhook-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: webhook-relay-app
+    restart: unless-stopped
+    ports:
+      - "3001:3001"  # Health check port
+    environment:
+      - NODE_ENV=production
+      - CONFIG_PATH=/app/config.json
+      - DATABASE_URL=postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=info
+      - METRICS_ENABLED=true
+      - HEALTH_CHECK_PORT=3001
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - webhook-logs:/app/logs
+      - webhook-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - webhook-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: webhook-relay-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=webhook_relay
+      - POSTGRES_USER=webhook_user
+      - POSTGRES_PASSWORD=webhook_pass
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - webhook-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webhook_user -d webhook_relay"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    container_name: webhook-relay-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis_pass
+    volumes:
+      - redis-data:/data
+    networks:
+      - webhook-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: webhook-relay-pgadmin
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@webhook-relay.local
+      - PGADMIN_DEFAULT_PASSWORD=admin123
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - webhook-network
+    profiles:
+      - tools
+    depends_on:
+      - postgres
+
+  # Optional: Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: webhook-relay-redis-commander
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:redis_pass
+    networks:
+      - webhook-network
+    profiles:
+      - tools
+    depends_on:
+      - redis
+
+networks:
+  webhook-network:
+    driver: bridge
+    name: webhook-relay-network
+
+volumes:
+  postgres-data:
+    name: webhook-relay-postgres-data
+  redis-data:
+    name: webhook-relay-redis-data
+  pgadmin-data:
+    name: webhook-relay-pgadmin-data
+  webhook-logs:
+    name: webhook-relay-logs
+  webhook-data:
+    name: webhook-relay-data
