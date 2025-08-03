@@ -61,12 +61,13 @@ export class WebhookSender implements IWebhookSender {
     }
 
     try {
-      // Format the payload based on webhook configuration
-      const formattedPayload = this.formatPayload(delivery.event, webhookConfig.format);
+      // Always format the event data according to the webhook format
+      // The delivery.payload is for internal tracking, not for webhook delivery
+      const payloadToSend = this.formatPayload(delivery.event, webhookConfig.format);
 
       const result = await this.httpClient.post(
         webhookConfig.url,
-        formattedPayload,
+        payloadToSend,
         webhookConfig.headers,
         webhookConfig.timeout
       );

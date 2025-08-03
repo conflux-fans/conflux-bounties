@@ -3,7 +3,15 @@ import { WebhookConfig } from '../../src/types/common';
 import { WebhookDelivery } from '../../src/types/delivery';
 import { v4 as uuidv4 } from 'uuid';
 
+// Store original console for debugging
+const originalConsole = console;
+
 describe('Simple Webhook Test', () => {
+  beforeAll(() => {
+    // Restore console for this test
+    global.console = originalConsole;
+  });
+
   it('should send webhook successfully', async () => {
     console.log('Creating webhook sender...');
     const webhookSender = new WebhookSender();
@@ -11,7 +19,7 @@ describe('Simple Webhook Test', () => {
     
     const webhook: WebhookConfig = {
       id: 'test-webhook',
-      url: 'https://httpbin.org/post',
+      url: 'http://httpbin.org/post',
       format: 'generic',
       headers: { 'Content-Type': 'application/json' },
       timeout: 5000,
@@ -43,8 +51,13 @@ describe('Simple Webhook Test', () => {
     
     const result = await webhookSender.sendWebhook(delivery);
     
+    console.log('Full result:', JSON.stringify(result, null, 2));
+    
     expect(result).toBeDefined();
-    expect(result.error || 'No error').toContain(''); // This will show the error in the test output
+    if (!result.success) {
+      console.log('Error details:', result.error);
+      console.log('Status code:', result.statusCode);
+    }
     expect(result.success).toBe(true);
   }, 10000);
 });

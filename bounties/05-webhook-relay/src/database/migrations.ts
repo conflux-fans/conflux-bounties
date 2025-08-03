@@ -31,7 +31,7 @@ export class MigrationManager {
         );
 
         -- Event subscriptions configuration
-        CREATE TABLE subscriptions (
+        CREATE TABLE IF NOT EXISTS subscriptions (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           name VARCHAR(100) NOT NULL,
           contract_address VARCHAR(42) NOT NULL,
@@ -43,7 +43,7 @@ export class MigrationManager {
         );
 
         -- Webhook endpoint configurations
-        CREATE TABLE webhooks (
+        CREATE TABLE IF NOT EXISTS webhooks (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           subscription_id UUID REFERENCES subscriptions(id) ON DELETE CASCADE,
           url VARCHAR(500) NOT NULL,
@@ -56,7 +56,7 @@ export class MigrationManager {
         );
 
         -- Webhook delivery queue and history
-        CREATE TABLE deliveries (
+        CREATE TABLE IF NOT EXISTS deliveries (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           subscription_id UUID REFERENCES subscriptions(id),
           webhook_id UUID REFERENCES webhooks(id),
@@ -75,7 +75,7 @@ export class MigrationManager {
         );
 
         -- System metrics and monitoring
-        CREATE TABLE metrics (
+        CREATE TABLE IF NOT EXISTS metrics (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           metric_name VARCHAR(100) NOT NULL,
           metric_value NUMERIC NOT NULL,
@@ -84,12 +84,12 @@ export class MigrationManager {
         );
 
         -- Indexes for performance
-        CREATE INDEX idx_subscriptions_contract ON subscriptions(contract_address);
-        CREATE INDEX idx_subscriptions_active ON subscriptions(active);
-        CREATE INDEX idx_deliveries_status ON deliveries(status);
-        CREATE INDEX idx_deliveries_next_retry ON deliveries(next_retry) WHERE status = 'pending';
-        CREATE INDEX idx_deliveries_created_at ON deliveries(created_at);
-        CREATE INDEX idx_metrics_name_timestamp ON metrics(metric_name, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_subscriptions_contract ON subscriptions(contract_address);
+        CREATE INDEX IF NOT EXISTS idx_subscriptions_active ON subscriptions(active);
+        CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status);
+        CREATE INDEX IF NOT EXISTS idx_deliveries_next_retry ON deliveries(next_retry) WHERE status = 'pending';
+        CREATE INDEX IF NOT EXISTS idx_deliveries_created_at ON deliveries(created_at);
+        CREATE INDEX IF NOT EXISTS idx_metrics_name_timestamp ON metrics(metric_name, timestamp);
       `,
       down: `
         DROP TABLE IF EXISTS metrics CASCADE;
@@ -106,7 +106,7 @@ export class MigrationManager {
       name: 'add_dead_letter_queue',
       up: `
         -- Dead letter queue for failed deliveries
-        CREATE TABLE dead_letter_queue (
+        CREATE TABLE IF NOT EXISTS dead_letter_queue (
           id UUID PRIMARY KEY,
           subscription_id UUID,
           webhook_id UUID,
@@ -119,9 +119,9 @@ export class MigrationManager {
         );
 
         -- Indexes for dead letter queue
-        CREATE INDEX idx_dead_letter_failed_at ON dead_letter_queue(failed_at);
-        CREATE INDEX idx_dead_letter_webhook_id ON dead_letter_queue(webhook_id);
-        CREATE INDEX idx_dead_letter_failure_reason ON dead_letter_queue(failure_reason);
+        CREATE INDEX IF NOT EXISTS idx_dead_letter_failed_at ON dead_letter_queue(failed_at);
+        CREATE INDEX IF NOT EXISTS idx_dead_letter_webhook_id ON dead_letter_queue(webhook_id);
+        CREATE INDEX IF NOT EXISTS idx_dead_letter_failure_reason ON dead_letter_queue(failure_reason);
       `,
       down: `
         DROP TABLE IF EXISTS dead_letter_queue CASCADE;

@@ -87,8 +87,8 @@ describe('QueuePersistence', () => {
         id: mockDelivery.id,
         subscription_id: mockDelivery.subscriptionId,
         webhook_id: mockDelivery.webhookId,
-        event_data: JSON.stringify(mockDelivery.event),
-        payload: JSON.stringify(mockDelivery.payload),
+        event_data: mockDelivery.event, // JSONB columns are automatically parsed by PostgreSQL
+        payload: mockDelivery.payload,   // JSONB columns are automatically parsed by PostgreSQL
         status: 'pending',
         attempts: 0,
         max_attempts: 3,
@@ -119,7 +119,7 @@ describe('QueuePersistence', () => {
           transactionHash: mockDelivery.event.transactionHash,
           logIndex: mockDelivery.event.logIndex,
           args: mockDelivery.event.args,
-          timestamp: expect.any(String) // JSON parsing converts Date to string
+          timestamp: expect.any(Date) // JSONB columns preserve Date objects
         }),
         payload: mockDelivery.payload,
         status: 'processing',
@@ -160,7 +160,7 @@ describe('QueuePersistence', () => {
 
       expect(mockDb.query).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE deliveries'),
-        ['delivery-1', 'completed', null]
+        ['delivery-1', 'completed', '', true]
       );
     });
 
@@ -171,7 +171,7 @@ describe('QueuePersistence', () => {
 
       expect(mockDb.query).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE deliveries'),
-        ['delivery-1', 'failed', 'Network error']
+        ['delivery-1', 'failed', 'Network error', true]
       );
     });
   });
@@ -325,8 +325,8 @@ describe('QueuePersistence', () => {
         id: 'stuck-delivery-2',
         subscription_id: 'sub-2',
         webhook_id: 'webhook-2',
-        event_data: JSON.stringify(mockEvent),
-        payload: JSON.stringify(mockPayload),
+        event_data: mockEvent, // JSONB columns are automatically parsed by PostgreSQL
+        payload: mockPayload,   // JSONB columns are automatically parsed by PostgreSQL
         status: 'processing',
         attempts: 2,
         max_attempts: 5,
@@ -341,7 +341,7 @@ describe('QueuePersistence', () => {
       expect(stuckDeliveries).toHaveLength(1);
       expect(stuckDeliveries[0]?.event).toEqual({
         ...mockEvent,
-        timestamp: expect.any(String) // JSON parsing converts Date to string
+        timestamp: expect.any(Date) // JSONB columns preserve Date objects
       });
       expect(stuckDeliveries[0]?.payload).toEqual(mockPayload);
       expect(stuckDeliveries[0]?.nextRetry).toEqual(new Date('2023-01-01T13:00:00Z'));

@@ -80,6 +80,8 @@ export class DeliveryQueue implements IDeliveryQueue {
   }
 
   async markFailed(deliveryId: string, error: string): Promise<void> {
+    // Increment attempts and mark as failed
+    await this.persistence.incrementAttempts(deliveryId);
     await this.persistence.updateDeliveryStatus(deliveryId, 'failed', error);
     this.processingCount = Math.max(0, this.processingCount - 1);
   }

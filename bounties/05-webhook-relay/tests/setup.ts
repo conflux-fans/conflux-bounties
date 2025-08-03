@@ -9,7 +9,7 @@ beforeAll(() => {
   
   // Set test database URL if not provided
   if (!process.env['TEST_DATABASE_URL']) {
-    process.env['TEST_DATABASE_URL'] = 'postgresql://test:test@localhost:5432/webhook_relay_test';
+    process.env['TEST_DATABASE_URL'] = 'postgresql://webhook_user:webhook_pass@localhost:5432/webhook_relay_test';
   }
   
   // Set test Redis URL if not provided

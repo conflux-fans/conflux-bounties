@@ -53,7 +53,7 @@ describe('Debug Webhook Test', () => {
       
       const webhook: WebhookConfig = {
         id: 'test-webhook',
-        url: 'http://localhost:3335/webhook',
+        url: 'http://httpbin.org/post',
         format: 'generic',
         headers: { 'Content-Type': 'application/json' },
         timeout: 5000,

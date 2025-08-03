@@ -69,8 +69,8 @@ export class QueuePersistence implements IQueuePersistence {
         id: row.id,
         subscriptionId: row.subscription_id,
         webhookId: row.webhook_id,
-        event: JSON.parse(row.event_data),
-        payload: JSON.parse(row.payload),
+        event: row.event_data, // JSONB columns are automatically parsed
+        payload: row.payload,   // JSONB columns are automatically parsed
         status: 'processing',
         attempts: row.attempts,
         maxAttempts: row.max_attempts,
@@ -80,16 +80,28 @@ export class QueuePersistence implements IQueuePersistence {
   }
 
   async updateDeliveryStatus(deliveryId: string, status: string, error?: string): Promise<void> {
+    const isCompleted = status === 'completed' || status === 'failed';
     const query = `
       UPDATE deliveries 
       SET status = $2, 
           error_message = $3,
-          completed_at = CASE WHEN $2 IN ('completed', 'failed') THEN NOW() ELSE completed_at END,
+          completed_at = CASE WHEN $4 THEN NOW() ELSE completed_at END,
           last_attempt = NOW()
       WHERE id = $1
     `;
 
-    await this.db.query(query, [deliveryId, status, error || null]);
+    await this.db.query(query, [deliveryId, status, error || '', isCompleted]);
+  }
+
+  async incrementAttempts(deliveryId: string): Promise<void> {
+    const query = `
+      UPDATE deliveries 
+      SET attempts = attempts + 1,
+          last_attempt = NOW()
+      WHERE id = $1
+    `;
+
+    await this.db.query(query, [deliveryId]);
   }
 
   async updateRetrySchedule(deliveryId: string, nextRetry: Date, attempts: number): Promise<void> {
@@ -174,8 +186,8 @@ export class QueuePersistence implements IQueuePersistence {
       id: row.id,
       subscriptionId: row.subscription_id,
       webhookId: row.webhook_id,
-      event: JSON.parse(row.event_data),
-      payload: JSON.parse(row.payload),
+      event: row.event_data, // JSONB columns are automatically parsed
+      payload: row.payload,   // JSONB columns are automatically parsed
       status: row.status,
       attempts: row.attempts,
       maxAttempts: row.max_attempts,

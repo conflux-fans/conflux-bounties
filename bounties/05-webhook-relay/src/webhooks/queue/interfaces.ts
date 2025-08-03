@@ -24,6 +24,7 @@ export interface IQueuePersistence {
   getNextDelivery(): Promise<WebhookDelivery | null>;
   updateDeliveryStatus(deliveryId: string, status: string, error?: string): Promise<void>;
   updateRetrySchedule(deliveryId: string, nextRetry: Date, attempts: number): Promise<void>;
+  incrementAttempts(deliveryId: string): Promise<void>;
   getQueueMetrics(): Promise<QueueMetrics>;
   cleanupCompletedDeliveries(olderThan: Date): Promise<number>;
   resetStuckDeliveries(stuckThreshold: number): Promise<number>;

@@ -10,23 +10,38 @@ describe('Database Integration Tests', () => {
 
   beforeAll(async () => {
     // Use test database
-    const testDbUrl = process.env['TEST_DATABASE_URL'] || 'postgresql://test:test@localhost:5432/webhook_relay_test';
+    const testDbUrl = process.env['TEST_DATABASE_URL'] || 'postgresql://webhook_user:webhook_pass@localhost:5432/webhook_relay_test';
     
     try {
+      console.log('Initializing database connection...');
       dbConnection = new DatabaseConnection({
         url: testDbUrl,
         poolSize: 10,
         connectionTimeout: 5000
       });
       
+      // Test connection
+      console.log('Testing database connection...');
+      await dbConnection.query('SELECT 1');
+      console.log('Database connection successful');
+      
       // Run migrations
+      console.log('Running migrations...');
       const migrationManager = new MigrationManager(dbConnection);
       await migrationManager.migrate();
+      console.log('Migrations completed');
       
       // Initialize components
-      deliveryQueue = new DeliveryQueue(dbConnection);
+      console.log('Initializing DeliveryQueue...');
+      deliveryQueue = new DeliveryQueue(dbConnection, {
+        maxConcurrentDeliveries: 50 // Higher limit for testing
+      });
+      console.log('DeliveryQueue initialized:', !!deliveryQueue);
+      
+      console.log('Database connection and DeliveryQueue initialized successfully');
     } catch (error) {
-      console.log('Database connection failed, skipping integration tests:', (error as Error).message);
+      console.error('Database initialization failed:', (error as Error).message);
+      console.error('Stack trace:', (error as Error).stack);
       // Skip tests if database is not available
     }
   });
@@ -37,10 +52,33 @@ describe('Database Integration Tests', () => {
     }
   });
 
+  // Helper function to create test subscription and webhook
+  async function createTestSubscriptionAndWebhook() {
+    if (!dbConnection) return { subscriptionId: '', webhookId: '' };
+    
+    // Create test subscription
+    const subscriptionResult = await dbConnection.query(`
+      INSERT INTO subscriptions (id, name, contract_address, event_signature, filters, active)
+      VALUES (uuid_generate_v4(), 'Test Subscription', '0x1234567890123456789012345678901234567890', 'Transfer(address,address,uint256)', '{}', true)
+      RETURNING id
+    `);
+    const subscriptionId = subscriptionResult.rows[0].id;
+    
+    // Create test webhook
+    const webhookResult = await dbConnection.query(`
+      INSERT INTO webhooks (id, subscription_id, url, format, headers, timeout, retry_attempts, active)
+      VALUES (uuid_generate_v4(), $1, 'http://localhost:3000/webhook', 'generic', '{}', 30000, 3, true)
+      RETURNING id
+    `, [subscriptionId]);
+    const webhookId = webhookResult.rows[0].id;
+    
+    return { subscriptionId, webhookId };
+  }
+
   beforeEach(async () => {
     if (!dbConnection) return;
     
-    // Clean up test data
+    // Clean up test data in correct order (due to foreign keys)
     await dbConnection.query('DELETE FROM deliveries');
     await dbConnection.query('DELETE FROM webhooks');
     await dbConnection.query('DELETE FROM subscriptions');
@@ -53,7 +91,11 @@ describe('Database Integration Tests', () => {
         return;
       }
 
-      const delivery = DeliveryFactory.createPendingDelivery();
+      const { subscriptionId, webhookId } = await createTestSubscriptionAndWebhook();
+      const delivery = DeliveryFactory.createPendingDelivery({
+        subscriptionId,
+        webhookId
+      });
       
       // Enqueue delivery
       await deliveryQueue.enqueue(delivery);
@@ -71,7 +113,11 @@ describe('Database Integration Tests', () => {
         return;
       }
 
-      const deliveries = DeliveryFactory.createBatchDeliveries(10);
+      const { subscriptionId, webhookId } = await createTestSubscriptionAndWebhook();
+      const deliveries = DeliveryFactory.createBatchDeliveries(10, {
+        subscriptionId,
+        webhookId
+      });
       
       // Enqueue all deliveries concurrently
       await Promise.all(deliveries.map(delivery => deliveryQueue.enqueue(delivery)));
@@ -94,7 +140,11 @@ describe('Database Integration Tests', () => {
         return;
       }
 
-      const delivery = DeliveryFactory.createPendingDelivery();
+      const { subscriptionId, webhookId } = await createTestSubscriptionAndWebhook();
+      const delivery = DeliveryFactory.createPendingDelivery({
+        subscriptionId,
+        webhookId
+      });
       await deliveryQueue.enqueue(delivery);
       
       const retrieved = await deliveryQueue.dequeue();
@@ -113,7 +163,11 @@ describe('Database Integration Tests', () => {
         return;
       }
 
-      const delivery = DeliveryFactory.createPendingDelivery();
+      const { subscriptionId, webhookId } = await createTestSubscriptionAndWebhook();
+      const delivery = DeliveryFactory.createPendingDelivery({
+        subscriptionId,
+        webhookId
+      });
       await deliveryQueue.enqueue(delivery);
       
       const retrieved = await deliveryQueue.dequeue();
@@ -134,7 +188,11 @@ describe('Database Integration Tests', () => {
         return;
       }
 
-      const delivery = DeliveryFactory.createPendingDelivery();
+      const { subscriptionId, webhookId } = await createTestSubscriptionAndWebhook();
+      const delivery = DeliveryFactory.createPendingDelivery({
+        subscriptionId,
+        webhookId
+      });
       await deliveryQueue.enqueue(delivery);
       
       const retrieved = await deliveryQueue.dequeue();
@@ -197,7 +255,12 @@ describe('Database Integration Tests', () => {
         return;
       }
 
-      const deliveries = DeliveryFactory.createHighVolumeDeliveries(1000);
+      const { subscriptionId, webhookId } = await createTestSubscriptionAndWebhook();
+      const deliveries = DeliveryFactory.createHighVolumeDeliveries(1000).map(delivery => ({
+        ...delivery,
+        subscriptionId,
+        webhookId
+      }));
       
       // Insert deliveries in batches
       const batchSize = 100;
@@ -226,7 +289,11 @@ describe('Database Integration Tests', () => {
         return;
       }
 
-      const delivery = DeliveryFactory.createPendingDelivery();
+      const { subscriptionId, webhookId } = await createTestSubscriptionAndWebhook();
+      const delivery = DeliveryFactory.createPendingDelivery({
+        subscriptionId,
+        webhookId
+      });
       
       try {
         await dbConnection.transaction(async (client) => {
@@ -253,7 +320,11 @@ describe('Database Integration Tests', () => {
         return;
       }
 
-      const deliveries = DeliveryFactory.createBatchDeliveries(10);
+      const { subscriptionId, webhookId } = await createTestSubscriptionAndWebhook();
+      const deliveries = DeliveryFactory.createBatchDeliveries(10, {
+        subscriptionId,
+        webhookId
+      });
       
       // Execute concurrent transactions
       const promises = deliveries.map(async (delivery) => {
