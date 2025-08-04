@@ -64,4 +64,4 @@ expect.extend({
 jest.setTimeout(120000); // 2 minutes for long-running tests
 
 // Increase max listeners to prevent warnings in tests
-process.setMaxListeners(20);
+process.setMaxListeners(50);
