@@ -4,10 +4,11 @@ module.exports = {
       displayName: 'unit',
       preset: 'ts-jest',
       testEnvironment: 'node',
-      roots: ['<rootDir>/src'],
+      roots: ['<rootDir>/src', '<rootDir>/tests/factories'],
       testMatch: [
         '<rootDir>/src/**/__tests__/**/*.ts',
-        '<rootDir>/src/**/?(*.)+(spec|test).ts'
+        '<rootDir>/src/**/?(*.)+(spec|test).ts',
+        '<rootDir>/tests/factories/__tests__/**/*.ts'
       ],
       transform: {
         '^.+\\.ts$': ['ts-jest', {
@@ -28,11 +29,13 @@ module.exports = {
       },
       collectCoverageFrom: [
         'src/**/*.ts',
+        'tests/factories/**/*.ts',
         '!src/**/*.d.ts',
         '!src/**/*.test.ts',
         '!src/**/*.spec.ts',
         '!src/index.ts',
-        '!src/**/index.ts'
+        '!src/**/index.ts',
+        '!tests/factories/**/__tests__/**/*.ts'
       ],
       setupFilesAfterEnv: ['<rootDir>/tests/setup.ts']
     },

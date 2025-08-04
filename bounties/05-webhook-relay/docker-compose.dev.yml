@@ -7,12 +7,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: builder  # Use builder stage for development
     container_name: webhook-relay-dev
     restart: unless-stopped
     ports:
       - "3000:3000"  # Main app port
-      - "3001:3001"  # Health check port
+      - "3002:3001"  # Health check port (mapped to 3002 to avoid conflict)
       - "9229:9229"  # Debug port
     environment:
       - NODE_ENV=development

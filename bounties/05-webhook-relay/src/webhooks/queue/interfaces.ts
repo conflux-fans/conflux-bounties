@@ -11,6 +11,7 @@ export interface IDeliveryQueue {
   getProcessingCount(): Promise<number>;
   startProcessing(processor: (delivery: WebhookDelivery) => Promise<void>): void;
   stopProcessing(): void;
+  getStats(): Promise<QueueMetrics & { processingCount: number; maxConcurrentDeliveries: number }>;
 }
 
 export interface IRetryScheduler {

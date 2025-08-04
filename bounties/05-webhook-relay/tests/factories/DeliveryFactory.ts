@@ -27,9 +27,9 @@ export class DeliveryFactory {
 
   static createPendingDelivery(overrides: Partial<WebhookDelivery> = {}): WebhookDelivery {
     return this.createWebhookDelivery({
+      ...overrides,
       status: 'pending',
-      attempts: 0,
-      ...overrides
+      attempts: 0
     });
   }
 

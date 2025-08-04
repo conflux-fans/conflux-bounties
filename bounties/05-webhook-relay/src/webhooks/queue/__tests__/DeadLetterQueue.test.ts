@@ -349,6 +349,23 @@ describe('DeadLetterQueue', () => {
       );
     });
 
+    it('should perform cleanup with no entries to delete', async () => {
+      mockDb.query = jest.fn().mockResolvedValue({ rowCount: 0 });
+
+      // Test the cleanup method directly
+      await (deadLetterQueue as any).cleanupOldEntries();
+
+      expect(mockDb.query).toHaveBeenCalledWith(
+        expect.stringMatching(/DELETE\s+FROM\s+dead_letter_queue[\s\S]*WHERE\s+failed_at\s+<\s+NOW\(\)\s+-\s+INTERVAL\s+'7\s+days'/)
+      );
+
+      // Should not log when no entries are deleted
+      expect(mockLogger.info).not.toHaveBeenCalledWith(
+        'Dead letter queue cleanup completed',
+        expect.any(Object)
+      );
+    });
+
     it('should handle cleanup errors gracefully', async () => {
       const cleanupError = new Error('Cleanup failed');
       mockDb.query = jest.fn().mockRejectedValue(cleanupError);

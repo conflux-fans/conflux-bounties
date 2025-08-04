@@ -331,7 +331,7 @@ describe('ConfigValidator', () => {
           }),
           expect.objectContaining({
             field: 'subscriptions[0].eventSignature',
-            message: 'Event signature is required and must be a string'
+            message: 'Event signature is required'
           })
         ])
       );
@@ -536,12 +536,12 @@ describe('ConfigValidator', () => {
           }),
           expect.objectContaining({
             field: 'subscriptions[0].contractAddress',
-            message: 'Contract address is required and must be a string',
+            message: 'Contract address is required',
             value: undefined
           }),
           expect.objectContaining({
             field: 'subscriptions[0].eventSignature',
-            message: 'Event signature is required and must be a string',
+            message: 'Event signature is required',
             value: undefined
           })
         ])
@@ -571,12 +571,12 @@ describe('ConfigValidator', () => {
           }),
           expect.objectContaining({
             field: 'subscriptions[0].contractAddress',
-            message: 'Contract address is required and must be a string',
+            message: 'Contract address must be a string or array of strings',
             value: 456
           }),
           expect.objectContaining({
             field: 'subscriptions[0].eventSignature',
-            message: 'Event signature is required and must be a string',
+            message: 'Event signature must be a string or array of strings',
             value: 789
           }),
           expect.objectContaining({

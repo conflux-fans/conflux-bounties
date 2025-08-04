@@ -1,15 +1,23 @@
 {
   "network": {
-    "rpcUrl": "https://evm.confluxrpc.com",
-    "wsUrl": "wss://evm.confluxrpc.com/ws",
-    "chainId": 1030,
-    "confirmations": 12
+    "rpcUrl": "https://evmtestnet.confluxrpc.com",
+    "wsUrl": "wss://evmtestnet.confluxrpc.com/ws",
+    "chainId": 71,
+    "confirmations": 2
   },
   "subscriptions": [
     {
-      "id": "usdt-transfers",
-      "contractAddress": "0x14b2d3bc65e74dae1030eafd8ac30c533c976a9b",
-      "eventSignature": "Transfer(address,address,uint256)",
+      "id": "contract-event-monitoring",
+      "contractAddress": [
+        "0x1234567890123456789012345678901234567890",
+        "0x2ed3dddae5b2f321af0806181fbfa6d049be47d8"
+      ],
+      "eventSignature": [
+        "Deposit(address indexed dst, uint256 wad)",
+        "Withdrawal(address indexed src, uint256 wad)",
+        "Approval(address indexed owner, address indexed spender, uint256 value)",
+        "Transfer(address indexed from, address indexed to, uint256 value)"
+      ],
       "filters": {
         "value": {
           "operator": "gt",
@@ -18,11 +26,33 @@
       },
       "webhooks": [
         {
-          "id": "zapier-webhook",
-          "url": "https://hooks.zapier.com/hooks/catch/123456/abcdef/",
-          "format": "zapier",
+          "id": "hookdeck-contract-webhook",
+          "url": "https://hkdk.events/m0t8gxe2jfe4j9",
+          "format": "generic",
           "headers": {
-            "Authorization": "Bearer your-token-here"
+            "Authorization": "Bearer your-token-here",
+            "Content-Type": "application/json"
+          },
+          "timeout": 30000,
+          "retryAttempts": 3
+        }
+      ]
+    }
+  ],
+  "walletMonitoring": [
+    {
+      "id": "wallet-transfers-monitoring",
+      "walletAddresses": [
+        "0x67e2c2e6186ae9Cc17798b5bD0c3c36Ef0209aC9"
+      ],
+      "webhooks": [
+        {
+          "id": "hookdeck-wallet-webhook",
+          "url": "https://hkdk.events/m0t8gxe2jfe4j9",
+          "format": "generic",
+          "headers": {
+            "Authorization": "Bearer your-token-here",
+            "Content-Type": "application/json"
           },
           "timeout": 30000,
           "retryAttempts": 3
@@ -31,12 +61,12 @@
     }
   ],
   "database": {
-    "url": "postgresql://user:password@localhost:5432/webhook_relay",
+    "url": "postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay",
     "poolSize": 10,
     "connectionTimeout": 5000
   },
   "redis": {
-    "url": "redis://localhost:6379",
+    "url": "redis://redis:6379",
     "keyPrefix": "webhook-relay:",
     "ttl": 3600
   },

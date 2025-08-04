@@ -5,44 +5,67 @@ import { DeliveryFactory } from '../factories';
 import { WebhookDelivery } from '../../src/types/delivery';
 
 describe('Database Integration Tests', () => {
-  let dbConnection: DatabaseConnection;
-  let deliveryQueue: DeliveryQueue;
+  let dbConnection: DatabaseConnection | null = null;
+  let deliveryQueue: DeliveryQueue | null = null;
+  let isDatabaseAvailable = false;
 
   beforeAll(async () => {
-    // Use test database
-    const testDbUrl = process.env['TEST_DATABASE_URL'] || 'postgresql://webhook_user:webhook_pass@localhost:5432/webhook_relay_test';
+    // Try multiple database URLs for different environments
+    const testDbUrls = [
+      process.env['TEST_DATABASE_URL'],
+      'postgresql://webhook_user:webhook_pass@localhost:5432/webhook_relay_test',
+      'postgresql://postgres:postgres@localhost:5432/webhook_relay_test',
+      'postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay_test'
+    ].filter(Boolean);
     
-    try {
-      console.log('Initializing database connection...');
-      dbConnection = new DatabaseConnection({
-        url: testDbUrl,
-        poolSize: 10,
-        connectionTimeout: 5000
-      });
-      
-      // Test connection
-      console.log('Testing database connection...');
-      await dbConnection.query('SELECT 1');
-      console.log('Database connection successful');
-      
-      // Run migrations
-      console.log('Running migrations...');
-      const migrationManager = new MigrationManager(dbConnection);
-      await migrationManager.migrate();
-      console.log('Migrations completed');
-      
-      // Initialize components
-      console.log('Initializing DeliveryQueue...');
-      deliveryQueue = new DeliveryQueue(dbConnection, {
-        maxConcurrentDeliveries: 50 // Higher limit for testing
-      });
-      console.log('DeliveryQueue initialized:', !!deliveryQueue);
-      
-      console.log('Database connection and DeliveryQueue initialized successfully');
-    } catch (error) {
-      console.error('Database initialization failed:', (error as Error).message);
-      console.error('Stack trace:', (error as Error).stack);
-      // Skip tests if database is not available
+    for (const testDbUrl of testDbUrls) {
+      try {
+        console.log(`Attempting to connect to database: ${testDbUrl}`);
+        dbConnection = new DatabaseConnection({
+          url: testDbUrl!,
+          poolSize: 10,
+          connectionTimeout: 3000 // Shorter timeout for faster failure detection
+        });
+        
+        // Test connection with timeout
+        await Promise.race([
+          dbConnection.query('SELECT 1'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 5000))
+        ]);
+        
+        console.log('Database connection successful');
+        isDatabaseAvailable = true;
+        
+        // Run migrations
+        console.log('Running migrations...');
+        const migrationManager = new MigrationManager(dbConnection);
+        await migrationManager.migrate();
+        console.log('Migrations completed');
+        
+        // Initialize components
+        console.log('Initializing DeliveryQueue...');
+        deliveryQueue = new DeliveryQueue(dbConnection, {
+          maxConcurrentDeliveries: 50 // Higher limit for testing
+        });
+        console.log('DeliveryQueue initialized successfully');
+        break;
+        
+      } catch (error) {
+        console.warn(`Failed to connect to ${testDbUrl}: ${(error as Error).message}`);
+        if (dbConnection) {
+          try {
+            await dbConnection.close();
+          } catch (closeError) {
+            // Ignore close errors
+          }
+          dbConnection = null;
+        }
+      }
+    }
+    
+    if (!isDatabaseAvailable) {
+      console.warn('No database connection available. Database integration tests will be skipped.');
+      console.warn('To run database tests, ensure PostgreSQL is running and accessible.');
     }
   });
 
@@ -87,7 +110,8 @@ describe('Database Integration Tests', () => {
 
   describe('Queue Persistence', () => {
     it('should persist and retrieve webhook deliveries', async () => {
-      if (!dbConnection) {
+      if (!dbConnection || !deliveryQueue) {
+        console.warn('Skipping test: Database not available');
         return;
       }
 
@@ -109,7 +133,7 @@ describe('Database Integration Tests', () => {
     });
 
     it('should handle concurrent queue operations', async () => {
-      if (!dbConnection) {
+      if (!dbConnection || !deliveryQueue) {
         return;
       }
 
@@ -120,7 +144,7 @@ describe('Database Integration Tests', () => {
       });
       
       // Enqueue all deliveries concurrently
-      await Promise.all(deliveries.map(delivery => deliveryQueue.enqueue(delivery)));
+      await Promise.all(deliveries.map(delivery => deliveryQueue!.enqueue(delivery)));
       
       // Dequeue all deliveries
       const retrieved: WebhookDelivery[] = [];
@@ -136,7 +160,7 @@ describe('Database Integration Tests', () => {
     });
 
     it('should update delivery status correctly', async () => {
-      if (!dbConnection) {
+      if (!dbConnection || !deliveryQueue) {
         return;
       }
 
@@ -159,7 +183,7 @@ describe('Database Integration Tests', () => {
     });
 
     it('should handle retry scheduling', async () => {
-      if (!dbConnection) {
+      if (!dbConnection || !deliveryQueue) {
         return;
       }
 
@@ -184,7 +208,7 @@ describe('Database Integration Tests', () => {
     });
 
     it('should handle failed deliveries', async () => {
-      if (!dbConnection) {
+      if (!dbConnection || !deliveryQueue) {
         return;
       }
 
@@ -251,7 +275,7 @@ describe('Database Integration Tests', () => {
     });
 
     it('should handle large volume of deliveries', async () => {
-      if (!dbConnection) {
+      if (!dbConnection || !deliveryQueue) {
         return;
       }
 
@@ -266,7 +290,7 @@ describe('Database Integration Tests', () => {
       const batchSize = 100;
       for (let i = 0; i < deliveries.length; i += batchSize) {
         const batch = deliveries.slice(i, i + batchSize);
-        await Promise.all(batch.map(delivery => deliveryQueue.enqueue(delivery)));
+        await Promise.all(batch.map(delivery => deliveryQueue!.enqueue(delivery)));
       }
       
       // Verify all deliveries were inserted
@@ -328,7 +352,7 @@ describe('Database Integration Tests', () => {
       
       // Execute concurrent transactions
       const promises = deliveries.map(async (delivery) => {
-        return dbConnection.transaction(async (client) => {
+        return dbConnection!.transaction(async (client) => {
           await client.query(
             'INSERT INTO deliveries (id, subscription_id, webhook_id, event_data, payload, status, attempts, max_attempts) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
             [delivery.id, delivery.subscriptionId, delivery.webhookId, JSON.stringify(delivery.event), JSON.stringify(delivery.payload), delivery.status, delivery.attempts, delivery.maxAttempts]
@@ -352,7 +376,7 @@ describe('Database Integration Tests', () => {
 
       // Create many concurrent connections (more than pool size)
       const promises = Array.from({ length: 20 }, async () => {
-        const client = await dbConnection.getClient();
+        const client = await dbConnection!.getClient();
         try {
           await client.query('SELECT 1');
           // Hold connection briefly

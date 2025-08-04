@@ -251,7 +251,7 @@ export class DeadLetterQueue {
         payload: JSON.parse(row.payload),
         attempts: 0, // Reset attempts for retry
         maxAttempts: 3, // Default retry attempts
-        status: 'pending'
+        status: 'completed'
       };
 
       // Remove from dead letter queue

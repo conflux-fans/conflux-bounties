@@ -8,9 +8,9 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 const config: DatabaseConfig = {
-  url: process.env.DATABASE_URL || 'postgresql://localhost:5432/webhook_relay',
-  poolSize: parseInt(process.env.DB_POOL_SIZE || '10'),
-  connectionTimeout: parseInt(process.env.DB_CONNECTION_TIMEOUT || '5000'),
+  url: process.env['DATABASE_URL'] || 'postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay',
+  poolSize: parseInt(process.env['DB_POOL_SIZE'] || '10'),
+  connectionTimeout: parseInt(process.env['DB_CONNECTION_TIMEOUT'] || '5000'),
 };
 
 async function main() {

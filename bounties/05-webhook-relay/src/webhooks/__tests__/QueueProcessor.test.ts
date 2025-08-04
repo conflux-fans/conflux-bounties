@@ -1,11 +1,13 @@
 import { QueueProcessor } from '../QueueProcessor';
 import { Logger } from '../../monitoring/Logger';
+import { DeadLetterQueue } from '../queue/DeadLetterQueue';
 import type { WebhookDelivery, WebhookConfig, DeliveryResult } from '../../types';
 import type { IDeliveryQueue } from '../queue/interfaces';
 import type { IWebhookSender } from '../interfaces';
 
 // Mock dependencies
 jest.mock('../../monitoring/Logger');
+jest.mock('../queue/DeadLetterQueue');
 
 describe('QueueProcessor', () => {
   let queueProcessor: QueueProcessor;
@@ -376,6 +378,352 @@ describe('QueueProcessor', () => {
       );
 
       expect(customProcessor).toBeDefined();
+    });
+  });
+
+  describe('dead letter queue functionality', () => {
+    let mockDeadLetterQueue: jest.Mocked<DeadLetterQueue>;
+    let queueProcessorWithDLQ: QueueProcessor;
+
+    beforeEach(async () => {
+      // Create mock dead letter queue
+      mockDeadLetterQueue = {
+        addFailedDelivery: jest.fn().mockResolvedValue(undefined),
+        getFailedDeliveries: jest.fn(),
+        removeFailedDelivery: jest.fn(),
+        cleanup: jest.fn(),
+        start: jest.fn(),
+        stop: jest.fn()
+      } as unknown as jest.Mocked<DeadLetterQueue>;
+
+      // Create queue processor with dead letter queue
+      queueProcessorWithDLQ = new QueueProcessor(
+        mockDeliveryQueue,
+        mockWebhookSender,
+        mockLogger,
+        {
+          deadLetterQueue: mockDeadLetterQueue
+        }
+      );
+
+      // Set up webhook config
+      queueProcessorWithDLQ.setWebhookConfig('webhook-1', sampleWebhookConfig);
+
+      await queueProcessorWithDLQ.start();
+
+      // Verify the processor started
+      expect(mockDeliveryQueue.startProcessing).toHaveBeenCalled();
+    });
+
+    it('should handle max retries exceeded with dead letter queue', async () => {
+      const exhaustedDelivery: WebhookDelivery = {
+        ...sampleDelivery,
+        attempts: 3,
+        maxAttempts: 3
+      };
+
+      // Call handleMaxRetriesExceeded directly
+      await queueProcessorWithDLQ.handleMaxRetriesExceeded(exhaustedDelivery, 'Connection timeout');
+
+      // Verify dead letter queue was called
+      expect(mockDeadLetterQueue.addFailedDelivery).toHaveBeenCalledWith(
+        exhaustedDelivery,
+        'Max retry attempts exceeded',
+        'Connection timeout'
+      );
+
+      expect(mockLogger.warn).toHaveBeenCalledWith('Delivery moved to dead letter queue', {
+        deliveryId: 'delivery-1',
+        webhookId: 'webhook-1',
+        attempts: 3,
+        maxAttempts: 3,
+        lastError: 'Connection timeout'
+      });
+    });
+
+    it('should handle dead letter queue errors gracefully', async () => {
+      const exhaustedDelivery: WebhookDelivery = {
+        ...sampleDelivery,
+        attempts: 3,
+        maxAttempts: 3
+      };
+
+      // Mock dead letter queue to fail
+      const dlqError = new Error('Dead letter queue storage failed');
+      mockDeadLetterQueue.addFailedDelivery.mockRejectedValue(dlqError);
+
+      // Call handleMaxRetriesExceeded directly
+      await queueProcessorWithDLQ.handleMaxRetriesExceeded(exhaustedDelivery, 'Connection timeout');
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Failed to add delivery to dead letter queue',
+        dlqError,
+        {
+          deliveryId: 'delivery-1',
+          webhookId: 'webhook-1'
+        }
+      );
+    });
+
+    it('should handle max retries exceeded without dead letter queue', async () => {
+      // Use processor without dead letter queue
+      const processorWithoutDLQ = new QueueProcessor(
+        mockDeliveryQueue,
+        mockWebhookSender,
+        mockLogger
+      );
+
+      const exhaustedDelivery: WebhookDelivery = {
+        ...sampleDelivery,
+        attempts: 3,
+        maxAttempts: 3
+      };
+
+      // Call handleMaxRetriesExceeded directly
+      await processorWithoutDLQ.handleMaxRetriesExceeded(exhaustedDelivery, 'Connection timeout');
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Delivery failed permanently - no dead letter queue configured',
+        undefined,
+        {
+          deliveryId: 'delivery-1',
+          webhookId: 'webhook-1',
+          attempts: 3,
+          maxAttempts: 3,
+          lastError: 'Connection timeout'
+        }
+      );
+    });
+
+    it('should get dead letter queue statistics when configured', async () => {
+      const mockStats = { totalFailed: 5, oldestEntry: new Date() };
+      mockDeadLetterQueue.getStats = jest.fn().mockResolvedValue(mockStats);
+
+      const stats = await queueProcessorWithDLQ.getDeadLetterStats();
+
+      expect(stats).toEqual(mockStats);
+      expect(mockDeadLetterQueue.getStats).toHaveBeenCalled();
+    });
+
+    it('should return null for dead letter queue statistics when not configured', async () => {
+      const processorWithoutDLQ = new QueueProcessor(
+        mockDeliveryQueue,
+        mockWebhookSender,
+        mockLogger
+      );
+
+      const stats = await processorWithoutDLQ.getDeadLetterStats();
+
+      expect(stats).toBeNull();
+    });
+
+    it('should retry delivery from dead letter queue when configured', async () => {
+      const mockDelivery = { ...sampleDelivery };
+      mockDeadLetterQueue.retryDelivery = jest.fn().mockResolvedValue(mockDelivery);
+
+      const result = await queueProcessorWithDLQ.retryFromDeadLetter('entry-123');
+
+      expect(result).toBe(true);
+      expect(mockDeadLetterQueue.retryDelivery).toHaveBeenCalledWith('entry-123');
+      expect(mockDeliveryQueue.enqueue).toHaveBeenCalledWith(mockDelivery);
+      expect(mockLogger.info).toHaveBeenCalledWith('Delivery requeued from dead letter queue', {
+        deliveryId: 'delivery-1',
+        entryId: 'entry-123'
+      });
+    });
+
+    it('should handle retry from dead letter queue when not configured', async () => {
+      const processorWithoutDLQ = new QueueProcessor(
+        mockDeliveryQueue,
+        mockWebhookSender,
+        mockLogger
+      );
+
+      const result = await processorWithoutDLQ.retryFromDeadLetter('entry-123');
+
+      expect(result).toBe(false);
+      expect(mockLogger.warn).toHaveBeenCalledWith('Cannot retry from dead letter queue - not configured');
+    });
+
+    it('should handle retry from dead letter queue when entry not found', async () => {
+      mockDeadLetterQueue.retryDelivery = jest.fn().mockResolvedValue(null);
+
+      const result = await queueProcessorWithDLQ.retryFromDeadLetter('entry-123');
+
+      expect(result).toBe(false);
+      expect(mockDeadLetterQueue.retryDelivery).toHaveBeenCalledWith('entry-123');
+      expect(mockLogger.warn).toHaveBeenCalledWith('Dead letter entry not found', {
+        entryId: 'entry-123'
+      });
+    });
+
+    it('should handle retry from dead letter queue errors', async () => {
+      const retryError = new Error('Retry operation failed');
+      mockDeadLetterQueue.retryDelivery = jest.fn().mockRejectedValue(retryError);
+
+      const result = await queueProcessorWithDLQ.retryFromDeadLetter('entry-123');
+
+      expect(result).toBe(false);
+      expect(mockLogger.error).toHaveBeenCalledWith('Failed to retry delivery from dead letter queue', retryError, {
+        entryId: 'entry-123'
+      });
+    });
+  });
+
+  describe('webhook config provider error scenarios', () => {
+    let deliveryProcessor: (delivery: WebhookDelivery) => Promise<void>;
+
+    beforeEach(async () => {
+      await queueProcessor.start();
+      deliveryProcessor = (mockDeliveryQueue.startProcessing as jest.Mock).mock.calls[0][0];
+    });
+
+    it('should handle webhook config provider that returns null', async () => {
+      const customProvider = jest.fn().mockResolvedValue(null);
+      queueProcessor.setWebhookConfigProvider(customProvider);
+
+      await expect(deliveryProcessor(sampleDelivery)).rejects.toThrow(
+        'Webhook configuration not found for ID: webhook-1'
+      );
+
+      expect(customProvider).toHaveBeenCalledWith('webhook-1');
+      expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
+    });
+
+    it('should handle webhook config provider that throws an error', async () => {
+      const providerError = new Error('Config provider database error');
+      const customProvider = jest.fn().mockRejectedValue(providerError);
+      queueProcessor.setWebhookConfigProvider(customProvider);
+
+      await expect(deliveryProcessor(sampleDelivery)).rejects.toThrow('Config provider database error');
+
+      expect(customProvider).toHaveBeenCalledWith('webhook-1');
+      expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Webhook delivery failed',
+        providerError,
+        {
+          deliveryId: 'delivery-1',
+          webhookId: 'webhook-1',
+          attempt: 1,
+          maxAttempts: 3,
+          error: 'Config provider database error',
+          processingTime: expect.any(Number)
+        }
+      );
+    });
+
+    it('should handle webhook config provider that returns invalid config', async () => {
+      const invalidConfig: WebhookConfig = {
+        ...sampleWebhookConfig,
+        url: 'invalid-url'
+      };
+
+      const customProvider = jest.fn().mockResolvedValue(invalidConfig);
+      queueProcessor.setWebhookConfigProvider(customProvider);
+
+      mockWebhookSender.validateWebhookConfig.mockReturnValue({
+        isValid: false,
+        errors: [
+          { field: 'url', message: 'Invalid URL format', value: 'invalid-url' }
+        ]
+      });
+
+      await expect(deliveryProcessor(sampleDelivery)).rejects.toThrow(
+        'Invalid webhook configuration: Invalid URL format'
+      );
+
+      expect(customProvider).toHaveBeenCalledWith('webhook-1');
+      expect(mockWebhookSender.validateWebhookConfig).toHaveBeenCalledWith(invalidConfig);
+      expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('edge cases and error paths', () => {
+    let deliveryProcessor: (delivery: WebhookDelivery) => Promise<void>;
+
+    beforeEach(async () => {
+      queueProcessor.setWebhookConfig('webhook-1', sampleWebhookConfig);
+      await queueProcessor.start();
+      deliveryProcessor = (mockDeliveryQueue.startProcessing as jest.Mock).mock.calls[0][0];
+    });
+
+    it('should handle delivery with missing event data', async () => {
+      const deliveryWithoutEvent: WebhookDelivery = {
+        ...sampleDelivery,
+        event: undefined as any
+      };
+
+      mockWebhookSender.sendWebhook.mockResolvedValue({
+        success: true,
+        statusCode: 200,
+        responseTime: 100
+      });
+
+      await deliveryProcessor(deliveryWithoutEvent);
+
+      expect(mockWebhookSender.sendWebhook).toHaveBeenCalledWith(deliveryWithoutEvent);
+      expect(mockLogger.info).toHaveBeenCalledWith('Webhook delivery successful', expect.any(Object));
+    });
+
+    it('should handle delivery with zero max attempts', async () => {
+      const deliveryWithZeroAttempts: WebhookDelivery = {
+        ...sampleDelivery,
+        maxAttempts: 0,
+        attempts: 0
+      };
+
+      mockWebhookSender.sendWebhook.mockResolvedValue({
+        success: false,
+        responseTime: 100,
+        error: 'Test error'
+      });
+
+      await expect(deliveryProcessor(deliveryWithZeroAttempts)).rejects.toThrow('Test error');
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Webhook delivery failed',
+        expect.any(Error),
+        {
+          deliveryId: 'delivery-1',
+          webhookId: 'webhook-1',
+          attempt: 1,
+          maxAttempts: 0,
+          error: 'Test error',
+          processingTime: expect.any(Number)
+        }
+      );
+    });
+
+    it('should handle webhook sender returning undefined result', async () => {
+      mockWebhookSender.sendWebhook.mockResolvedValue(undefined as any);
+
+      await expect(deliveryProcessor(sampleDelivery)).rejects.toThrow();
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Webhook delivery failed',
+        expect.any(Error),
+        expect.objectContaining({
+          deliveryId: 'delivery-1',
+          webhookId: 'webhook-1'
+        })
+      );
+    });
+
+    it('should handle webhook config validation with multiple errors', async () => {
+      mockWebhookSender.validateWebhookConfig.mockReturnValue({
+        isValid: false,
+        errors: [
+          { field: 'url', message: 'Invalid URL format', value: 'invalid-url' },
+          { field: 'timeout', message: 'Timeout must be positive', value: -1 }
+        ]
+      });
+
+      await expect(deliveryProcessor(sampleDelivery)).rejects.toThrow(
+        'Invalid webhook configuration: Invalid URL format'
+      );
+
+      expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
     });
   });
 });

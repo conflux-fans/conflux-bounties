@@ -64,7 +64,7 @@ docker-compose exec postgres psql -U webhook_user -d webhook_relay -c "SELECT 1;
    cat .env | grep DATABASE_URL
    
    # Update if incorrect
-   DATABASE_URL=postgresql://webhook_user:password@postgres:5432/webhook_relay
+   DATABASE_URL=postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay
    ```
 
 3. **Database doesn't exist:**

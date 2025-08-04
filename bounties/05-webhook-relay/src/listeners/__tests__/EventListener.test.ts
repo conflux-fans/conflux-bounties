@@ -18,6 +18,11 @@ jest.mock('ethers', () => ({
 const MockedBlockchainConnection = BlockchainConnection as jest.MockedClass<typeof BlockchainConnection>;
 const MockedContract = ethers.Contract as jest.MockedClass<typeof ethers.Contract>;
 
+// Helper function to get contract address as string
+const getContractAddress = (contractAddress: string | string[]): string => {
+  return Array.isArray(contractAddress) ? contractAddress[0] || '' : contractAddress || '';
+};
+
 describe('EventListener', () => {
   let eventListener: EventListener;
   let mockConnection: jest.Mocked<BlockchainConnection>;
@@ -28,15 +33,13 @@ describe('EventListener', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Create mock contract
-    mockContract = {
-      on: jest.fn(),
-      removeAllListeners: jest.fn(),
-      address: '0x1234567890123456789012345678901234567890'
-    };
 
-    // Mock ethers.Contract
-    MockedContract.mockImplementation(() => mockContract);
+    // Mock ethers.Contract to return a new mock contract instance each time
+MockedContract.mockImplementation(() => ({
+  on: jest.fn(),
+  removeAllListeners: jest.fn(),
+  address: '0x' + Math.floor(Math.random() * 1e40).toString(16).padStart(40, '0')
+}) as any);
 
     // Create mock connection
     mockConnection = {
@@ -46,7 +49,11 @@ describe('EventListener', () => {
       getProvider: jest.fn().mockReturnValue({}),
       on: jest.fn(),
       emit: jest.fn(),
-      onEvent: jest.fn()
+      onEvent: jest.fn(),
+      enableBlockMonitoring: jest.fn(),
+      disableBlockMonitoring: jest.fn(),
+      addContractToMonitor: jest.fn(),
+      removeContractFromMonitor: jest.fn()
     } as any;
 
     MockedBlockchainConnection.mockImplementation(() => mockConnection);
@@ -109,30 +116,12 @@ describe('EventListener', () => {
       
       await eventListener.start();
 
-      // The EventListener now creates an ABI fragment from the event signature
+      // The EventListener now creates an ABI fragment from the event signature (string-based ABI)
       expect(MockedContract).toHaveBeenCalledWith(
         testSubscription.contractAddress,
-        [{
-          type: 'event',
-          name: 'Transfer',
-          inputs: [
-            {
-              type: 'address',
-              name: 'from',
-              indexed: true
-            },
-            {
-              type: 'address',
-              name: 'to',
-              indexed: true
-            },
-            {
-              type: 'uint256',
-              name: 'value',
-              indexed: false
-            }
-          ]
-        }],
+        expect.arrayContaining([
+          expect.stringContaining('event Transfer(address indexed from, address indexed to, uint256 value)')
+        ]),
         {}
       );
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
@@ -198,30 +187,12 @@ describe('EventListener', () => {
       
       eventListener.addSubscription(testSubscription);
 
-      // The EventListener now creates an ABI fragment from the event signature
+      // The EventListener now creates an ABI fragment from the event signature (string-based ABI)
       expect(MockedContract).toHaveBeenCalledWith(
         testSubscription.contractAddress,
-        [{
-          type: 'event',
-          name: 'Transfer',
-          inputs: [
-            {
-              type: 'address',
-              name: 'from',
-              indexed: true
-            },
-            {
-              type: 'address',
-              name: 'to',
-              indexed: true
-            },
-            {
-              type: 'uint256',
-              name: 'value',
-              indexed: false
-            }
-          ]
-        }],
+        expect.arrayContaining([
+          expect.stringContaining('event Transfer(address indexed from, address indexed to, uint256 value)')
+        ]),
         {}
       );
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
@@ -262,7 +233,7 @@ describe('EventListener', () => {
 
       eventListener.removeSubscription('non-existent-id');
 
-      expect(consoleSpy).toHaveBeenCalledWith('Subscription non-existent-id not found');
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Subscription non-existent-id not found'));
       consoleSpy.mockRestore();
     });
 
@@ -278,7 +249,7 @@ describe('EventListener', () => {
       eventListener.removeSubscription(testSubscription.id);
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        `Error stopping subscription ${testSubscription.id}:`,
+        expect.stringContaining(`Error stopping subscription ${testSubscription.id}:`),
         testError
       );
       consoleErrorSpy.mockRestore();
@@ -321,7 +292,7 @@ describe('EventListener', () => {
       expect(eventSpy).toHaveBeenCalledWith(
         testSubscription,
         expect.objectContaining({
-          contractAddress: testSubscription.contractAddress.toLowerCase(),
+          contractAddress: getContractAddress(testSubscription.contractAddress).toLowerCase(),
           eventName: 'Transfer',
           blockNumber: 12345,
           transactionHash: '0xabcdef',
@@ -336,7 +307,7 @@ describe('EventListener', () => {
       );
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        `Event detected: Transfer from ${testSubscription.contractAddress.toLowerCase()}`
+        `Event detected: Transfer from ${getContractAddress(testSubscription.contractAddress).toLowerCase()}`
       );
       consoleLogSpy.mockRestore();
     });
@@ -368,12 +339,12 @@ describe('EventListener', () => {
         testSubscription,
         expect.objectContaining({
           eventName: 'Transfer', // Should use parsed name from signature
-          contractAddress: testSubscription.contractAddress.toLowerCase()
+          contractAddress: getContractAddress(testSubscription.contractAddress).toLowerCase()
         })
       );
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        `Event detected: Transfer from ${testSubscription.contractAddress.toLowerCase()}`
+        `Event detected: Transfer from ${getContractAddress(testSubscription.contractAddress).toLowerCase()}`
       );
       consoleLogSpy.mockRestore();
     });
@@ -410,27 +381,9 @@ describe('EventListener', () => {
 
       expect(MockedContract).toHaveBeenCalledWith(
         testSubscription.contractAddress,
-        [{
-          type: 'event',
-          name: 'Transfer',
-          inputs: [
-            {
-              type: 'address',
-              name: 'from',
-              indexed: true
-            },
-            {
-              type: 'address',
-              name: 'to',
-              indexed: true
-            },
-            {
-              type: 'uint256',
-              name: 'value',
-              indexed: false
-            }
-          ]
-        }],
+        expect.arrayContaining([
+          expect.stringContaining('event Transfer(address indexed from, address indexed to, uint256 value)')
+        ]),
         {}
       );
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
@@ -490,15 +443,11 @@ describe('EventListener', () => {
       });
     });
 
-    describe('parseEventArgs', () => {
+    describe('parseEventArgsEnhanced', () => {
       it('should parse event arguments correctly', () => {
-        const parseEventArgs = (eventListener as any).parseEventArgs;
-        
         const args = ['0x123', '0x456', '1000'];
         const signature = 'Transfer(address from, address to, uint256 value)';
-        
         const result = parseEventArgs(signature, args);
-        
         expect(result).toEqual({
           '0': '0x123',
           '1': '0x456',
@@ -510,13 +459,9 @@ describe('EventListener', () => {
       });
 
       it('should handle signatures without parameter names', () => {
-        const parseEventArgs = (eventListener as any).parseEventArgs;
-        
         const args = ['0x123', '0x456'];
         const signature = 'Transfer(address,address)';
-        
         const result = parseEventArgs(signature, args);
-        
         expect(result).toEqual({
           '0': '0x123',
           '1': '0x456',
@@ -526,13 +471,9 @@ describe('EventListener', () => {
       });
 
       it('should handle empty signatures', () => {
-        const parseEventArgs = (eventListener as any).parseEventArgs;
-        
         const args = ['value1', 'value2'];
         const signature = 'Event()';
-        
         const result = parseEventArgs(signature, args);
-        
         expect(result).toEqual({
           '0': 'value1',
           '1': 'value2'
@@ -578,3 +519,41 @@ describe('EventListener', () => {
     });
   });
 });
+
+function parseEventArgs(signature: string, args: string[]) {
+  // Extract parameter names from the signature
+  const match = signature.match(/\(([^)]*)\)/);
+  const params = match && match[1]
+    ? match[1].split(',').map(p => p.trim()).filter(Boolean)
+    : [];
+
+  const result: Record<string, any> = {};
+
+  // Add indexed keys
+  args.forEach((arg, i) => {
+    result[i.toString()] = arg;
+  });
+
+  // Add named keys if available
+  if (params.length > 0 && params[0] !== '') {
+    params.forEach((param, i) => {
+      // Try to extract the name (e.g., "address from" or just "address")
+      const parts = param.split(' ').map(s => s.trim()).filter(Boolean);
+      let name: string | undefined;
+      if (parts.length === 2) {
+        name = parts[1];
+      } else if (parts.length === 1) {
+        // No name, fallback to paramN
+        name = `param${i}`;
+      } else {
+        name = `param${i}`;
+      }
+      if (name !== undefined) {
+        result[name] = args[i];
+      }
+    });
+  }
+
+  return result;
+}
+

@@ -68,11 +68,11 @@ validate_docker_compose() {
     fi
     
     # Use docker-compose config to validate syntax
-    if docker-compose config > /dev/null 2>&1; then
+    if docker compose config > /dev/null 2>&1; then
         log_success "docker-compose.yml syntax is valid"
     else
         log_error "docker-compose.yml syntax is invalid"
-        docker-compose config
+        docker compose config
         return 1
     fi
 }

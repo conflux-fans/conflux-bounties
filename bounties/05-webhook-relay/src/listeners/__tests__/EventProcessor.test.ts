@@ -21,6 +21,7 @@ describe('EventProcessor', () => {
   let mockEventListener: jest.Mocked<EventListener>;
   let mockFilterEngine: jest.Mocked<FilterEngine>;
   let mockDeliveryQueue: jest.Mocked<DeliveryQueue>;
+
   let mockDb: jest.Mocked<DatabaseConnection>;
 
   const mockNetworkConfig: NetworkConfig = {
@@ -67,12 +68,21 @@ describe('EventProcessor', () => {
     mockFilterEngine = new FilterEngine() as jest.Mocked<FilterEngine>;
     mockDeliveryQueue = new DeliveryQueue(mockDb) as jest.Mocked<DeliveryQueue>;
 
+
     // Setup mock implementations
     mockEventListener.start = jest.fn().mockResolvedValue(undefined);
     mockEventListener.stop = jest.fn().mockResolvedValue(undefined);
     mockEventListener.addSubscription = jest.fn();
     mockEventListener.removeSubscription = jest.fn();
     mockEventListener.isListening = jest.fn().mockReturnValue(true);
+    mockEventListener.getEventStatistics = jest.fn().mockReturnValue({
+      uptime: 0,
+      totalEvents: 0,
+      eventsByContract: {},
+      eventsByType: {},
+      lastEventTime: null,
+      subscriptionCount: 0
+    });
     mockEventListener.on = jest.fn();
     mockEventListener.emit = jest.fn();
 
@@ -89,10 +99,13 @@ describe('EventProcessor', () => {
       maxConcurrentDeliveries: 10
     });
 
+    mockDb.query = jest.fn().mockResolvedValue({ rows: [] });
+
     // Create EventProcessor instance
     eventProcessor = new EventProcessor(
       mockEventListener,
       mockFilterEngine,
+      mockDb,
       mockDeliveryQueue
     );
   });
@@ -106,7 +119,7 @@ describe('EventProcessor', () => {
       expect(mockEventListener.start).toHaveBeenCalled();
       expect(mockDeliveryQueue.startProcessing).toHaveBeenCalled();
       expect(eventProcessor.isProcessing()).toBe(true);
-      expect(consoleSpy).toHaveBeenCalledWith('EventProcessor started successfully');
+      expect(consoleSpy).toHaveBeenCalledWith('🚀 EventProcessor started successfully - Real-time processing active!');
       
       consoleSpy.mockRestore();
     });
@@ -120,7 +133,7 @@ describe('EventProcessor', () => {
       expect(mockDeliveryQueue.stopProcessing).toHaveBeenCalled();
       expect(mockEventListener.stop).toHaveBeenCalled();
       expect(eventProcessor.isProcessing()).toBe(false);
-      expect(consoleSpy).toHaveBeenCalledWith('EventProcessor stopped');
+      expect(consoleSpy).toHaveBeenCalledWith('✅ EventProcessor stopped');
       
       consoleSpy.mockRestore();
     });
@@ -324,16 +337,24 @@ describe('EventProcessor', () => {
 
       const stats = await eventProcessor.getStats();
 
-      expect(stats).toEqual({
-        isProcessing: true,
-        subscriptionCount: 1,
-        queueStats: expect.objectContaining({
-          pendingCount: 0,
-          processingCount: 0,
-          completedCount: 0,
-          failedCount: 0
+      expect(stats).toEqual(
+        expect.objectContaining({
+          isProcessing: true,
+          subscriptionCount: 1,
+          queueStats: expect.objectContaining({
+            pendingCount: 0,
+            processingCount: 0,
+            completedCount: 0,
+            failedCount: 0
+          }),
+          eventStats: expect.any(Object),
+          filteredEvents: expect.any(Number),
+          processedEvents: expect.any(Number),
+          uptime: expect.any(Number),
+          webhooksFailed: expect.any(Number),
+          webhooksSent: expect.any(Number)
         })
-      });
+      );
     });
   });
 
@@ -410,43 +431,172 @@ describe('EventProcessor', () => {
     // may not be properly tracked by the coverage tool
   });
 
-  describe('Webhook Processing', () => {
-    it('should process webhook deliveries', async () => {
-      const mockDelivery = {
-        id: 'delivery-1',
-        subscriptionId: 'sub-1',
-        webhookId: 'webhook-1',
-        event: mockEvent,
-        payload: mockEvent,
-        attempts: 0,
-        maxAttempts: 3,
-        status: 'pending' as const
-      };
+  describe('WebhookDelivery Creation and Enqueue', () => {
+    beforeEach(() => {
+      eventProcessor.addSubscription(mockSubscription);
+    });
 
+    it('should create WebhookDelivery objects for matching events', async () => {
+      mockFilterEngine.evaluateFilters.mockReturnValue(true);
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-      const eventProcessorSpy = jest.spyOn(eventProcessor, 'emit');
 
-      // Start the event processor to trigger startProcessing call
-      await eventProcessor.start();
+      // Simulate event from EventListener
+      const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
+        .find(call => call[0] === 'event')?.[1];
+      
+      expect(eventHandler).toBeDefined();
+      
+      await eventHandler(mockSubscription, mockEvent);
 
-      // Get the processor function that was passed to startProcessing
-      const processorCall = (mockDeliveryQueue.startProcessing as jest.Mock).mock.calls[0];
-      expect(processorCall).toBeDefined();
+      // Verify that enqueue was called with a WebhookDelivery object
+      expect(mockDeliveryQueue.enqueue).toHaveBeenCalledTimes(1);
       
-      const processor = processorCall[0];
-      
-      // Call the processor function directly
-      await processor(mockDelivery);
+      const enqueuedDelivery = (mockDeliveryQueue.enqueue as jest.Mock).mock.calls[0][0];
+      expect(enqueuedDelivery).toMatchObject({
+        id: expect.any(String),
+        subscriptionId: mockSubscription.id,
+        webhookId: mockWebhookConfig.id,
+        event: mockEvent,
+        payload: expect.objectContaining({
+          type: mockSubscription.id,
+          contractAddress: mockEvent.contractAddress,
+          eventName: mockEvent.eventName,
+          blockNumber: mockEvent.blockNumber,
+          transactionHash: mockEvent.transactionHash,
+          logIndex: mockEvent.logIndex,
+          args: mockEvent.args,
+          timestamp: mockEvent.timestamp.toISOString(),
+          webhookId: mockWebhookConfig.id,
+          subscriptionId: mockSubscription.id
+        }),
+        attempts: 0,
+        maxAttempts: mockWebhookConfig.retryAttempts,
+        status: 'pending'
+      });
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Processing webhook delivery')
+        expect.stringContaining(`Enqueued webhook delivery ${enqueuedDelivery.id} for webhook ${mockWebhookConfig.id}`)
       );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Completed webhook delivery')
-      );
-      expect(eventProcessorSpy).toHaveBeenCalledWith('deliveryProcessed', mockDelivery);
       
       consoleSpy.mockRestore();
+    });
+
+    it('should create multiple WebhookDelivery objects for subscriptions with multiple webhooks', async () => {
+      const webhook2: WebhookConfig = {
+        id: 'webhook-2',
+        url: 'https://example2.com/webhook',
+        format: 'zapier',
+        headers: {},
+        timeout: 30000,
+        retryAttempts: 5
+      };
+
+      const multiWebhookSubscription: EventSubscription = {
+        ...mockSubscription,
+        webhooks: [mockWebhookConfig, webhook2]
+      };
+
+      eventProcessor.removeSubscription(mockSubscription.id);
+      eventProcessor.addSubscription(multiWebhookSubscription);
+
+      mockFilterEngine.evaluateFilters.mockReturnValue(true);
+
+      const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
+        .find(call => call[0] === 'event')?.[1];
+      
+      await eventHandler(multiWebhookSubscription, mockEvent);
+
+      // Verify that enqueue was called twice
+      expect(mockDeliveryQueue.enqueue).toHaveBeenCalledTimes(2);
+      
+      const firstDelivery = (mockDeliveryQueue.enqueue as jest.Mock).mock.calls[0][0];
+      const secondDelivery = (mockDeliveryQueue.enqueue as jest.Mock).mock.calls[1][0];
+
+      expect(firstDelivery.webhookId).toBe(mockWebhookConfig.id);
+      expect(firstDelivery.maxAttempts).toBe(mockWebhookConfig.retryAttempts);
+      
+      expect(secondDelivery.webhookId).toBe(webhook2.id);
+      expect(secondDelivery.maxAttempts).toBe(webhook2.retryAttempts);
+    });
+
+    it('should not enqueue deliveries for filtered events', async () => {
+      mockFilterEngine.evaluateFilters.mockReturnValue(false);
+
+      const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
+        .find(call => call[0] === 'event')?.[1];
+      
+      await eventHandler(mockSubscription, mockEvent);
+
+      expect(mockDeliveryQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should handle enqueue errors gracefully', async () => {
+      mockFilterEngine.evaluateFilters.mockReturnValue(true);
+      mockDeliveryQueue.enqueue.mockRejectedValue(new Error('Enqueue failed'));
+      
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+      
+      const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
+        .find(call => call[0] === 'event')?.[1];
+      
+      await eventHandler(mockSubscription, mockEvent);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error processing event for subscription'),
+        expect.any(Error)
+      );
+      
+      consoleSpy.mockRestore();
+    });
+
+    it('should create correct webhook payload structure', async () => {
+      mockFilterEngine.evaluateFilters.mockReturnValue(true);
+
+      const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
+        .find(call => call[0] === 'event')?.[1];
+      
+      await eventHandler(mockSubscription, mockEvent);
+
+      const enqueuedDelivery = (mockDeliveryQueue.enqueue as jest.Mock).mock.calls[0][0];
+      const payload = enqueuedDelivery.payload;
+
+      expect(payload).toEqual({
+        type: mockSubscription.id,
+        contractAddress: mockEvent.contractAddress,
+        eventName: mockEvent.eventName,
+        blockNumber: mockEvent.blockNumber,
+        transactionHash: mockEvent.transactionHash,
+        logIndex: mockEvent.logIndex,
+        args: mockEvent.args,
+        timestamp: mockEvent.timestamp.toISOString(),
+        webhookId: mockWebhookConfig.id,
+        subscriptionId: mockSubscription.id
+      });
+    });
+
+    it('should use default retry attempts when webhook config does not specify them', async () => {
+      const webhookWithoutRetries: WebhookConfig = {
+        ...mockWebhookConfig,
+        retryAttempts: undefined as any
+      };
+
+      const subscriptionWithoutRetries: EventSubscription = {
+        ...mockSubscription,
+        webhooks: [webhookWithoutRetries]
+      };
+
+      eventProcessor.removeSubscription(mockSubscription.id);
+      eventProcessor.addSubscription(subscriptionWithoutRetries);
+
+      mockFilterEngine.evaluateFilters.mockReturnValue(true);
+
+      const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
+        .find(call => call[0] === 'event')?.[1];
+      
+      await eventHandler(subscriptionWithoutRetries, mockEvent);
+
+      const enqueuedDelivery = (mockDeliveryQueue.enqueue as jest.Mock).mock.calls[0][0];
+      expect(enqueuedDelivery.maxAttempts).toBe(3); // Default value
     });
   });
 });

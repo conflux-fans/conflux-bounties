@@ -18,7 +18,7 @@ export class MigrationManager {
   }
 
   private loadMigrations(): void {
-    // Migration 001: Initial schema
+    // Migration 001: Initial schema with VARCHAR IDs and dead letter queue
     this.migrations.push({
       version: '001',
       name: 'initial_schema',
@@ -32,7 +32,7 @@ export class MigrationManager {
 
         -- Event subscriptions configuration
         CREATE TABLE IF NOT EXISTS subscriptions (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          id VARCHAR(100) PRIMARY KEY,
           name VARCHAR(100) NOT NULL,
           contract_address VARCHAR(42) NOT NULL,
           event_signature VARCHAR(200) NOT NULL,
@@ -44,8 +44,8 @@ export class MigrationManager {
 
         -- Webhook endpoint configurations
         CREATE TABLE IF NOT EXISTS webhooks (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          subscription_id UUID REFERENCES subscriptions(id) ON DELETE CASCADE,
+          id VARCHAR(100) PRIMARY KEY,
+          subscription_id VARCHAR(100) REFERENCES subscriptions(id) ON DELETE CASCADE,
           url VARCHAR(500) NOT NULL,
           format VARCHAR(50) NOT NULL CHECK (format IN ('zapier', 'make', 'n8n', 'generic')),
           headers JSONB DEFAULT '{}',
@@ -57,9 +57,9 @@ export class MigrationManager {
 
         -- Webhook delivery queue and history
         CREATE TABLE IF NOT EXISTS deliveries (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          subscription_id UUID REFERENCES subscriptions(id),
-          webhook_id UUID REFERENCES webhooks(id),
+          id VARCHAR(100) PRIMARY KEY,
+          subscription_id VARCHAR(100) REFERENCES subscriptions(id),
+          webhook_id VARCHAR(100) REFERENCES webhooks(id),
           event_data JSONB NOT NULL,
           payload JSONB NOT NULL,
           status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
@@ -76,11 +76,24 @@ export class MigrationManager {
 
         -- System metrics and monitoring
         CREATE TABLE IF NOT EXISTS metrics (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          id VARCHAR(100) PRIMARY KEY,
           metric_name VARCHAR(100) NOT NULL,
           metric_value NUMERIC NOT NULL,
           labels JSONB DEFAULT '{}',
           timestamp TIMESTAMP DEFAULT NOW()
+        );
+
+        -- Dead letter queue for failed deliveries
+        CREATE TABLE IF NOT EXISTS dead_letter_queue (
+          id VARCHAR(100) PRIMARY KEY,
+          subscription_id VARCHAR(100),
+          webhook_id VARCHAR(100),
+          event_data JSONB NOT NULL,
+          payload JSONB NOT NULL,
+          failure_reason VARCHAR(500) NOT NULL,
+          failed_at TIMESTAMP DEFAULT NOW(),
+          attempts INTEGER NOT NULL,
+          last_error TEXT
         );
 
         -- Indexes for performance
@@ -90,41 +103,17 @@ export class MigrationManager {
         CREATE INDEX IF NOT EXISTS idx_deliveries_next_retry ON deliveries(next_retry) WHERE status = 'pending';
         CREATE INDEX IF NOT EXISTS idx_deliveries_created_at ON deliveries(created_at);
         CREATE INDEX IF NOT EXISTS idx_metrics_name_timestamp ON metrics(metric_name, timestamp);
-      `,
-      down: `
-        DROP TABLE IF EXISTS metrics CASCADE;
-        DROP TABLE IF EXISTS deliveries CASCADE;
-        DROP TABLE IF EXISTS webhooks CASCADE;
-        DROP TABLE IF EXISTS subscriptions CASCADE;
-        DROP TABLE IF EXISTS migrations CASCADE;
-      `
-    });
-
-    // Migration 002: Add dead letter queue
-    this.migrations.push({
-      version: '002',
-      name: 'add_dead_letter_queue',
-      up: `
-        -- Dead letter queue for failed deliveries
-        CREATE TABLE IF NOT EXISTS dead_letter_queue (
-          id UUID PRIMARY KEY,
-          subscription_id UUID,
-          webhook_id UUID,
-          event_data JSONB NOT NULL,
-          payload JSONB NOT NULL,
-          failure_reason VARCHAR(500) NOT NULL,
-          failed_at TIMESTAMP DEFAULT NOW(),
-          attempts INTEGER NOT NULL,
-          last_error TEXT
-        );
-
-        -- Indexes for dead letter queue
         CREATE INDEX IF NOT EXISTS idx_dead_letter_failed_at ON dead_letter_queue(failed_at);
         CREATE INDEX IF NOT EXISTS idx_dead_letter_webhook_id ON dead_letter_queue(webhook_id);
         CREATE INDEX IF NOT EXISTS idx_dead_letter_failure_reason ON dead_letter_queue(failure_reason);
       `,
       down: `
         DROP TABLE IF EXISTS dead_letter_queue CASCADE;
+        DROP TABLE IF EXISTS metrics CASCADE;
+        DROP TABLE IF EXISTS deliveries CASCADE;
+        DROP TABLE IF EXISTS webhooks CASCADE;
+        DROP TABLE IF EXISTS subscriptions CASCADE;
+        DROP TABLE IF EXISTS migrations CASCADE;
       `
     });
   }
@@ -137,7 +126,7 @@ export class MigrationManager {
         applied_at TIMESTAMP DEFAULT NOW()
       );
     `;
-    
+
     await this.db.query(createMigrationsTable);
   }
 
@@ -160,13 +149,13 @@ export class MigrationManager {
     try {
       // Execute the migration SQL
       await client.query(migration.up);
-      
+
       // Record the migration as applied
       await client.query(
         'INSERT INTO migrations (version, name) VALUES ($1, $2)',
         [migration.version, migration.name]
       );
-      
+
       console.log(`Migration ${migration.version} (${migration.name}) applied successfully`);
     } catch (error) {
       throw new Error(`Failed to apply migration ${migration.version}: ${error}`);
@@ -177,10 +166,10 @@ export class MigrationManager {
     try {
       // Execute the rollback SQL
       await client.query(migration.down);
-      
+
       // Remove the migration record
       await client.query('DELETE FROM migrations WHERE version = $1', [migration.version]);
-      
+
       console.log(`Migration ${migration.version} (${migration.name}) rolled back successfully`);
     } catch (error) {
       throw new Error(`Failed to rollback migration ${migration.version}: ${error}`);
@@ -190,56 +179,56 @@ export class MigrationManager {
   async migrate(): Promise<void> {
     await this.initializeMigrationsTable();
     const pendingMigrations = await this.getPendingMigrations();
-    
+
     if (pendingMigrations.length === 0) {
       console.log('No pending migrations');
       return;
     }
 
     console.log(`Running ${pendingMigrations.length} pending migrations...`);
-    
+
     for (const migration of pendingMigrations) {
       await this.db.transaction(async (client) => {
         await this.runMigration(migration, client);
       });
     }
-    
+
     console.log('All migrations completed successfully');
   }
 
   async rollback(targetVersion?: string): Promise<void> {
     const appliedVersions = await this.getAppliedMigrations();
-    
+
     if (appliedVersions.length === 0) {
       console.log('No migrations to rollback');
       return;
     }
 
     // If no target version specified, rollback the last migration
-    const versionsToRollback = targetVersion 
+    const versionsToRollback = targetVersion
       ? appliedVersions.filter(v => v > targetVersion).reverse()
       : [appliedVersions[appliedVersions.length - 1]];
 
     console.log(`Rolling back ${versionsToRollback.length} migrations...`);
-    
+
     for (const version of versionsToRollback) {
       const migration = this.migrations.find(m => m.version === version);
       if (!migration) {
         throw new Error(`Migration ${version} not found`);
       }
-      
+
       await this.db.transaction(async (client) => {
         await this.rollbackMigration(migration, client);
       });
     }
-    
+
     console.log('Rollback completed successfully');
   }
 
   async getStatus(): Promise<{ applied: string[], pending: string[] }> {
     const applied = await this.getAppliedMigrations();
     const pending = (await this.getPendingMigrations()).map(m => m.version);
-    
+
     return { applied, pending };
   }
 }

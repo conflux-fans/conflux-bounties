@@ -7,15 +7,24 @@ beforeAll(() => {
   process.env['NODE_ENV'] = 'test';
   process.env['LOG_LEVEL'] = 'error'; // Reduce log noise in tests
   
-  // Set test database URL if not provided
+  // Set test database URL if not provided - try multiple options
   if (!process.env['TEST_DATABASE_URL']) {
-    process.env['TEST_DATABASE_URL'] = 'postgresql://webhook_user:webhook_pass@localhost:5432/webhook_relay_test';
+    // Try localhost first (for local development), then postgres (for Docker)
+    const testDbOptions = [
+      'postgresql://webhook_user:webhook_pass@localhost:5432/webhook_relay_test',
+      'postgresql://postgres:postgres@localhost:5432/webhook_relay_test',
+      'postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay_test'
+    ];
+    process.env['TEST_DATABASE_URL'] = testDbOptions[0];
   }
   
   // Set test Redis URL if not provided
   if (!process.env['TEST_REDIS_URL']) {
-    process.env['TEST_REDIS_URL'] = 'redis://localhost:6379/1';
+    process.env['TEST_REDIS_URL'] = 'redis://redis:6379/1';
   }
+  
+  // Increase timeout for integration tests
+  jest.setTimeout(30000);
 });
 
 afterAll(() => {

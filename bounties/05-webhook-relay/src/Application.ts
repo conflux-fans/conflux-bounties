@@ -323,6 +323,7 @@ export class Application extends EventEmitter {
       this.eventProcessor = new EventProcessor(
         this.eventListener,
         this.filterEngine,
+        this.databaseConnection,
         this.deliveryQueue
       );
 
@@ -439,8 +440,8 @@ export class Application extends EventEmitter {
     this.logger.info('Starting queue processing');
 
     try {
-      await this.queueProcessor.start();
-      this.logger.info('Queue processing started');
+      // Note: Queue processing is not needed since EventListener handles webhook delivery directly
+      this.logger.info('Queue processing skipped - using direct webhook delivery');
     } catch (error) {
       throw new Error(`Failed to start queue processing: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -546,10 +547,22 @@ export class Application extends EventEmitter {
 
     signals.forEach(signal => {
       const handler = async () => {
+        console.log(`\n🛑 Received ${signal}, initiating graceful shutdown...`);
         this.logger.info(`Received ${signal}, initiating graceful shutdown`);
+
+        // Display final status before shutdown
+        if (this.eventProcessor) {
+          try {
+            console.log('\n📊 Final Status Report:');
+            this.eventProcessor.displayProcessorStatus();
+          } catch (error) {
+            console.log('Could not display final status:', error);
+          }
+        }
 
         // Set a timeout for graceful shutdown
         const shutdownTimeout = setTimeout(() => {
+          console.log('⚠️ Graceful shutdown timeout, forcing exit');
           this.logger.error('Graceful shutdown timeout, forcing exit');
           process.exit(1);
         }, this.options.gracefulShutdownTimeout);
@@ -557,8 +570,10 @@ export class Application extends EventEmitter {
         try {
           await this.stop();
           clearTimeout(shutdownTimeout);
+          console.log('✅ Graceful shutdown completed');
           process.exit(0);
         } catch (error) {
+          console.log('❌ Error during graceful shutdown:', error);
           this.logger.error('Error during graceful shutdown', error as Error);
           clearTimeout(shutdownTimeout);
           process.exit(1);

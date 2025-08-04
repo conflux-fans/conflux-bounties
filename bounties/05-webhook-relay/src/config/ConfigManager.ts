@@ -176,23 +176,27 @@ export class ConfigManager extends EventEmitter implements IConfigManager {
       const fsWatch = require('fs').watch;
       const watcher = fsWatch(this.configPath, { signal: this.watcherAbortController.signal });
 
-      (async () => {
-        try {
-          for await (const event of watcher) {
-            if (event.eventType === 'change') {
-              try {
-                await this.reloadConfig();
-              } catch (error) {
-                this.emit('error', new Error(`Failed to reload configuration: ${error instanceof Error ? error.message : String(error)}`));
-              }
-            }
-          }
-        } catch (error) {
-          if ((error as any).name !== 'AbortError') {
-            this.emit('error', new Error(`Configuration watcher error: ${error instanceof Error ? error.message : String(error)}`));
+      // Handle watcher events using EventEmitter pattern
+      watcher.on('change', async (eventType: string) => {
+        if (eventType === 'change') {
+          try {
+            await this.reloadConfig();
+          } catch (error) {
+            this.emit('error', new Error(`Failed to reload configuration: ${error instanceof Error ? error.message : String(error)}`));
           }
         }
-      })();
+      });
+
+      watcher.on('error', (error: Error) => {
+        if ((error as any).name !== 'AbortError') {
+          this.emit('error', new Error(`Configuration watcher error: ${error instanceof Error ? error.message : String(error)}`));
+        }
+      });
+
+      // Handle abort signal
+      this.watcherAbortController.signal.addEventListener('abort', () => {
+        watcher.close();
+      });
     } catch (error) {
       // In test environment or if fs.watch is not available, skip watching
       if (process.env['NODE_ENV'] !== 'test') {

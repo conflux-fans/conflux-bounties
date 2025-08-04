@@ -13,8 +13,8 @@ export interface BlockchainEvent {
 
 export interface EventSubscription {
   id: string;
-  contractAddress: string;
-  eventSignature: string;
+  contractAddress: string | string[]; // Support both single address and array of addresses
+  eventSignature: string | string[];  // Support both single signature and array of signatures
   filters: Record<string, any>;
   webhooks: WebhookConfig[];
 }

@@ -522,4 +522,192 @@ describe('WebhookSender', () => {
       expect(result.error).toBe('Webhook configuration not found for ID: webhook-1');
     });
   });
+
+  describe('Circuit Breaker Integration', () => {
+    it('should use circuit breaker to prevent delivery when open', async () => {
+      const delivery = createMockDelivery();
+      const validConfig = createMockConfig();
+
+      webhookSender.setWebhookConfigForTesting('webhook-1', validConfig);
+
+      // Get the circuit breaker and force it to open state
+      const circuitBreaker = (webhookSender as any).getCircuitBreaker('webhook-1');
+      
+      // Mock circuit breaker to be in open state
+      circuitBreaker.canExecute = jest.fn().mockReturnValue(false);
+      circuitBreaker.getStats = jest.fn().mockReturnValue({
+        state: 'open',
+        nextAttemptTime: new Date(Date.now() + 60000).toISOString()
+      });
+
+      const result = await webhookSender.sendWebhook(delivery);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Circuit breaker is open for webhook webhook-1');
+      expect(mockHttpClient.post).not.toHaveBeenCalled();
+      expect(mockDeliveryTracker.trackDelivery).toHaveBeenCalledWith(delivery, result);
+    });
+
+    it('should record success in circuit breaker on successful delivery', async () => {
+      const delivery = createMockDelivery();
+      const validConfig = createMockConfig();
+      const mockResult = {
+        success: true,
+        statusCode: 200,
+        responseTime: 150,
+      };
+
+      webhookSender.setWebhookConfigForTesting('webhook-1', validConfig);
+      mockHttpClient.post.mockResolvedValue(mockResult);
+
+      // Get the circuit breaker and spy on its methods
+      const circuitBreaker = (webhookSender as any).getCircuitBreaker('webhook-1');
+      circuitBreaker.canExecute = jest.fn().mockReturnValue(true);
+      circuitBreaker.recordSuccess = jest.fn();
+      circuitBreaker.recordFailure = jest.fn();
+
+      const result = await webhookSender.sendWebhook(delivery);
+
+      expect(result.success).toBe(true);
+      expect(circuitBreaker.recordSuccess).toHaveBeenCalled();
+      expect(circuitBreaker.recordFailure).not.toHaveBeenCalled();
+    });
+
+    it('should record failure in circuit breaker on failed delivery', async () => {
+      const delivery = createMockDelivery();
+      const validConfig = createMockConfig();
+      const mockResult = {
+        success: false,
+        statusCode: 500,
+        responseTime: 200,
+        error: 'Internal Server Error',
+      };
+
+      webhookSender.setWebhookConfigForTesting('webhook-1', validConfig);
+      mockHttpClient.post.mockResolvedValue(mockResult);
+
+      // Get the circuit breaker and spy on its methods
+      const circuitBreaker = (webhookSender as any).getCircuitBreaker('webhook-1');
+      circuitBreaker.canExecute = jest.fn().mockReturnValue(true);
+      circuitBreaker.recordSuccess = jest.fn();
+      circuitBreaker.recordFailure = jest.fn();
+
+      const result = await webhookSender.sendWebhook(delivery);
+
+      expect(result.success).toBe(false);
+      expect(circuitBreaker.recordFailure).toHaveBeenCalled();
+      expect(circuitBreaker.recordSuccess).not.toHaveBeenCalled();
+    });
+
+    it('should record failure in circuit breaker on HTTP client exception', async () => {
+      const delivery = createMockDelivery();
+      const validConfig = createMockConfig();
+      const httpError = new Error('Network connection failed');
+
+      webhookSender.setWebhookConfigForTesting('webhook-1', validConfig);
+      mockHttpClient.post.mockRejectedValue(httpError);
+
+      // Get the circuit breaker and spy on its methods
+      const circuitBreaker = (webhookSender as any).getCircuitBreaker('webhook-1');
+      circuitBreaker.canExecute = jest.fn().mockReturnValue(true);
+      circuitBreaker.recordSuccess = jest.fn();
+      circuitBreaker.recordFailure = jest.fn();
+
+      const result = await webhookSender.sendWebhook(delivery);
+
+      expect(result.success).toBe(false);
+      expect(circuitBreaker.recordFailure).toHaveBeenCalled();
+      expect(circuitBreaker.recordSuccess).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Payload Formatting', () => {
+    it('should format payload according to webhook format', async () => {
+      const delivery = createMockDelivery();
+      const zapierConfig = createMockConfig({ format: 'zapier' });
+      const mockResult = {
+        success: true,
+        statusCode: 200,
+        responseTime: 150,
+      };
+
+      webhookSender.setWebhookConfigForTesting('webhook-1', zapierConfig);
+      mockHttpClient.post.mockResolvedValue(mockResult);
+
+      // Mock the formatPayload method
+      const formatPayloadSpy = jest.spyOn(webhookSender as any, 'formatPayload');
+      formatPayloadSpy.mockReturnValue({ formatted: 'zapier-payload' });
+
+      await webhookSender.sendWebhook(delivery);
+
+      expect(formatPayloadSpy).toHaveBeenCalledWith(delivery.event, 'zapier');
+      expect(mockHttpClient.post).toHaveBeenCalledWith(
+        zapierConfig.url,
+        { formatted: 'zapier-payload' },
+        zapierConfig.headers,
+        zapierConfig.timeout
+      );
+
+      formatPayloadSpy.mockRestore();
+    });
+  });
+
+  describe('Private Methods Coverage', () => {
+    it('should test getCircuitBreaker method creates and reuses circuit breakers', () => {
+      const webhookId1 = 'webhook-1';
+      const webhookId2 = 'webhook-2';
+
+      // Get circuit breaker for first webhook
+      const cb1a = (webhookSender as any).getCircuitBreaker(webhookId1);
+      const cb1b = (webhookSender as any).getCircuitBreaker(webhookId1);
+
+      // Get circuit breaker for second webhook
+      const cb2 = (webhookSender as any).getCircuitBreaker(webhookId2);
+
+      // Should reuse the same circuit breaker for same webhook ID
+      expect(cb1a).toBe(cb1b);
+      
+      // Should create different circuit breakers for different webhook IDs
+      expect(cb1a).not.toBe(cb2);
+    });
+
+    it('should test formatPayload method with different formats', () => {
+      const event = {
+        contractAddress: '0x123',
+        eventName: 'Transfer',
+        blockNumber: 12345,
+        transactionHash: '0xabc',
+        logIndex: 0,
+        args: { from: '0x456', to: '0x789', value: '1000' },
+        timestamp: new Date(),
+      };
+
+      // Test generic format
+      const genericPayload = (webhookSender as any).formatPayload(event, 'generic');
+      expect(genericPayload).toEqual({
+        contractAddress: event.contractAddress,
+        eventName: event.eventName,
+        blockNumber: event.blockNumber,
+        transactionHash: event.transactionHash,
+        logIndex: event.logIndex,
+        args: event.args,
+        timestamp: event.timestamp.toISOString(),
+      });
+
+      // Test other formats (they should use the formatter system)
+      const zapierPayload = (webhookSender as any).formatPayload(event, 'zapier');
+      expect(zapierPayload).toBeDefined();
+
+      const makePayload = (webhookSender as any).formatPayload(event, 'make');
+      expect(makePayload).toBeDefined();
+
+      const n8nPayload = (webhookSender as any).formatPayload(event, 'n8n');
+      expect(n8nPayload).toBeDefined();
+    });
+
+    it('should test getWebhookConfig method returns null for unknown webhook', () => {
+      const config = (webhookSender as any).getWebhookConfig('unknown-webhook');
+      expect(config).toBeNull();
+    });
+  });
 });

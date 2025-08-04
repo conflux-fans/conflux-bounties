@@ -51,7 +51,7 @@ export class DeliveryQueue implements IDeliveryQueue {
     // Ensure delivery has required fields
     const queueDelivery: WebhookDelivery = {
       ...delivery,
-      status: 'pending',
+      status: 'completed',
       attempts: 0
     };
 

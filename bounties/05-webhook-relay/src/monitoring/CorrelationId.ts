@@ -54,5 +54,46 @@ class CorrelationIdManager {
   }
 }
 
+// Static API for easier usage and testing
+export class CorrelationId {
+  private static currentId: string | undefined;
+
+  static generate(): string {
+    return uuidv4();
+  }
+
+  static get(): string | undefined {
+    return this.currentId;
+  }
+
+  static set(id: string): void {
+    this.currentId = id;
+  }
+
+  static clear(): void {
+    this.currentId = undefined;
+  }
+
+  static async withCorrelationId<T>(
+    fn: () => T | Promise<T>,
+    id?: string
+  ): Promise<T> {
+    const previousId = this.currentId;
+    const correlationId = id || this.generate();
+    
+    try {
+      this.set(correlationId);
+      const result = await fn();
+      return result;
+    } finally {
+      if (previousId !== undefined) {
+        this.set(previousId);
+      } else {
+        this.clear();
+      }
+    }
+  }
+}
+
 export const correlationIdManager = CorrelationIdManager.getInstance();
 export { CorrelationContext };

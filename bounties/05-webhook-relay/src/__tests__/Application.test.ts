@@ -441,6 +441,142 @@ describe('Application', () => {
 
       expect(app.getStatus().status).toBe('stopped');
     });
+
+    it('should handle database initialization errors', async () => {
+      // Mock database connection to throw error
+      MockedDatabaseConnection.mockImplementation(() => {
+        throw new Error('Database connection failed');
+      });
+
+      await expect(app.start()).rejects.toThrow('Database initialization failed: Database connection failed');
+      expect(app.getStatus().status).toBe('error');
+    });
+
+    it('should handle missing configuration during database initialization', async () => {
+      const failingApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Clear the config to simulate missing configuration
+      (failingApp as any).config = null;
+
+      // Mock the initializeDatabase method to be called directly
+      const initializeDatabase = (failingApp as any).initializeDatabase.bind(failingApp);
+
+      await expect(initializeDatabase()).rejects.toThrow('Configuration not loaded');
+    });
+
+    it('should handle missing prerequisites during component initialization', async () => {
+      const failingApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Clear the config and database to simulate missing prerequisites
+      (failingApp as any).config = null;
+      (failingApp as any).databaseConnection = null;
+
+      // Mock the initializeComponents method to be called directly
+      const initializeComponents = (failingApp as any).initializeComponents.bind(failingApp);
+
+      await expect(initializeComponents()).rejects.toThrow('Prerequisites not initialized');
+    });
+
+    it('should handle missing configuration during health server start', async () => {
+      const failingApp = new Application({
+        configPath,
+        enableHealthEndpoint: true,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Clear the config to simulate missing configuration
+      (failingApp as any).config = null;
+
+      // Mock the startHealthServer method to be called directly
+      const startHealthServer = (failingApp as any).startHealthServer.bind(failingApp);
+
+      await expect(startHealthServer()).rejects.toThrow('Configuration not loaded');
+    });
+
+    it('should handle missing event processor during event processing start', async () => {
+      const failingApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Set config but clear event processor
+      (failingApp as any).config = mockConfig;
+      (failingApp as any).eventProcessor = null;
+
+      // Mock the startEventProcessing method to be called directly
+      const startEventProcessing = (failingApp as any).startEventProcessing.bind(failingApp);
+
+      await expect(startEventProcessing()).rejects.toThrow('Event processor not initialized');
+    });
+
+    it('should handle missing queue processor during queue processing start', async () => {
+      const failingApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Clear queue processor
+      (failingApp as any).queueProcessor = null;
+
+      // Mock the startQueueProcessing method to be called directly
+      const startQueueProcessing = (failingApp as any).startQueueProcessing.bind(failingApp);
+
+      await expect(startQueueProcessing()).rejects.toThrow('Queue processor not initialized');
+    });
+
+    it('should handle configuration manager errors', async () => {
+      const configErrorSpy = jest.fn();
+      app.on('configError', configErrorSpy);
+
+      // Simulate configuration manager error
+      const configManagerErrorCallback = (MockedConfigManager.prototype.on as jest.Mock).mock.calls
+        .find((call: any) => call[0] === 'error')[1];
+
+      const testError = new Error('Config manager error');
+      configManagerErrorCallback(testError);
+
+      expect(configErrorSpy).toHaveBeenCalledWith(testError);
+    });
+
+    it('should handle shutdown when already in progress', async () => {
+      await app.start();
+
+      // Set shutdown in progress flag
+      (app as any).shutdownInProgress = true;
+
+      // Try to stop again - should log warning and return early
+      await app.stop();
+
+      expect(app.getStatus().status).toBe('running'); // Should still be running since shutdown was skipped
+    });
+
+    it('should handle isRunning method correctly', async () => {
+      expect(app.isRunning()).toBe(false);
+
+      await app.start();
+      expect(app.isRunning()).toBe(true);
+
+      await app.stop();
+      expect(app.isRunning()).toBe(false);
+    });
+
+    it('should handle component status when processors are null', async () => {
+      const status = app.getStatus();
+
+      // When processors are null, their status should be false
+      expect(status.components.eventProcessor).toBe(false);
+      expect(status.components.queueProcessor).toBe(false);
+    });
   });
 
   describe('Signal Handling', () => {
@@ -467,6 +603,117 @@ describe('Application', () => {
       expect(testApp).toBeDefined();
       // The timeout is stored in private options, but we can verify the app was created successfully
     });
+
+    it('should setup signal handlers in non-test environment', () => {
+      // Temporarily change NODE_ENV to simulate non-test environment
+      const originalNodeEnv = process.env['NODE_ENV'];
+      process.env['NODE_ENV'] = 'production';
+
+      // Mock process.on to track signal handler registration
+      const originalProcessOn = process.on;
+      const processOnSpy = jest.fn();
+      process.on = processOnSpy;
+
+      try {
+        const prodApp = new Application({
+          configPath,
+          enableHealthEndpoint: false,
+          gracefulShutdownTimeout: 5000
+        });
+
+        // Verify signal handlers were registered
+        expect(processOnSpy).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+        expect(processOnSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+        expect(processOnSpy).toHaveBeenCalledWith('SIGUSR2', expect.any(Function));
+        expect(processOnSpy).toHaveBeenCalledWith('uncaughtException', expect.any(Function));
+        expect(processOnSpy).toHaveBeenCalledWith('unhandledRejection', expect.any(Function));
+
+        expect(prodApp).toBeDefined();
+      } finally {
+        // Restore original environment and process.on
+        process.env['NODE_ENV'] = originalNodeEnv;
+        process.on = originalProcessOn;
+      }
+    });
+
+    it('should handle uncaught exceptions in non-test environment', () => {
+      const originalNodeEnv = process.env['NODE_ENV'];
+      const originalProcessExit = process.exit;
+      process.env['NODE_ENV'] = 'production';
+
+      // Mock process.exit to prevent actual exit
+      const processExitSpy = jest.fn();
+      process.exit = processExitSpy as any;
+
+      const originalProcessOn = process.on;
+      let uncaughtExceptionHandler: Function;
+      process.on = jest.fn().mockImplementation((event, handler) => {
+        if (event === 'uncaughtException') {
+          uncaughtExceptionHandler = handler;
+        }
+        return process;
+      });
+
+      try {
+        new Application({
+          configPath,
+          enableHealthEndpoint: false,
+          gracefulShutdownTimeout: 5000
+        });
+
+        // Simulate uncaught exception
+        const testError = new Error('Test uncaught exception');
+        uncaughtExceptionHandler!(testError);
+
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+      } finally {
+        process.env['NODE_ENV'] = originalNodeEnv;
+        process.exit = originalProcessExit;
+        process.on = originalProcessOn;
+      }
+    });
+
+    it('should handle unhandled promise rejections in non-test environment', () => {
+      const originalNodeEnv = process.env['NODE_ENV'];
+      const originalProcessExit = process.exit;
+      process.env['NODE_ENV'] = 'production';
+
+      // Mock process.exit to prevent actual exit
+      const processExitSpy = jest.fn();
+      process.exit = processExitSpy as any;
+
+      const originalProcessOn = process.on;
+      let unhandledRejectionHandler: Function;
+      process.on = jest.fn().mockImplementation((event, handler) => {
+        if (event === 'unhandledRejection') {
+          unhandledRejectionHandler = handler;
+        }
+        return process;
+      });
+
+      try {
+        new Application({
+          configPath,
+          enableHealthEndpoint: false,
+          gracefulShutdownTimeout: 5000
+        });
+
+        // Simulate unhandled rejection - wrap in try-catch to prevent test failure
+        const testReason = 'Test unhandled rejection';
+        const testPromise = Promise.reject(testReason);
+        
+        // Suppress the promise rejection to prevent Jest from failing the test
+        testPromise.catch(() => {});
+        
+        unhandledRejectionHandler!(testReason, testPromise);
+
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+      } finally {
+        process.env['NODE_ENV'] = originalNodeEnv;
+        process.exit = originalProcessExit;
+        process.on = originalProcessOn;
+      }
+    });
   });
 
   describe('Health Server', () => {
@@ -483,6 +730,20 @@ describe('Application', () => {
       // The express mock was set up in beforeEach, so we can check if it was called
       const mockApp = MockedExpress.mock.results[MockedExpress.mock.results.length - 1]?.value;
       expect(mockApp.listen).toHaveBeenCalledWith(3001, expect.any(Function));
+    });
+
+    it('should not start health server when disabled', async () => {
+      const healthApp = new Application({
+        configPath,
+        enableHealthEndpoint: false,
+        gracefulShutdownTimeout: 5000
+      });
+
+      await healthApp.start();
+      await healthApp.stop();
+
+      // Health server should not be started
+      expect(MockedExpress).not.toHaveBeenCalled();
     });
 
     it('should handle health endpoint errors', async () => {
@@ -629,6 +890,56 @@ describe('Application', () => {
       expect(mockRes.status).toHaveBeenCalledWith(503);
 
       await healthApp.stop();
+    });
+
+    it('should handle health server close errors gracefully', async () => {
+      const healthApp = new Application({
+        configPath,
+        enableHealthEndpoint: true,
+        gracefulShutdownTimeout: 5000
+      });
+
+      // Mock server close to throw error
+      const mockServer = {
+        close: jest.fn().mockImplementation((callback) => {
+          if (callback) callback(new Error('Server close failed'));
+        })
+      };
+
+      const mockApp = {
+        get: jest.fn(),
+        listen: jest.fn().mockImplementation((_port, callback) => {
+          if (callback) callback();
+          return mockServer;
+        })
+      };
+
+      MockedExpress.mockReturnValue(mockApp as any);
+
+      await healthApp.start();
+      
+      // Should not throw error during stop
+      await healthApp.stop();
+
+      expect(healthApp.getStatus().status).toBe('stopped');
+    });
+
+    it('should handle missing health server during stop', async () => {
+      const healthApp = new Application({
+        configPath,
+        enableHealthEndpoint: true,
+        gracefulShutdownTimeout: 5000
+      });
+
+      await healthApp.start();
+      
+      // Manually clear the health server to simulate missing server
+      (healthApp as any).healthServer = null;
+      
+      // Should not throw error during stop
+      await healthApp.stop();
+
+      expect(healthApp.getStatus().status).toBe('stopped');
     });
   });
 });

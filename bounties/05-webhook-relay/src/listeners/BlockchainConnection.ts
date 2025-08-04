@@ -8,12 +8,24 @@ export class BlockchainConnection extends EventEmitter implements IBlockchainCon
   private provider: ethers.WebSocketProvider | null = null;
   private config: NetworkConfig;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000; // Start with 1 second
-  private maxReconnectDelay = 30000; // Max 30 seconds
+  private maxReconnectAttempts = 10;
+  private reconnectDelay = 2000; // Start with 2 seconds
+  private maxReconnectDelay = 60000; // Max 60 seconds
   private isConnecting = false;
   private shouldReconnect = true;
   private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private statusInterval: ReturnType<typeof setInterval> | null = null;
+  
+  // Enhanced monitoring capabilities from realtime-event-listener.js
+  private startTime = Date.now();
+  private blockCount = 0;
+  private transactionCount = 0;
+  private lastBlockNumber = 0;
+  private connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
+  private blockMonitoringEnabled = false;
+  private websocketState: number | null = null;
+  private lastBlockTime: Date | null = null;
+  private contractAddresses = new Set<string>(); // Track contracts we're monitoring
 
   constructor(config: NetworkConfig) {
     super();
@@ -27,8 +39,12 @@ export class BlockchainConnection extends EventEmitter implements IBlockchainCon
 
     this.isConnecting = true;
     this.shouldReconnect = true;
+    this.connectionStatus = 'connecting';
 
     try {
+      console.log('🚀 Starting Real-time Blockchain Connection');
+      console.log('📡 Connecting to Conflux eSpace...');
+      
       // Use WebSocket URL if provided, otherwise fall back to RPC URL
       const url = this.config.wsUrl || this.config.rpcUrl;
 
@@ -44,16 +60,35 @@ export class BlockchainConnection extends EventEmitter implements IBlockchainCon
       // Wait for connection to be established
       await this.waitForConnection();
 
+      // Get initial block number and test connection
+      this.lastBlockNumber = await this.provider.getBlockNumber();
+      console.log(`✅ Connected! Current block: ${this.lastBlockNumber}`);
+
       this.reconnectAttempts = 0;
       this.isConnecting = false;
+      this.connectionStatus = 'connected';
+      this.lastBlockTime = new Date();
 
       // Start health monitoring
       this.startHealthMonitoring();
 
+      // Start block monitoring if enabled
+      if (this.blockMonitoringEnabled) {
+        this.startBlockMonitoring();
+      }
+
+      // Start periodic status display (every 30 seconds)
+      this.statusInterval = setInterval(() => {
+        this.displayStatus();
+      }, 30000);
+
       this.emit('connected');
-      console.log(`Connected to Conflux eSpace at ${url}`);
+      console.log(`🎧 Real-time blockchain connection is now active!`);
+      console.log('⏰ Waiting for blocks and events...\n');
     } catch (error) {
       this.isConnecting = false;
+      this.connectionStatus = 'error';
+      console.error('💥 Failed to connect to blockchain:', (error as Error).message);
       this.emit('error', error);
 
       if (this.shouldReconnect) {
@@ -65,24 +100,35 @@ export class BlockchainConnection extends EventEmitter implements IBlockchainCon
   }
 
   async disconnect(): Promise<void> {
+    console.log('\n🛑 Stopping blockchain connection...');
     this.shouldReconnect = false;
+    this.connectionStatus = 'disconnected';
 
+    // Clear all intervals
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
     }
 
+    if (this.statusInterval) {
+      clearInterval(this.statusInterval);
+      this.statusInterval = null;
+    }
+
     if (this.provider) {
       try {
+        // Remove all listeners before destroying
+        this.provider.removeAllListeners();
+        console.log('📴 Removed all blockchain event listeners');
         await this.provider.destroy();
+        console.log('📴 WebSocket connection closed');
       } catch (error) {
         console.error('Error during provider cleanup:', error);
       }
       this.provider = null;
     }
-
     this.emit('disconnected');
-    console.log('Disconnected from Conflux eSpace');
+    console.log('✅ Blockchain connection stopped');
   }
 
   isConnected(): boolean {
@@ -97,36 +143,120 @@ export class BlockchainConnection extends EventEmitter implements IBlockchainCon
     return this.provider;
   }
 
+  // Enhanced monitoring methods from realtime-event-listener.js
+  enableBlockMonitoring(): void {
+    this.blockMonitoringEnabled = true;
+    if (this.isConnected()) {
+      this.startBlockMonitoring();
+    }
+  }
+
+  disableBlockMonitoring(): void {
+    this.blockMonitoringEnabled = false;
+    if (this.provider) {
+      this.provider.removeAllListeners('block');
+    }
+  }
+
+  addContractToMonitor(contractAddress: string): void {
+    this.contractAddresses.add(contractAddress.toLowerCase());
+    console.log(`📋 Added contract ${contractAddress} to monitoring list`);
+  }
+
+  removeContractFromMonitor(contractAddress: string): void {
+    this.contractAddresses.delete(contractAddress.toLowerCase());
+    console.log(`📴 Removed contract ${contractAddress} from monitoring list`);
+  }
+
+  getConnectionStatus(): {
+    status: string;
+    uptime: number;
+    blockCount: number;
+    transactionCount: number;
+    lastBlockNumber: number;
+    websocketState: number | null;
+    lastBlockTime: Date | null;
+    monitoredContracts: number;
+  } {
+    const uptime = Math.floor((Date.now() - this.startTime) / 1000);
+    return {
+      status: this.connectionStatus,
+      uptime,
+      blockCount: this.blockCount,
+      transactionCount: this.transactionCount,
+      lastBlockNumber: this.lastBlockNumber,
+      websocketState: this.provider?.websocket?.readyState || null,
+      lastBlockTime: this.lastBlockTime,
+      monitoredContracts: this.contractAddresses.size
+    };
+  }
+
+  displayStatus(): void {
+    const status = this.getConnectionStatus();
+    const minutes = Math.floor(status.uptime / 60);
+    const seconds = status.uptime % 60;
+    
+    console.log(`\n📊 Blockchain Connection Status:`);
+    console.log(`   ⏰ Uptime: ${minutes}m ${seconds}s`);
+    console.log(`   📡 Connection: ${status.status === 'connected' ? '✅ Connected' : '❌ Disconnected'}`);
+    console.log(`   📦 Blocks processed: ${status.blockCount}`);
+    console.log(`   📤 Transactions seen: ${status.transactionCount}`);
+    console.log(`   🔢 Last block: ${status.lastBlockNumber}`);
+    console.log(`   🌐 WebSocket state: ${this.getWebSocketStateText(status.websocketState)}`);
+    console.log(`   📋 Monitoring: ${status.monitoredContracts} contracts`);
+    
+    if (status.lastBlockTime) {
+      const timeSinceLastBlock = Math.floor((Date.now() - status.lastBlockTime.getTime()) / 1000);
+      console.log(`   🕐 Last block: ${timeSinceLastBlock}s ago`);
+    }
+    console.log('');
+  }
+
   private setupProviderEventHandlers(): void {
     if (!this.provider) return;
 
-    // Handle WebSocket connection events
+    // Enhanced WebSocket connection monitoring from realtime-event-listener.js
     if (this.provider.websocket) {
       const ws = this.provider.websocket as any; // Cast to any to handle WebSocket events
 
       ws.on('open', () => {
-        console.log('WebSocket connection opened');
+        console.log('✅ WebSocket connection opened');
+        this.connectionStatus = 'connected';
+        this.websocketState = 1; // OPEN
       });
 
       ws.on('close', (code: number, reason: string) => {
-        console.log(`WebSocket connection closed: ${code} - ${reason}`);
+        console.log(`\n⚠️ WebSocket connection closed: ${code} - ${reason}`);
+        this.connectionStatus = 'disconnected';
+        this.websocketState = 3; // CLOSED
         this.provider = null;
         this.emit('disconnected');
 
         if (this.shouldReconnect) {
+          console.log('🔄 Attempting to reconnect...');
           this.scheduleReconnect();
         }
       });
 
       ws.on('error', (error: Error) => {
-        console.error('WebSocket error:', error);
+        console.error(`\n❌ WebSocket error:`, error.message);
+        this.connectionStatus = 'error';
+        this.websocketState = null;
         this.emit('error', error);
+      });
+
+      // Track WebSocket state changes
+      ws.on('connecting', () => {
+        console.log('🔄 WebSocket connecting...');
+        this.connectionStatus = 'connecting';
+        this.websocketState = 0; // CONNECTING
       });
     }
 
-    // Handle provider errors
+    // Handle provider errors with enhanced logging
     this.provider.on('error', (error: Error) => {
-      console.error('Provider error:', error);
+      console.error('❌ Provider error:', error.message);
+      this.connectionStatus = 'error';
       this.emit('error', error);
     });
   }
@@ -196,16 +326,85 @@ export class BlockchainConnection extends EventEmitter implements IBlockchainCon
   }
 
   private startHealthMonitoring(): void {
-    // Check connection health every 30 seconds
+    // Enhanced health monitoring with detailed connection status
     this.healthCheckInterval = setInterval(() => {
       if (!this.isConnected()) {
-        console.warn('Health check failed: Connection lost');
+        console.warn('⚠️ Health check failed: Connection lost');
+        console.log(`   📊 WebSocket state: ${this.getWebSocketStateText(this.websocketState)}`);
+        console.log(`   🔄 Reconnect attempts: ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
         this.emit('healthCheckFailed');
 
         if (this.shouldReconnect) {
           this.scheduleReconnect();
         }
+      } else {
+        // Update WebSocket state
+        this.websocketState = this.provider?.websocket?.readyState || null;
+        
+        // Check if we haven't received blocks recently (potential connection issue)
+        if (this.lastBlockTime) {
+          const timeSinceLastBlock = Date.now() - this.lastBlockTime.getTime();
+          if (timeSinceLastBlock > 120000) { // 2 minutes without blocks
+            console.warn(`⚠️ No blocks received for ${Math.floor(timeSinceLastBlock / 1000)}s - connection may be stale`);
+          }
+        }
       }
     }, 30000);
+  }
+
+  private startBlockMonitoring(): void {
+    if (!this.provider) return;
+
+    console.log('📦 Starting basic block monitoring...');
+    
+    this.provider.on('block', async (blockNumber: number) => {
+      try {
+        this.blockCount++;
+        this.lastBlockNumber = blockNumber;
+        this.lastBlockTime = new Date();
+
+        // Get block with transaction count only
+        const block = await this.provider!.getBlock(blockNumber, false); // false = don't fetch full transactions
+        
+        if (block && block.transactions && block.transactions.length > 0) {
+          this.transactionCount += block.transactions.length;
+          
+          // Only log blocks with transactions occasionally to reduce noise
+          if (blockNumber % 5 === 0 || block.transactions.length > 10) {
+            console.log(`📦 Block ${blockNumber}: ${block.transactions.length} transactions`);
+          }
+          
+          // Emit simplified block event for further processing
+          this.emit('newBlock', {
+            blockNumber,
+            transactionCount: block.transactions.length,
+            timestamp: this.lastBlockTime
+          });
+        } else if (block) {
+          // Log empty blocks occasionally
+          if (blockNumber % 20 === 0) {
+            console.log(`📦 Block ${blockNumber} (empty)`);
+          }
+        }
+      } catch (blockError) {
+        console.error(`❌ Error processing block ${blockNumber}:`, (blockError as Error).message);
+      }
+    });
+    
+    console.log('✅ Basic block monitoring active');
+  }
+
+
+
+  private getWebSocketStateText(state: number | null): string {
+    if (state === null) return 'N/A';
+    
+    switch (state) {
+      case 0: return 'CONNECTING';
+      case 1: return 'OPEN';
+      case 2: return 'CLOSING';
+      case 3: return 'CLOSED';
+      default: return `UNKNOWN(${state})`;
+    }
   }
 }

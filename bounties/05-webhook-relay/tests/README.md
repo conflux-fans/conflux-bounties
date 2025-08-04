@@ -1,305 +1,215 @@
-# Comprehensive Test Suite
+# Test Documentation
 
-This directory contains a comprehensive test suite for the Webhook Relay System, designed to ensure reliability, performance, and correctness across all components.
+This document provides information about running tests for the webhook relay system.
 
 ## Test Structure
 
-```
-tests/
-├── factories/           # Test data factories for reproducible testing
-│   ├── EventFactory.ts     # Blockchain event test data
-│   ├── WebhookFactory.ts   # Webhook configuration test data
-│   ├── ConfigFactory.ts    # System configuration test data
-│   ├── DeliveryFactory.ts  # Webhook delivery test data
-│   └── ContractFactory.ts  # Smart contract test data
-├── e2e/                # End-to-end tests
-│   └── conflux-testnet.test.ts
-├── integration/        # Integration tests
-│   ├── database.integration.test.ts
-│   └── webhook-delivery.integration.test.ts
-├── performance/        # Performance and load tests
-│   └── high-volume.performance.test.ts
-├── setup.ts           # Global test setup and configuration
-└── README.md          # This file
-```
+The test suite is organized into several categories:
 
-## Test Types
-
-### 1. Unit Tests
-Located in `src/**/__tests__/` directories alongside source code.
-
-**Purpose**: Test individual components in isolation
-**Coverage**: All core classes and functions
-**Execution Time**: Fast (< 10 seconds total)
-
-```bash
-npm run test:unit
-```
-
-### 2. Integration Tests
-Located in `tests/integration/`
-
-**Purpose**: Test component interactions and external dependencies
-**Coverage**: Database operations, HTTP clients, queue processing
-**Requirements**: PostgreSQL and Redis services
-
-```bash
-npm run test:integration
-```
-
-**Setup Requirements**:
-```bash
-# Start PostgreSQL
-docker run -d --name postgres-test \
-  -e POSTGRES_PASSWORD=test \
-  -e POSTGRES_USER=test \
-  -e POSTGRES_DB=webhook_relay_test \
-  -p 5432:5432 postgres:13
-
-# Start Redis
-docker run -d --name redis-test \
-  -p 6379:6379 redis:6-alpine
-```
-
-### 3. End-to-End Tests
-Located in `tests/e2e/`
-
-**Purpose**: Test complete workflows with real blockchain interaction
-**Coverage**: Full system integration with Conflux testnet
-**Requirements**: Network access to Conflux testnet
-
-```bash
-# Enable E2E tests
-export CONFLUX_TESTNET_TESTS=true
-npm run test:e2e
-```
-
-### 4. Performance Tests
-Located in `tests/performance/`
-
-**Purpose**: Validate system performance under load
-**Coverage**: High-volume event processing, concurrent webhook delivery
-**Metrics**: Throughput, latency, memory usage
-
-```bash
-npm run test:performance
-```
-
-## Test Data Factories
-
-The test suite uses factory patterns to generate consistent, reproducible test data:
-
-### EventFactory
-```typescript
-// Create single event
-const event = EventFactory.createBlockchainEvent();
-
-// Create specific event types
-const transfer = EventFactory.createTransferEvent(from, to, value);
-const approval = EventFactory.createApprovalEvent(owner, spender, value);
-
-// Create batch events for load testing
-const events = EventFactory.createBatchEvents(1000);
-```
-
-### WebhookFactory
-```typescript
-// Create webhook configurations
-const webhook = WebhookFactory.createWebhookConfig();
-const zapierWebhook = WebhookFactory.createZapierWebhook();
-const makeWebhook = WebhookFactory.createMakeWebhook();
-
-// Create batch webhooks
-const webhooks = WebhookFactory.createBatchWebhooks(10);
-```
-
-### DeliveryFactory
-```typescript
-// Create webhook deliveries
-const delivery = DeliveryFactory.createWebhookDelivery();
-const pendingDelivery = DeliveryFactory.createPendingDelivery();
-const failedDelivery = DeliveryFactory.createFailedDelivery();
-
-// Create high-volume test data
-const deliveries = DeliveryFactory.createHighVolumeDeliveries(1000);
-```
+- **Unit Tests** (`src/**/__tests__/**/*.ts`): Test individual components in isolation
+- **Integration Tests** (`tests/integration/**/*.ts`): Test component interactions and external services
+- **End-to-End Tests** (`tests/e2e/**/*.ts`): Test complete workflows
+- **Performance Tests** (`tests/performance/**/*.ts`): Test system performance under load
 
 ## Running Tests
 
+### Prerequisites
+
+Before running integration tests, you need to set up the required services:
+
+1. **Database Setup**: PostgreSQL is required for database integration tests
+2. **Network Access**: Some tests require internet access to test webhook delivery
+
 ### Quick Start
+
 ```bash
-# Run all tests (excluding E2E)
+# Run all tests (unit + integration + e2e)
 npm test
+
+# Run only unit tests
+npm run test:unit
+
+# Run only integration tests
+npm run test:integration
+
+# Run only e2e tests
+npm run test:e2e
+
+# Run performance tests
+npm run test:performance
 
 # Run with coverage
 npm run test:coverage
-
-# Run specific test types
-npm run test:unit
-npm run test:integration
-npm run test:performance
 ```
 
-### Comprehensive Test Suite
+### Database Setup for Integration Tests
+
+#### Option 1: Using Docker (Recommended)
+
 ```bash
-# Run the comprehensive test script
-./scripts/run-comprehensive-tests.sh
+# Start PostgreSQL container
+./scripts/setup-test-db.sh
 
-# Run all tests including E2E
-./scripts/run-comprehensive-tests.sh --all
+# Run integration tests
+npm run test:integration
 
-# Run only specific test types
-./scripts/run-comprehensive-tests.sh --unit-only
-./scripts/run-comprehensive-tests.sh --performance-only
+# Stop database when done
+docker-compose down
 ```
+
+#### Option 2: Local PostgreSQL
+
+If you have PostgreSQL installed locally:
+
+```bash
+# Create test database
+createdb webhook_relay_test
+
+# Set environment variable
+export TEST_DATABASE_URL="postgresql://username:password@localhost:5432/webhook_relay_test"
+
+# Run tests
+npm run test:integration
+```
+
+#### Option 3: Skip Database Tests
+
+If no database is available, the integration tests will automatically skip database-dependent tests and show warnings.
+
+## Test Configuration
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NODE_ENV` | Environment mode | `test` |
-| `TEST_DATABASE_URL` | Test database connection | `postgresql://test:test@localhost:5432/webhook_relay_test` |
-| `TEST_REDIS_URL` | Test Redis connection | `redis://localhost:6379/1` |
-| `CONFLUX_TESTNET_TESTS` | Enable E2E tests | `false` |
-| `LOG_LEVEL` | Test logging level | `error` |
+- `TEST_DATABASE_URL`: PostgreSQL connection string for integration tests
+- `TEST_REDIS_URL`: Redis connection string for integration tests
+- `NODE_ENV`: Set to 'test' during test execution
+- `LOG_LEVEL`: Set to 'error' to reduce log noise during tests
 
-## Coverage Requirements
+### Test Timeouts
 
-The test suite maintains minimum coverage thresholds:
+- Unit tests: 5 seconds (default)
+- Integration tests: 30 seconds
+- Performance tests: 2 minutes
 
-- **Statements**: 80%
-- **Branches**: 80%
-- **Functions**: 80%
-- **Lines**: 80%
+## Integration Test Details
 
-Coverage reports are generated in the `coverage/` directory:
-- `coverage/lcov-report/index.html` - HTML report
-- `coverage/lcov.info` - LCOV format for CI/CD
+### Database Integration Tests
 
-## Performance Benchmarks
+Tests database operations including:
+- Connection pooling and management
+- Queue persistence and retrieval
+- Transaction handling
+- Migration system
+- Performance under load
 
-### Target Metrics
+**Requirements**: PostgreSQL database
 
-| Metric | Target | Test |
-|--------|--------|------|
-| Event Processing | 1000 events/5s | `high-volume.performance.test.ts` |
-| Webhook Delivery | 100 deliveries/s | `high-volume.performance.test.ts` |
-| Memory Usage | < 200MB baseline | All performance tests |
-| Response Time | < 100ms average | Integration tests |
+**Behavior**: If database is not available, tests are automatically skipped with warnings.
 
-### Load Testing Scenarios
+### Webhook Delivery Integration Tests
 
-1. **High Volume Events**: Process 1000+ blockchain events
-2. **Concurrent Webhooks**: Deliver 100+ webhooks simultaneously  
-3. **Large Payloads**: Handle 100KB+ webhook payloads
-4. **Failure Recovery**: Maintain performance with 30% failure rate
-5. **Memory Stability**: No memory leaks over extended runs
+Tests webhook delivery functionality including:
+- HTTP POST delivery to external endpoints
+- Retry logic and error handling
+- Different payload formats (Zapier, Make.com, n8n, generic)
+- Authentication and headers
+- Timeout handling
+- Rate limiting
 
-## Continuous Integration
+**Requirements**: Internet access to httpbin.org
 
-### GitHub Actions
-```yaml
-- name: Run Unit Tests
-  run: npm run test:unit
-
-- name: Run Integration Tests
-  run: npm run test:integration
-  services:
-    postgres:
-      image: postgres:13
-      env:
-        POSTGRES_PASSWORD: test
-    redis:
-      image: redis:6-alpine
-
-- name: Generate Coverage
-  run: npm run test:coverage
-
-- name: Upload Coverage
-  uses: codecov/codecov-action@v1
-```
-
-### Local Development
-```bash
-# Watch mode for development
-npm run test:watch
-
-# Run tests before commit
-npm run test:coverage
-```
+**Behavior**: If external services are unreachable, tests are automatically skipped with warnings.
 
 ## Troubleshooting
 
-### Common Issues
+### Database Connection Issues
 
-1. **Database Connection Errors**
-   ```bash
-   # Check PostgreSQL is running
-   pg_isready -h localhost -p 5432
-   
-   # Start test database
-   docker run -d --name postgres-test -e POSTGRES_PASSWORD=test -p 5432:5432 postgres:13
-   ```
+If you see errors like "getaddrinfo EAI_AGAIN postgres":
 
-2. **Redis Connection Errors**
-   ```bash
-   # Check Redis is running
-   redis-cli ping
-   
-   # Start test Redis
-   docker run -d --name redis-test -p 6379:6379 redis:6-alpine
-   ```
+1. Ensure PostgreSQL is running
+2. Check connection string in `TEST_DATABASE_URL`
+3. Try running `./scripts/setup-test-db.sh`
+4. Verify Docker is installed and running
 
-3. **E2E Test Failures**
-   ```bash
-   # Enable E2E tests
-   export CONFLUX_TESTNET_TESTS=true
-   
-   # Check network connectivity
-   curl -s https://evmtestnet.confluxrpc.com
-   ```
+### Network Connectivity Issues
 
-4. **Performance Test Timeouts**
-   ```bash
-   # Increase Jest timeout
-   export JEST_TIMEOUT=120000
-   
-   # Run with more memory
-   node --max-old-space-size=4096 node_modules/.bin/jest
-   ```
+If webhook tests fail with ENOTFOUND or ECONNREFUSED:
 
-### Debug Mode
+1. Check internet connectivity
+2. Verify httpbin.org is accessible
+3. Tests will automatically skip if external services are unreachable
+
+### Test Flakiness
+
+Some integration tests may be flaky due to:
+- Network latency
+- External service availability
+- Database connection timing
+
+The tests include retry logic and graceful degradation to minimize flakiness.
+
+## Test Data Factories
+
+The test suite uses factory patterns for creating test data:
+
+- `EventFactory`: Creates blockchain events
+- `WebhookFactory`: Creates webhook configurations
+- `DeliveryFactory`: Creates webhook deliveries
+- `ConfigFactory`: Creates system configurations
+- `ContractFactory`: Creates contract configurations
+
+## Coverage Requirements
+
+- Minimum 80% coverage for all components
+- Target 97%+ overall coverage
+- Coverage reports available in `coverage/` directory
+
+## Continuous Integration
+
+For CI environments:
+
 ```bash
-# Run tests with debug output
-DEBUG=* npm test
+# Start services
+docker-compose up -d postgres redis
 
-# Run specific test file
-npm test -- tests/integration/database.integration.test.ts
+# Wait for services to be ready
+./scripts/setup-test-db.sh
 
-# Run with verbose output
-npm test -- --verbose
+# Run all tests
+npm run test:all
+
+# Generate coverage report
+npm run test:coverage
 ```
+
+## Performance Testing
+
+Performance tests are designed to:
+- Test high-volume event processing
+- Measure webhook delivery performance
+- Test database performance under load
+- Identify memory leaks and resource usage
+
+Run performance tests separately as they take longer:
+
+```bash
+npm run test:performance
+```
+
+## Best Practices
+
+1. **Isolation**: Each test should be independent and not rely on other tests
+2. **Cleanup**: Tests clean up after themselves (database records, connections)
+3. **Mocking**: External dependencies are mocked when appropriate
+4. **Error Handling**: Tests handle network and service failures gracefully
+5. **Documentation**: Complex test scenarios are well-documented
 
 ## Contributing
 
-When adding new features:
+When adding new tests:
 
-1. **Write unit tests** for all new functions/classes
-2. **Add integration tests** for external dependencies
-3. **Update factories** if new data types are introduced
-4. **Add performance tests** for high-throughput features
-5. **Maintain coverage** above 80% threshold
-
-### Test Naming Conventions
-
-- Unit tests: `ComponentName.test.ts`
-- Integration tests: `feature-name.integration.test.ts`
-- E2E tests: `workflow-name.e2e.test.ts`
-- Performance tests: `scenario-name.performance.test.ts`
-
-### Mock Guidelines
-
-- Use factories for test data generation
-- Mock external services (HTTP, blockchain)
-- Avoid mocking internal components in integration tests
-- Use real services for E2E tests when possible
+1. Follow the existing test structure and naming conventions
+2. Add appropriate error handling and cleanup
+3. Update this documentation if adding new test categories
+4. Ensure tests work in both local and CI environments
+5. Add factory methods for complex test data

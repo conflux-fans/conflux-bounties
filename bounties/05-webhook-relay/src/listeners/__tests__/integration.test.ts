@@ -20,14 +20,14 @@ describe('Event Processing Integration', () => {
   let db: DatabaseConnection;
 
   const mockNetworkConfig: NetworkConfig = {
-    rpcUrl: 'https://test.confluxrpc.com',
-    wsUrl: 'wss://test.confluxrpc.com/ws',
-    chainId: 1,
+    rpcUrl: 'https://evmtestnet.confluxrpc.com',
+    wsUrl: 'wss://evmtestnet.confluxrpc.com/ws',
+    chainId: 71,
     confirmations: 1
   };
 
   const mockDbConfig: DatabaseConfig = {
-    url: 'postgresql://test:test@localhost:5432/test',
+    url: 'postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay_test',
     poolSize: 5,
     connectionTimeout: 5000
   };
@@ -62,10 +62,27 @@ describe('Event Processing Integration', () => {
       processingInterval: 100
     });
 
+
+
+    // Create mock DeliveryQueue
+    const mockDeliveryQueue = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+      startProcessing: jest.fn(),
+      stopProcessing: jest.fn(),
+      getStats: jest.fn().mockResolvedValue({
+        pendingCount: 0,
+        processingCount: 0,
+        completedCount: 0,
+        failedCount: 0,
+        maxConcurrentDeliveries: 10
+      })
+    } as any;
+
     eventProcessor = new EventProcessor(
       eventListener,
       filterEngine,
-      deliveryQueue
+      db,
+      mockDeliveryQueue
     );
 
     // Mock database operations for all tests

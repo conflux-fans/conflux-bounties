@@ -663,13 +663,12 @@ describe('ConfigManager', () => {
     });
 
     it('should handle config reload errors in file watcher', async () => {
-      const mockAsyncIterator = {
-        [Symbol.asyncIterator]: async function* () {
-          yield { eventType: 'change' };
-        }
+      const mockWatcher = {
+        on: jest.fn(),
+        close: jest.fn()
       };
 
-      mockWatch.mockReturnValue(mockAsyncIterator);
+      mockWatch.mockReturnValue(mockWatcher);
 
       // First call succeeds for initial load
       mockFs.readFile.mockResolvedValueOnce(JSON.stringify(mockConfig));
@@ -681,8 +680,9 @@ describe('ConfigManager', () => {
 
       await configManager.loadConfig();
 
-      // Wait for the async iterator to process
-      await new Promise(resolve => setTimeout(resolve, 10));
+      // Simulate a change event that triggers reload
+      const changeHandler = mockWatcher.on.mock.calls.find(call => call[0] === 'change')[1];
+      await changeHandler('change');
 
       expect(errorSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -692,14 +692,12 @@ describe('ConfigManager', () => {
     });
 
     it('should handle watcher errors that are not AbortError', async () => {
-      const mockAsyncIterator = {
-        [Symbol.asyncIterator]: async function* () {
-          yield;
-          throw new Error('Watcher error');
-        }
+      const mockWatcher = {
+        on: jest.fn(),
+        close: jest.fn()
       };
 
-      mockWatch.mockReturnValue(mockAsyncIterator);
+      mockWatch.mockReturnValue(mockWatcher);
 
       const errorSpy = jest.fn();
       configManager.on('error', errorSpy);
@@ -707,8 +705,9 @@ describe('ConfigManager', () => {
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
       await configManager.loadConfig();
 
-      // Wait for the async iterator to process
-      await new Promise(resolve => setTimeout(resolve, 10));
+      // Simulate an error event that is not AbortError
+      const errorHandler = mockWatcher.on.mock.calls.find(call => call[0] === 'error')[1];
+      errorHandler(new Error('Watcher error'));
 
       expect(errorSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -718,16 +717,12 @@ describe('ConfigManager', () => {
     });
 
     it('should ignore AbortError from watcher', async () => {
-      const mockAsyncIterator = {
-        [Symbol.asyncIterator]: async function* () {
-          yield { eventType: 'change', filename: 'config.json' };
-          const error = new Error('AbortError');
-          (error as any).name = 'AbortError';
-          throw error;
-        }
+      const mockWatcher = {
+        on: jest.fn(),
+        close: jest.fn()
       };
 
-      mockWatch.mockReturnValue(mockAsyncIterator);
+      mockWatch.mockReturnValue(mockWatcher);
 
       const errorSpy = jest.fn();
       configManager.on('error', errorSpy);
@@ -735,8 +730,11 @@ describe('ConfigManager', () => {
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
       await configManager.loadConfig();
 
-      // Wait for the async iterator to process
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Simulate an AbortError event
+      const errorHandler = mockWatcher.on.mock.calls.find(call => call[0] === 'error')[1];
+      const abortError = new Error('AbortError');
+      (abortError as any).name = 'AbortError';
+      errorHandler(abortError);
 
       // Should not emit error for AbortError
       expect(errorSpy).not.toHaveBeenCalled();

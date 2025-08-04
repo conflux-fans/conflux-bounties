@@ -54,15 +54,45 @@ npm start
 
 ### Docker Deployment
 
+#### Production Environment
+
 1. Build and start with Docker Compose:
 ```bash
 docker-compose up -d
 ```
 
 This will start:
-- Webhook relay system
-- PostgreSQL database
-- Redis cache (optional)
+- Webhook relay system (port 3001)
+- PostgreSQL database (port 5432)
+- Redis cache (port 6379)
+
+#### Development Environment
+
+1. Start development environment:
+```bash
+npm run docker:dev
+```
+
+This will start:
+- Development webhook relay system (port 3000 for app, port 3002 for health checks)
+- Production webhook relay system (port 3001)
+- PostgreSQL database (port 5432)
+- Redis cache (port 6379)
+
+2. Check development health:
+```bash
+npm run docker:dev:health
+```
+
+3. View development logs:
+```bash
+npm run docker:dev:logs
+```
+
+4. Stop development environment:
+```bash
+npm run docker:dev:down
+```
 
 ## Configuration
 
@@ -79,14 +109,14 @@ Create a `config.json` file based on the example:
     "confirmations": 1
   },
   "database": {
-    "url": "postgresql://user:password@localhost:5432/webhook_relay",
+    "url": "postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay",
     "poolSize": 20,
     "connectionTimeout": 10000
   },
   "subscriptions": [
     {
       "id": "usdt-transfers",
-      "contractAddress": "0x14b2d3bc65e74dae1030eafd8ac30c533c976a9b",
+      "contractAddress": "0x1207bd45c1002dC88bf592Ced9b35ec914bCeb4e",
       "eventSignature": "Transfer(address,address,uint256)",
       "filters": {},
       "webhooks": [

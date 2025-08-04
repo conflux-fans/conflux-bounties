@@ -13,8 +13,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-HEALTH_URL="http://localhost:3001/health"
-METRICS_URL="http://localhost:3001/metrics"
+HEALTH_URL="http://127.0.0.1:3001/health"
+METRICS_URL="http://127.0.0.1:3001/metrics"
 POSTGRES_CONTAINER="webhook-relay-postgres"
 REDIS_CONTAINER="webhook-relay-redis"
 APP_CONTAINER="webhook-relay-app"
@@ -68,12 +68,12 @@ wait_for_service() {
 test_docker_compose() {
     log_info "Testing Docker Compose setup..."
     
-    if ! command -v docker-compose &> /dev/null; then
+    if ! command -v docker compose &> /dev/null; then
         log_error "docker-compose is not installed"
         return 1
     fi
     
-    if ! docker-compose --version; then
+    if ! docker compose version; then
         log_error "docker-compose is not working properly"
         return 1
     fi
@@ -126,8 +126,8 @@ test_redis_health() {
     
     # Test Redis operations
     log_info "Testing Redis operations..."
-    if docker exec $REDIS_CONTAINER redis-cli set test_key test_value > /dev/null; then
-        local value=$(docker exec $REDIS_CONTAINER redis-cli get test_key)
+    if docker exec $REDIS_CONTAINER redis-cli -a redis_pass set test_key test_value > /dev/null; then
+        local value=$(docker exec $REDIS_CONTAINER redis-cli -a redis_pass get test_key)
         if [ "$value" = "test_value" ]; then
             log_success "Redis read/write operations working"
             docker exec $REDIS_CONTAINER redis-cli del test_key > /dev/null

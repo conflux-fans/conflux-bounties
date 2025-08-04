@@ -6,18 +6,18 @@ export class ConfigFactory {
   static createSystemConfig(overrides: Partial<SystemConfig> = {}): SystemConfig {
     return {
       network: {
-        rpcUrl: 'https://evm.confluxrpc.com',
-        wsUrl: 'wss://evm.confluxrpc.com/ws',
-        chainId: 1030,
+        rpcUrl: 'https://evmtestnet.confluxrpc.com',
+        wsUrl: 'wss://evmtestnet.confluxrpc.com/ws',
+        chainId: 71,
         confirmations: 1
       },
       database: {
-        url: 'postgresql://test:test@localhost:5432/webhook_relay_test',
+        url: 'postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay_test',
         poolSize: 10,
         connectionTimeout: 30000
       },
       redis: {
-        url: 'redis://localhost:6379',
+        url: 'redis://redis:6379',
         keyPrefix: 'webhook_relay:test:',
         ttl: 3600
       },

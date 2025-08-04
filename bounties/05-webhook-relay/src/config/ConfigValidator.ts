@@ -94,16 +94,54 @@ export class ConfigValidator implements IConfigValidator {
       errors.push({ field: `${fieldPrefix}.id`, message: 'Subscription ID is required and must be a string', value: subscription.id });
     }
 
-    // Validate contract address
-    if (!subscription.contractAddress || typeof subscription.contractAddress !== 'string') {
-      errors.push({ field: `${fieldPrefix}.contractAddress`, message: 'Contract address is required and must be a string', value: subscription.contractAddress });
-    } else if (!this.isValidEthereumAddress(subscription.contractAddress)) {
-      errors.push({ field: `${fieldPrefix}.contractAddress`, message: 'Contract address must be a valid Ethereum address', value: subscription.contractAddress });
+    // Validate contract address (support both string and array formats)
+    if (!subscription.contractAddress) {
+      errors.push({ field: `${fieldPrefix}.contractAddress`, message: 'Contract address is required', value: subscription.contractAddress });
+    } else if (typeof subscription.contractAddress === 'string') {
+      // Single contract address
+      if (!this.isValidEthereumAddress(subscription.contractAddress)) {
+        errors.push({ field: `${fieldPrefix}.contractAddress`, message: 'Contract address must be a valid Ethereum address', value: subscription.contractAddress });
+      }
+    } else if (Array.isArray(subscription.contractAddress)) {
+      // Multiple contract addresses
+      if (subscription.contractAddress.length === 0) {
+        errors.push({ field: `${fieldPrefix}.contractAddress`, message: 'Contract address array cannot be empty', value: subscription.contractAddress });
+      } else {
+        subscription.contractAddress.forEach((address: any, index: number) => {
+          if (typeof address !== 'string') {
+            errors.push({ field: `${fieldPrefix}.contractAddress[${index}]`, message: 'Contract address must be a string', value: address });
+          } else if (!this.isValidEthereumAddress(address)) {
+            errors.push({ field: `${fieldPrefix}.contractAddress[${index}]`, message: 'Contract address must be a valid Ethereum address', value: address });
+          }
+        });
+      }
+    } else {
+      errors.push({ field: `${fieldPrefix}.contractAddress`, message: 'Contract address must be a string or array of strings', value: subscription.contractAddress });
     }
 
-    // Validate event signature
-    if (!subscription.eventSignature || typeof subscription.eventSignature !== 'string') {
-      errors.push({ field: `${fieldPrefix}.eventSignature`, message: 'Event signature is required and must be a string', value: subscription.eventSignature });
+    // Validate event signature (support both string and array formats)
+    if (!subscription.eventSignature) {
+      errors.push({ field: `${fieldPrefix}.eventSignature`, message: 'Event signature is required', value: subscription.eventSignature });
+    } else if (typeof subscription.eventSignature === 'string') {
+      // Single event signature - validate format
+      if (!this.isValidEventSignature(subscription.eventSignature)) {
+        errors.push({ field: `${fieldPrefix}.eventSignature`, message: 'Event signature must be in valid format (e.g., "Transfer(address,address,uint256)")', value: subscription.eventSignature });
+      }
+    } else if (Array.isArray(subscription.eventSignature)) {
+      // Multiple event signatures
+      if (subscription.eventSignature.length === 0) {
+        errors.push({ field: `${fieldPrefix}.eventSignature`, message: 'Event signature array cannot be empty', value: subscription.eventSignature });
+      } else {
+        subscription.eventSignature.forEach((signature: any, index: number) => {
+          if (typeof signature !== 'string') {
+            errors.push({ field: `${fieldPrefix}.eventSignature[${index}]`, message: 'Event signature must be a string', value: signature });
+          } else if (!this.isValidEventSignature(signature)) {
+            errors.push({ field: `${fieldPrefix}.eventSignature[${index}]`, message: 'Event signature must be in valid format (e.g., "Transfer(address,address,uint256)")', value: signature });
+          }
+        });
+      }
+    } else {
+      errors.push({ field: `${fieldPrefix}.eventSignature`, message: 'Event signature must be a string or array of strings', value: subscription.eventSignature });
     }
 
     // Validate filters (optional)
@@ -193,5 +231,11 @@ export class ConfigValidator implements IConfigValidator {
   private isValidEthereumAddress(address: string): boolean {
     // Basic Ethereum address validation (40 hex characters with 0x prefix)
     return /^0x[a-fA-F0-9]{40}$/.test(address);
+  }
+
+  private isValidEventSignature(signature: string): boolean {
+    // Basic event signature validation (EventName(param1,param2,...))
+    // Allow for indexed parameters and parameter names
+    return /^[a-zA-Z_][a-zA-Z0-9_]*\s*\([^)]*\)$/.test(signature.trim());
   }
 }

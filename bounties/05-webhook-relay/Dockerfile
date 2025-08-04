@@ -51,7 +51,7 @@ RUN mkdir -p /app/logs /app/data && \
 USER webhook-relay
 
 # Expose health check port
-EXPOSE 3001
+EXPOSE 3000 3001 9229
 
 # Set environment variables
 ENV NODE_ENV=production

@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Event subscriptions configuration
 CREATE TABLE IF NOT EXISTS subscriptions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id VARCHAR(100) PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   contract_address VARCHAR(42) NOT NULL,
   event_signature VARCHAR(200) NOT NULL,
@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 
 -- Webhook endpoint configurations
 CREATE TABLE IF NOT EXISTS webhooks (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subscription_id UUID REFERENCES subscriptions(id) ON DELETE CASCADE,
+  id VARCHAR(100) PRIMARY KEY,
+  subscription_id VARCHAR(100) REFERENCES subscriptions(id) ON DELETE CASCADE,
   url VARCHAR(500) NOT NULL,
   format VARCHAR(50) NOT NULL CHECK (format IN ('zapier', 'make', 'n8n', 'generic')),
   headers JSONB DEFAULT '{}',
@@ -31,9 +31,9 @@ CREATE TABLE IF NOT EXISTS webhooks (
 
 -- Webhook delivery queue and history
 CREATE TABLE IF NOT EXISTS deliveries (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subscription_id UUID REFERENCES subscriptions(id),
-  webhook_id UUID REFERENCES webhooks(id),
+  id VARCHAR(100) PRIMARY KEY,
+  subscription_id VARCHAR(100) REFERENCES subscriptions(id),
+  webhook_id VARCHAR(100) REFERENCES webhooks(id),
   event_data JSONB NOT NULL,
   payload JSONB NOT NULL,
   status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS deliveries (
 
 -- System metrics and monitoring
 CREATE TABLE IF NOT EXISTS metrics (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id VARCHAR(100) PRIMARY KEY,
   metric_name VARCHAR(100) NOT NULL,
   metric_value NUMERIC NOT NULL,
   labels JSONB DEFAULT '{}',
@@ -87,32 +87,3 @@ CREATE TRIGGER update_subscriptions_updated_at
 -- Insert some example data for testing (optional)
 -- This will only run if the subscriptions table is empty
 DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM subscriptions LIMIT 1) THEN
-        -- Insert example subscription
-        INSERT INTO subscriptions (id, name, contract_address, event_signature, filters, active)
-        VALUES (
-            uuid_generate_v4(),
-            'USDT Transfer Monitor',
-            '0x14b2d3bc65e74dae1030eafd8ac30c533c976a9b',
-            'Transfer(address,address,uint256)',
-            '{"value": {"operator": "gt", "value": "1000000000000000000"}}',
-            true
-        );
-        
-        -- Insert example webhook for the subscription
-        INSERT INTO webhooks (subscription_id, url, format, headers, timeout, retry_attempts, active)
-        SELECT 
-            s.id,
-            'https://hooks.zapier.com/hooks/catch/123456/abcdef/',
-            'zapier',
-            '{"Authorization": "Bearer your-token-here"}',
-            30000,
-            3,
-            true
-        FROM subscriptions s
-        WHERE s.name = 'USDT Transfer Monitor';
-        
-        RAISE NOTICE 'Example subscription and webhook inserted for testing';
-    END IF;
-END $$;
