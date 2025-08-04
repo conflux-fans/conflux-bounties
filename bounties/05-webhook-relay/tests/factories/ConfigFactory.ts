@@ -72,37 +72,4 @@ export class ConfigFactory {
       }
     });
   }
-
-  static createMainnetConfig(): SystemConfig {
-    return this.createSystemConfig({
-      network: {
-        rpcUrl: 'https://evm.confluxrpc.com',
-        wsUrl: 'wss://evm.confluxrpc.com/ws',
-        chainId: 1030,
-        confirmations: 3
-      }
-    });
-  }
-
-  static createHighVolumeConfig(): SystemConfig {
-    return this.createSystemConfig({
-      options: {
-        maxConcurrentWebhooks: 100,
-        defaultRetryAttempts: 5,
-        defaultRetryDelay: 500,
-        webhookTimeout: 10000,
-        queueProcessingInterval: 100
-      }
-    });
-  }
-
-  static createMultiSubscriptionConfig(subscriptionCount: number): SystemConfig {
-    const subscriptions = Array.from({ length: subscriptionCount }, (_, index) => 
-      this.createEventSubscription({
-        contractAddress: `0x${(index + 1).toString(16).padStart(40, '0')}`
-      })
-    );
-
-    return this.createSystemConfig({ subscriptions });
-  }
 }

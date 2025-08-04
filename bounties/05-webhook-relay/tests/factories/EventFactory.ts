@@ -25,20 +25,6 @@ export class EventFactory {
     });
   }
 
-  static createApprovalEvent(owner: string, spender: string, value: string): BlockchainEvent {
-    return this.createBlockchainEvent({
-      eventName: 'Approval',
-      args: { owner, spender, value }
-    });
-  }
-
-  static createCustomEvent(eventName: string, args: Record<string, any>): BlockchainEvent {
-    return this.createBlockchainEvent({
-      eventName,
-      args
-    });
-  }
-
   static createBatchEvents(count: number, baseEvent?: Partial<BlockchainEvent>): BlockchainEvent[] {
     return Array.from({ length: count }, (_, index) => 
       this.createBlockchainEvent({

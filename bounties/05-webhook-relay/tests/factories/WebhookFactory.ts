@@ -27,26 +27,6 @@ export class WebhookFactory {
     });
   }
 
-  static createMakeWebhook(url?: string): WebhookConfig {
-    return this.createWebhookConfig({
-      url: url || 'https://hook.integromat.com/abcdef123456',
-      format: 'make',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-  }
-
-  static createN8nWebhook(url?: string): WebhookConfig {
-    return this.createWebhookConfig({
-      url: url || 'https://n8n.example.com/webhook/test',
-      format: 'n8n',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-  }
-
   static createBatchWebhooks(count: number, baseConfig?: Partial<WebhookConfig>): WebhookConfig[] {
     return Array.from({ length: count }, (_, index) => 
       this.createWebhookConfig({
@@ -55,25 +35,5 @@ export class WebhookFactory {
         id: uuidv4()
       })
     );
-  }
-
-  static createWebhookWithAuth(authType: 'bearer' | 'basic' | 'api-key', token: string): WebhookConfig {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-
-    switch (authType) {
-      case 'bearer':
-        headers['Authorization'] = `Bearer ${token}`;
-        break;
-      case 'basic':
-        headers['Authorization'] = `Basic ${token}`;
-        break;
-      case 'api-key':
-        headers['X-API-Key'] = token;
-        break;
-    }
-
-    return this.createWebhookConfig({ headers });
   }
 }

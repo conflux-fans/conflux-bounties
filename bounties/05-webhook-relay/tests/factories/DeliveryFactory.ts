@@ -33,36 +33,6 @@ export class DeliveryFactory {
     });
   }
 
-  static createProcessingDelivery(): WebhookDelivery {
-    return this.createWebhookDelivery({
-      status: 'processing',
-      attempts: 1
-    });
-  }
-
-  static createCompletedDelivery(): WebhookDelivery {
-    return this.createWebhookDelivery({
-      status: 'completed',
-      attempts: 1
-    });
-  }
-
-  static createFailedDelivery(): WebhookDelivery {
-    return this.createWebhookDelivery({
-      status: 'failed',
-      attempts: 3,
-      maxAttempts: 3
-    });
-  }
-
-  static createRetryDelivery(retryAt: Date): WebhookDelivery {
-    return this.createWebhookDelivery({
-      status: 'pending',
-      attempts: 1,
-      nextRetry: retryAt
-    });
-  }
-
   static createBatchDeliveries(count: number, baseDelivery?: Partial<WebhookDelivery>): WebhookDelivery[] {
     return Array.from({ length: count }, () => 
       this.createWebhookDelivery({
