@@ -11,9 +11,18 @@ jest.mock('../BlockchainConnection');
 jest.mock('ethers', () => ({
   ethers: {
     Contract: jest.fn(),
-    EventLog: jest.fn()
+    EventLog: jest.fn(),
+    formatEther: jest.fn().mockReturnValue('1.0')
   }
 }));
+
+// Mock fs to prevent config.json reading errors
+jest.mock('fs', () => ({
+  readFileSync: jest.fn().mockReturnValue('{"subscriptions": [], "walletMonitoring": []}')
+}));
+
+// Mock fetch for webhook testing
+global.fetch = jest.fn();
 
 const MockedBlockchainConnection = BlockchainConnection as jest.MockedClass<typeof BlockchainConnection>;
 const MockedContract = ethers.Contract as jest.MockedClass<typeof ethers.Contract>;
@@ -33,27 +42,43 @@ describe('EventListener', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
+    // Create mock contract instance
+    mockContract = {
+      on: jest.fn(),
+      off: jest.fn(),
+      removeAllListeners: jest.fn(),
+      address: '0x' + Math.floor(Math.random() * 1e40).toString(16).padStart(40, '0')
+    };
 
-    // Mock ethers.Contract to return a new mock contract instance each time
-MockedContract.mockImplementation(() => ({
-  on: jest.fn(),
-  removeAllListeners: jest.fn(),
-  address: '0x' + Math.floor(Math.random() * 1e40).toString(16).padStart(40, '0')
-}) as any);
+    // Mock ethers.Contract to return the mock contract instance
+    MockedContract.mockImplementation(() => mockContract);
+
+    // Create mock provider
+    const mockProvider = {
+      on: jest.fn(),
+      getBlock: jest.fn(),
+      getTransaction: jest.fn()
+    };
 
     // Create mock connection
     mockConnection = {
       connect: jest.fn().mockResolvedValue(undefined),
       disconnect: jest.fn().mockResolvedValue(undefined),
       isConnected: jest.fn().mockReturnValue(true),
-      getProvider: jest.fn().mockReturnValue({}),
+      getProvider: jest.fn().mockReturnValue(mockProvider),
       on: jest.fn(),
       emit: jest.fn(),
       onEvent: jest.fn(),
       enableBlockMonitoring: jest.fn(),
       disableBlockMonitoring: jest.fn(),
       addContractToMonitor: jest.fn(),
-      removeContractFromMonitor: jest.fn()
+      removeContractFromMonitor: jest.fn(),
+      getConnectionStatus: jest.fn().mockReturnValue({
+        status: 'connected',
+        blockCount: 100,
+        transactionCount: 50,
+        monitoredContracts: 2
+      })
     } as any;
 
     MockedBlockchainConnection.mockImplementation(() => mockConnection);
@@ -116,13 +141,13 @@ MockedContract.mockImplementation(() => ({
       
       await eventListener.start();
 
-      // The EventListener now creates an ABI fragment from the event signature (string-based ABI)
+      // The EventListener creates an ABI with event signatures prefixed with "event"
       expect(MockedContract).toHaveBeenCalledWith(
         testSubscription.contractAddress,
         expect.arrayContaining([
-          expect.stringContaining('event Transfer(address indexed from, address indexed to, uint256 value)')
+          'event Transfer(address indexed from, address indexed to, uint256 value)'
         ]),
-        {}
+        expect.any(Object)
       );
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
     });
@@ -169,7 +194,7 @@ MockedContract.mockImplementation(() => ({
       
       await eventListener.stop();
 
-      expect(mockContract.removeAllListeners).toHaveBeenCalled();
+      expect(mockContract.off).toHaveBeenCalled();
     });
   });
 
@@ -187,13 +212,13 @@ MockedContract.mockImplementation(() => ({
       
       eventListener.addSubscription(testSubscription);
 
-      // The EventListener now creates an ABI fragment from the event signature (string-based ABI)
+      // The EventListener creates an ABI with event signatures prefixed with "event"
       expect(MockedContract).toHaveBeenCalledWith(
         testSubscription.contractAddress,
         expect.arrayContaining([
-          expect.stringContaining('event Transfer(address indexed from, address indexed to, uint256 value)')
+          'event Transfer(address indexed from, address indexed to, uint256 value)'
         ]),
-        {}
+        expect.any(Object)
       );
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
     });
@@ -225,7 +250,7 @@ MockedContract.mockImplementation(() => ({
 
       const subscriptions = eventListener.getSubscriptions();
       expect(subscriptions).toHaveLength(0);
-      expect(mockContract.removeAllListeners).toHaveBeenCalled();
+      expect(mockContract.off).toHaveBeenCalled();
     });
 
     it('should handle removal of non-existent subscription', () => {
@@ -241,8 +266,8 @@ MockedContract.mockImplementation(() => ({
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
       const testError = new Error('Failed to remove listeners');
       
-      // Mock removeAllListeners to throw an error
-      mockContract.removeAllListeners.mockImplementation(() => {
+      // Mock off to throw an error
+      mockContract.off.mockImplementation(() => {
         throw testError;
       });
 
@@ -262,7 +287,7 @@ MockedContract.mockImplementation(() => ({
       eventListener.addSubscription(testSubscription);
     });
 
-    it('should handle contract events correctly', () => {
+    it('should handle contract events correctly', async () => {
       const eventSpy = jest.fn();
       const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
       eventListener.on('event', eventSpy);
@@ -286,8 +311,15 @@ MockedContract.mockImplementation(() => ({
       const eventHandler = mockContract.on.mock.calls.find((call: any) => call[0] === 'Transfer')?.[1];
       expect(eventHandler).toBeDefined();
 
+      // Create a proper event object with fragment property
+      const mockEvent = {
+        ...mockEventLog,
+        fragment: { name: 'Transfer' },
+        log: mockEventLog
+      };
+
       // Call the event handler
-      eventHandler(...eventArgs, mockEventLog);
+      await eventHandler(...eventArgs, mockEvent);
 
       expect(eventSpy).toHaveBeenCalledWith(
         testSubscription,
@@ -298,21 +330,21 @@ MockedContract.mockImplementation(() => ({
           transactionHash: '0xabcdef',
           logIndex: 0,
           args: expect.objectContaining({
-            '0': eventArgs[0],
-            '1': eventArgs[1],
-            '2': eventArgs[2]
+            arg0: eventArgs[0],
+            arg1: eventArgs[1],
+            arg2: eventArgs[2]
           }),
           timestamp: expect.any(Date)
         })
       );
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        `Event detected: Transfer from ${getContractAddress(testSubscription.contractAddress).toLowerCase()}`
+        expect.stringContaining('🚨 Contract EVENT #')
       );
       consoleLogSpy.mockRestore();
     });
 
-    it('should handle contract events without eventName property', () => {
+    it('should handle contract events without eventName property', async () => {
       const eventSpy = jest.fn();
       const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
       eventListener.on('event', eventSpy);
@@ -332,8 +364,15 @@ MockedContract.mockImplementation(() => ({
       const eventHandler = mockContract.on.mock.calls.find((call: any) => call[0] === 'Transfer')?.[1];
       expect(eventHandler).toBeDefined();
 
+      // Create a proper event object with fragment property
+      const mockEvent = {
+        ...mockEventLog,
+        fragment: { name: 'Transfer' },
+        log: mockEventLog
+      };
+
       // Call the event handler
-      eventHandler(...eventArgs, mockEventLog);
+      await eventHandler(...eventArgs, mockEvent);
 
       expect(eventSpy).toHaveBeenCalledWith(
         testSubscription,
@@ -344,7 +383,7 @@ MockedContract.mockImplementation(() => ({
       );
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        `Event detected: Transfer from ${getContractAddress(testSubscription.contractAddress).toLowerCase()}`
+        expect.stringContaining('🚨 Contract EVENT #')
       );
       consoleLogSpy.mockRestore();
     });
@@ -382,9 +421,9 @@ MockedContract.mockImplementation(() => ({
       expect(MockedContract).toHaveBeenCalledWith(
         testSubscription.contractAddress,
         expect.arrayContaining([
-          expect.stringContaining('event Transfer(address indexed from, address indexed to, uint256 value)')
+          'event Transfer(address indexed from, address indexed to, uint256 value)'
         ]),
-        {}
+        expect.any(Object)
       );
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
     });
@@ -397,7 +436,7 @@ MockedContract.mockImplementation(() => ({
       const disconnectedHandler = mockConnection.on.mock.calls.find((call: any) => call[0] === 'disconnected')?.[1];
       if (disconnectedHandler) disconnectedHandler();
 
-      expect(mockContract.removeAllListeners).toHaveBeenCalled();
+      expect(mockContract.off).toHaveBeenCalled();
     });
 
     it('should emit error on connection error', () => {
@@ -516,6 +555,567 @@ MockedContract.mockImplementation(() => ({
       expect(subscriptions).toHaveLength(2);
       expect(subscriptions).toContain(testSubscription);
       expect(subscriptions).toContain(subscription2);
+    });
+  });
+
+  describe('configuration loading', () => {
+    const fs = require('fs');
+
+    it('should load subscriptions from config.json', async () => {
+      const configData = {
+        subscriptions: [{
+          id: 'config-subscription',
+          contractAddress: '0x1234567890123456789012345678901234567890',
+          eventSignature: 'Transfer(address indexed from, address indexed to, uint256 value)',
+          filters: {},
+          webhooks: [{ 
+            id: 'webhook1', 
+            url: 'https://example.com/webhook',
+            format: 'generic' as const,
+            headers: {},
+            timeout: 5000,
+            retryAttempts: 3
+          }]
+        }],
+        walletMonitoring: []
+      };
+      
+      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
+      
+      await eventListener.start();
+      
+      const subscriptions = eventListener.getSubscriptions();
+      expect(subscriptions).toHaveLength(1);
+      expect(subscriptions[0]?.id).toBe('config-subscription');
+    });
+
+    it('should handle invalid config.json gracefully', async () => {
+      fs.readFileSync.mockImplementation(() => {
+        throw new Error('File not found');
+      });
+      
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      
+      await eventListener.start();
+      
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error loading configuration:'),
+        expect.any(Error)
+      );
+      
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should handle malformed JSON in config.json', async () => {
+      fs.readFileSync.mockReturnValue('invalid json');
+      
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      
+      await eventListener.start();
+      
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error loading configuration:'),
+        expect.any(Error)
+      );
+      
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should handle config without subscriptions', async () => {
+      fs.readFileSync.mockReturnValue('{}');
+      
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      
+      await eventListener.start();
+      
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('No subscriptions found in config.json')
+      );
+      
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should skip invalid subscription configurations', async () => {
+      const configData = {
+        subscriptions: [
+          { id: 'invalid-subscription' }, // Missing required fields
+          {
+            id: 'valid-subscription',
+            contractAddress: '0x1234567890123456789012345678901234567890',
+            webhooks: [{ 
+              id: 'webhook1', 
+              url: 'https://example.com/webhook',
+              format: 'generic' as const,
+              headers: {},
+              timeout: 5000,
+              retryAttempts: 3
+            }]
+          }
+        ]
+      };
+      
+      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
+      
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      
+      await eventListener.start();
+      
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Invalid subscription configuration:'),
+        expect.objectContaining({ id: 'invalid-subscription' })
+      );
+      
+      const subscriptions = eventListener.getSubscriptions();
+      expect(subscriptions).toHaveLength(1);
+      expect(subscriptions[0]?.id).toBe('valid-subscription');
+      
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should not duplicate existing subscriptions from config', async () => {
+      eventListener.addSubscription(testSubscription);
+      
+      const configData = {
+        subscriptions: [{
+          id: testSubscription.id, // Same ID as existing subscription
+          contractAddress: '0x9999999999999999999999999999999999999999',
+          webhooks: [{ 
+            id: 'webhook1', 
+            url: 'https://example.com/webhook',
+            format: 'generic' as const,
+            headers: {},
+            timeout: 5000,
+            retryAttempts: 3
+          }]
+        }]
+      };
+      
+      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
+      
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      
+      await eventListener.start();
+      
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`Subscription ${testSubscription.id} already exists, skipping config version`)
+      );
+      
+      const subscriptions = eventListener.getSubscriptions();
+      expect(subscriptions).toHaveLength(1);
+      expect(subscriptions[0]?.contractAddress).toBe(testSubscription.contractAddress); // Original subscription preserved
+      
+      consoleLogSpy.mockRestore();
+    });
+  });
+
+  describe('wallet monitoring', () => {
+    const fs = require('fs');
+    let mockProvider: any;
+
+    beforeEach(() => {
+      mockProvider = {
+        on: jest.fn(),
+        getBlock: jest.fn(),
+        getTransaction: jest.fn()
+      };
+      mockConnection.getProvider.mockReturnValue(mockProvider);
+    });
+
+    it('should start wallet monitoring from config', async () => {
+      const configData = {
+        subscriptions: [],
+        walletMonitoring: [{
+          id: 'wallet-monitor-1',
+          walletAddresses: ['0x1111111111111111111111111111111111111111'],
+          webhooks: [{ 
+            id: 'webhook1', 
+            url: 'https://example.com/webhook',
+            format: 'generic' as const,
+            headers: {},
+            timeout: 5000,
+            retryAttempts: 3
+          }]
+        }]
+      };
+      
+      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
+      
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      
+      await eventListener.start();
+      
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Found 1 wallet monitoring configuration(s)')
+      );
+      expect(mockProvider.on).toHaveBeenCalledWith('block', expect.any(Function));
+      
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should handle wallet monitoring without configuration', async () => {
+      const configData = { subscriptions: [] };
+      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
+      
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      
+      await eventListener.start();
+      
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining('No wallet monitoring configuration found in config.json')
+      );
+      
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should skip invalid wallet monitoring configurations', async () => {
+      const configData = {
+        subscriptions: [],
+        walletMonitoring: [
+          { id: 'invalid-wallet-monitor' }, // Missing required fields
+          {
+            id: 'valid-wallet-monitor',
+            walletAddresses: ['0x1111111111111111111111111111111111111111'],
+            webhooks: [{ 
+              id: 'webhook1', 
+              url: 'https://example.com/webhook',
+              format: 'generic' as const,
+              headers: {},
+              timeout: 5000,
+              retryAttempts: 3
+            }]
+          }
+        ]
+      };
+      
+      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
+      
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      
+      await eventListener.start();
+      
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Invalid wallet monitoring configuration:'),
+        expect.objectContaining({ id: 'invalid-wallet-monitor' })
+      );
+      
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should handle wallet transfer events', async () => {
+      const configData = {
+        subscriptions: [],
+        walletMonitoring: [{
+          id: 'wallet-monitor-1',
+          walletAddresses: ['0x1111111111111111111111111111111111111111'],
+          webhooks: [{ 
+            id: 'webhook1', 
+            url: 'https://example.com/webhook',
+            format: 'generic' as const,
+            headers: {},
+            timeout: 5000,
+            retryAttempts: 3
+          }]
+        }]
+      };
+      
+      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
+      
+      // Mock fetch for webhook calls
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        statusText: 'OK'
+      });
+      
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      
+      await eventListener.start();
+      
+      // Get the block event handler
+      const blockHandler = mockProvider.on.mock.calls.find((call: any) => call[0] === 'block')?.[1];
+      expect(blockHandler).toBeDefined();
+      
+      // Mock block data
+      const mockBlock = {
+        transactions: ['0xabc123']
+      };
+      
+      const mockTransaction = {
+        hash: '0xabc123',
+        from: '0x1111111111111111111111111111111111111111',
+        to: '0x2222222222222222222222222222222222222222',
+        value: BigInt('1000000000000000000'), // 1 ETH
+        gasLimit: '21000',
+        gasPrice: '20000000000',
+        nonce: 1
+      };
+      
+      mockProvider.getBlock.mockResolvedValue(mockBlock);
+      mockProvider.getTransaction.mockResolvedValue(mockTransaction);
+      
+      // Trigger block event
+      await blockHandler(12345);
+      
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining('🚨 WALLET TRANSFER #')
+      );
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://example.com/webhook',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json'
+          }),
+          body: expect.stringContaining('wallet-monitor-1')
+        })
+      );
+      
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should handle wallet monitoring errors gracefully', async () => {
+      const configData = {
+        subscriptions: [],
+        walletMonitoring: [{
+          id: 'wallet-monitor-1',
+          walletAddresses: ['0x1111111111111111111111111111111111111111'],
+          webhooks: [{ 
+            id: 'webhook1', 
+            url: 'https://example.com/webhook',
+            format: 'generic' as const,
+            headers: {},
+            timeout: 5000,
+            retryAttempts: 3
+          }]
+        }]
+      };
+      
+      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
+      mockConnection.getProvider.mockReturnValue(null);
+      
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      
+      await eventListener.start();
+      
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to start wallet transfer monitoring:'),
+        expect.any(Error)
+      );
+      
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe('webhook delivery', () => {
+    beforeEach(async () => {
+      await eventListener.start();
+      eventListener.addSubscription({
+        ...testSubscription,
+        webhooks: [
+          { 
+            id: 'webhook1', 
+            url: 'https://example.com/webhook1',
+            format: 'generic' as const,
+            headers: {},
+            timeout: 5000,
+            retryAttempts: 3
+          },
+          { 
+            id: 'webhook2', 
+            url: 'https://example.com/webhook2',
+            format: 'generic' as const,
+            headers: {},
+            timeout: 5000,
+            retryAttempts: 3
+          }
+        ]
+      });
+    });
+
+    it('should send webhooks successfully', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        statusText: 'OK'
+      });
+      
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      
+      // Trigger an event
+      const eventHandler = mockContract.on.mock.calls.find((call: any) => call[0] === 'Transfer')?.[1];
+      const mockEvent = {
+        fragment: { name: 'Transfer' },
+        log: {
+          address: testSubscription.contractAddress,
+          blockNumber: 12345,
+          transactionHash: '0xabcdef',
+          index: 0
+        }
+      };
+      
+      await eventHandler('0x123', '0x456', '1000', mockEvent);
+      
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining('✅ Webhook #1 sent successfully!')
+      );
+      
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should handle webhook delivery failures', async () => {
+      (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
+      
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      
+      // Trigger an event
+      const eventHandler = mockContract.on.mock.calls.find((call: any) => call[0] === 'Transfer')?.[1];
+      const mockEvent = {
+        fragment: { name: 'Transfer' },
+        log: {
+          address: testSubscription.contractAddress,
+          blockNumber: 12345,
+          transactionHash: '0xabcdef',
+          index: 0
+        }
+      };
+      
+      await eventHandler('0x123', '0x456', '1000', mockEvent);
+      
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('❌ Webhook delivery error:'),
+        'Network error'
+      );
+      
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe('event statistics and monitoring', () => {
+    beforeEach(async () => {
+      await eventListener.start();
+      eventListener.addSubscription(testSubscription);
+    });
+
+    it('should track event statistics', async () => {
+      // Trigger an event
+      const eventHandler = mockContract.on.mock.calls.find((call: any) => call[0] === 'Transfer')?.[1];
+      const mockEvent = {
+        fragment: { name: 'Transfer' },
+        log: {
+          address: testSubscription.contractAddress,
+          blockNumber: 12345,
+          transactionHash: '0xabcdef',
+          index: 0
+        }
+      };
+      
+      await eventHandler('0x123', '0x456', '1000', mockEvent);
+      
+      const stats = eventListener.getEventStatistics();
+      expect(stats.totalEvents).toBe(1);
+      expect(stats.eventsByType).toHaveProperty('Transfer', 1);
+      const contractAddress = Array.isArray(testSubscription.contractAddress) 
+        ? testSubscription.contractAddress[0] 
+        : testSubscription.contractAddress;
+      expect(stats.eventsByContract).toHaveProperty(contractAddress?.toLowerCase() || '', 1);
+      expect(stats.lastEventTime).toBeInstanceOf(Date);
+    });
+
+    it('should display event status', () => {
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      
+      eventListener.displayEventStatus();
+      
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining('📊 Event Listener Status:')
+      );
+      
+      consoleLogSpy.mockRestore();
+    });
+  });
+
+  describe('error handling edge cases', () => {
+    it('should handle event processing errors gracefully', async () => {
+      await eventListener.start();
+      eventListener.addSubscription(testSubscription);
+      
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      
+      // Get the event handler
+      const eventHandler = mockContract.on.mock.calls.find((call: any) => call[0] === 'Transfer')?.[1];
+      expect(eventHandler).toBeDefined();
+      
+      // Call with invalid arguments to trigger error handling
+      await eventHandler(); // No arguments
+      
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('❌ Error handling contract event:'),
+        expect.any(Error)
+      );
+      
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should handle BigInt values in event arguments', async () => {
+      await eventListener.start();
+      eventListener.addSubscription(testSubscription);
+      
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      
+      // Trigger an event with BigInt values
+      const eventHandler = mockContract.on.mock.calls.find((call: any) => call[0] === 'Transfer')?.[1];
+      const mockEvent = {
+        fragment: { name: 'Transfer' },
+        log: {
+          address: testSubscription.contractAddress,
+          blockNumber: 12345,
+          transactionHash: '0xabcdef',
+          index: 0
+        }
+      };
+      
+      const bigIntValue = BigInt('1000000000000000000');
+      await eventHandler('0x123', '0x456', bigIntValue, mockEvent);
+      
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining('value: 1000000000000000000')
+      );
+      
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should handle multiple contract addresses in subscription', async () => {
+      const multiContractSubscription: EventSubscription = {
+        ...testSubscription,
+        id: 'multi-contract-subscription',
+        contractAddress: [
+          '0x1111111111111111111111111111111111111111',
+          '0x2222222222222222222222222222222222222222'
+        ]
+      };
+      
+      await eventListener.start();
+      eventListener.addSubscription(multiContractSubscription);
+      
+      // Should create contracts for both addresses
+      expect(MockedContract).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle array event signatures in subscription', async () => {
+      const multiEventSubscription: EventSubscription = {
+        ...testSubscription,
+        id: 'multi-event-subscription',
+        eventSignature: [
+          'Transfer(address indexed from, address indexed to, uint256 value)',
+          'Approval(address indexed owner, address indexed spender, uint256 value)'
+        ]
+      };
+      
+      await eventListener.start();
+      eventListener.addSubscription(multiEventSubscription);
+      
+      // Should listen for both events
+      expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
+      expect(mockContract.on).toHaveBeenCalledWith('Approval', expect.any(Function));
     });
   });
 });

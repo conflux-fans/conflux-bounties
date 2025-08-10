@@ -79,7 +79,6 @@ describe('Webhook Delivery Integration Tests', () => {
         url: 'http://httpbin.org/post',
         headers: {
           'Content-Type': 'application/json',
-          'X-Custom-Header': 'test-value',
           'Authorization': 'Bearer test-token'
         }
       });

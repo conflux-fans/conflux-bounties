@@ -52,16 +52,34 @@ export class ConfigManager extends EventEmitter implements IConfigManager {
     errors.push(...networkValidation.errors);
 
     // Validate database configuration
-    const databaseValidation = this.validator.validateDatabaseConfig(config.database);
-    errors.push(...databaseValidation.errors);
+    // At this point, applyEnvironmentOverrides should have already created the database config
+    // from environment variables if needed, so we just validate what's present
+    if (config.database) {
+      const databaseValidation = this.validator.validateDatabaseConfig(config.database);
+      errors.push(...databaseValidation.errors);
+    } else {
+      errors.push({ 
+        field: 'database', 
+        message: 'Database configuration is required. Provide either a database section in config.json or set DATABASE_URL environment variable.' 
+      });
+    }
 
     // Validate subscriptions
     const subscriptionsValidation = this.validator.validateSubscriptions(config.subscriptions);
     errors.push(...subscriptionsValidation.errors);
 
     // Validate redis configuration
-    const redisValidation = this.validateRedisConfig(config.redis);
-    errors.push(...redisValidation.errors);
+    // At this point, applyEnvironmentOverrides should have already created the redis config
+    // from environment variables if needed, so we just validate what's present
+    if (config.redis) {
+      const redisValidation = this.validateRedisConfig(config.redis);
+      errors.push(...redisValidation.errors);
+    } else {
+      errors.push({ 
+        field: 'redis', 
+        message: 'Redis configuration is required. Provide either a redis section in config.json or set REDIS_URL environment variable.' 
+      });
+    }
 
     // Validate monitoring configuration
     const monitoringValidation = this.validateMonitoringConfig(config.monitoring);
@@ -98,10 +116,63 @@ export class ConfigManager extends EventEmitter implements IConfigManager {
     }
   }
 
+  /**
+   * Apply environment variable overrides to configuration
+   * 
+   * This method applies environment variable overrides and creates default configurations
+   * when environment variables are provided but config.json sections are missing.
+   * Environment variables take precedence over config.json values.
+   * 
+   * Supported environment variables:
+   * - DATABASE_URL: Database connection URL
+   * - DATABASE_POOL_SIZE: Database connection pool size (default: 10)
+   * - DATABASE_CONNECTION_TIMEOUT: Database connection timeout in ms (default: 5000)
+   * - REDIS_URL: Redis connection URL
+   * - REDIS_KEY_PREFIX: Redis key prefix (default: 'webhook-relay:')
+   * - REDIS_TTL: Redis TTL in seconds (default: 3600)
+   * - CONFLUX_*: For switching between blockchain networks (testnet/mainnet)
+   * - LOG_LEVEL: For debugging purposes
+   */
   private applyEnvironmentOverrides(config: SystemConfig): SystemConfig {
     const overriddenConfig = JSON.parse(JSON.stringify(config)); // Deep clone
 
-    // Network overrides
+    // Database configuration - environment-first approach
+    // All database configuration is now read from environment variables
+    if (process.env['DATABASE_URL']) {
+      overriddenConfig.database = {
+        url: process.env['DATABASE_URL'],
+        poolSize: process.env['DATABASE_POOL_SIZE'] ? parseInt(process.env['DATABASE_POOL_SIZE'], 10) : 10,
+        connectionTimeout: process.env['DATABASE_CONNECTION_TIMEOUT'] ? parseInt(process.env['DATABASE_CONNECTION_TIMEOUT'], 10) : 5000
+      };
+    } else if (overriddenConfig.database) {
+      // If config.json has database section but no DATABASE_URL env var, apply defaults for missing optional parameters
+      if (overriddenConfig.database.poolSize === undefined) {
+        overriddenConfig.database.poolSize = 10;
+      }
+      if (overriddenConfig.database.connectionTimeout === undefined) {
+        overriddenConfig.database.connectionTimeout = 5000;
+      }
+    }
+
+    // Redis configuration - environment-first approach
+    // All redis configuration is now read from environment variables
+    if (process.env['REDIS_URL']) {
+      overriddenConfig.redis = {
+        url: process.env['REDIS_URL'],
+        keyPrefix: process.env['REDIS_KEY_PREFIX'] || 'webhook-relay:',
+        ttl: process.env['REDIS_TTL'] ? parseInt(process.env['REDIS_TTL'], 10) : 3600
+      };
+    } else if (overriddenConfig.redis) {
+      // If config.json has redis section but no REDIS_URL env var, apply defaults for missing optional parameters
+      if (overriddenConfig.redis.keyPrefix === undefined) {
+        overriddenConfig.redis.keyPrefix = 'webhook-relay:';
+      }
+      if (overriddenConfig.redis.ttl === undefined) {
+        overriddenConfig.redis.ttl = 3600;
+      }
+    }
+
+    // Network overrides (for switching between testnet/mainnet)
     if (process.env['CONFLUX_RPC_URL'] && overriddenConfig.network) {
       overriddenConfig.network.rpcUrl = process.env['CONFLUX_RPC_URL'];
     }
@@ -115,54 +186,9 @@ export class ConfigManager extends EventEmitter implements IConfigManager {
       overriddenConfig.network.confirmations = parseInt(process.env['CONFLUX_CONFIRMATIONS'], 10);
     }
 
-    // Database overrides
-    if (process.env['DATABASE_URL'] && overriddenConfig.database) {
-      overriddenConfig.database.url = process.env['DATABASE_URL'];
-    }
-    if (process.env['DATABASE_POOL_SIZE'] && overriddenConfig.database) {
-      overriddenConfig.database.poolSize = parseInt(process.env['DATABASE_POOL_SIZE'], 10);
-    }
-    if (process.env['DATABASE_CONNECTION_TIMEOUT'] && overriddenConfig.database) {
-      overriddenConfig.database.connectionTimeout = parseInt(process.env['DATABASE_CONNECTION_TIMEOUT'], 10);
-    }
-
-    // Redis overrides
-    if (process.env['REDIS_URL'] && overriddenConfig.redis) {
-      overriddenConfig.redis.url = process.env['REDIS_URL'];
-    }
-    if (process.env['REDIS_KEY_PREFIX'] && overriddenConfig.redis) {
-      overriddenConfig.redis.keyPrefix = process.env['REDIS_KEY_PREFIX'];
-    }
-    if (process.env['REDIS_TTL']) {
-      overriddenConfig.redis.ttl = parseInt(process.env['REDIS_TTL'], 10);
-    }
-
-    // Monitoring overrides
+    // Log level override (for debugging)
     if (process.env['LOG_LEVEL']) {
       overriddenConfig.monitoring.logLevel = process.env['LOG_LEVEL'];
-    }
-    if (process.env['METRICS_ENABLED']) {
-      overriddenConfig.monitoring.metricsEnabled = process.env['METRICS_ENABLED'] === 'true';
-    }
-    if (process.env['HEALTH_CHECK_PORT']) {
-      overriddenConfig.monitoring.healthCheckPort = parseInt(process.env['HEALTH_CHECK_PORT'], 10);
-    }
-
-    // System options overrides
-    if (process.env['MAX_CONCURRENT_WEBHOOKS']) {
-      overriddenConfig.options.maxConcurrentWebhooks = parseInt(process.env['MAX_CONCURRENT_WEBHOOKS'], 10);
-    }
-    if (process.env['DEFAULT_RETRY_ATTEMPTS']) {
-      overriddenConfig.options.defaultRetryAttempts = parseInt(process.env['DEFAULT_RETRY_ATTEMPTS'], 10);
-    }
-    if (process.env['DEFAULT_RETRY_DELAY']) {
-      overriddenConfig.options.defaultRetryDelay = parseInt(process.env['DEFAULT_RETRY_DELAY'], 10);
-    }
-    if (process.env['WEBHOOK_TIMEOUT']) {
-      overriddenConfig.options.webhookTimeout = parseInt(process.env['WEBHOOK_TIMEOUT'], 10);
-    }
-    if (process.env['QUEUE_PROCESSING_INTERVAL']) {
-      overriddenConfig.options.queueProcessingInterval = parseInt(process.env['QUEUE_PROCESSING_INTERVAL'], 10);
     }
 
     return overriddenConfig;
@@ -217,11 +243,13 @@ export class ConfigManager extends EventEmitter implements IConfigManager {
       errors.push({ field: 'redis.url', message: 'Redis URL is required and must be a string', value: config.url });
     }
 
-    if (!config.keyPrefix || typeof config.keyPrefix !== 'string') {
-      errors.push({ field: 'redis.keyPrefix', message: 'Redis key prefix is required and must be a string', value: config.keyPrefix });
+    // keyPrefix is now optional with default value
+    if (config.keyPrefix !== undefined && typeof config.keyPrefix !== 'string') {
+      errors.push({ field: 'redis.keyPrefix', message: 'Redis key prefix must be a string', value: config.keyPrefix });
     }
 
-    if (typeof config.ttl !== 'number' || config.ttl <= 0) {
+    // ttl is now optional with default value
+    if (config.ttl !== undefined && (typeof config.ttl !== 'number' || config.ttl <= 0)) {
       errors.push({ field: 'redis.ttl', message: 'Redis TTL must be a positive number', value: config.ttl });
     }
 

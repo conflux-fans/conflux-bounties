@@ -27,7 +27,7 @@
       "webhooks": [
         {
           "id": "hookdeck-contract-webhook",
-          "url": "https://hkdk.events/m0t8gxe2jfe4j9",
+          "url": "https://hkdk.events/m0t8gxe2jfe4j91",
           "format": "generic",
           "headers": {
             "Authorization": "Bearer your-token-here",
@@ -48,7 +48,7 @@
       "webhooks": [
         {
           "id": "hookdeck-wallet-webhook",
-          "url": "https://hkdk.events/m0t8gxe2jfe4j9",
+          "url": "https://hkdk.events/m0t8gxe2jfe4j91",
           "format": "generic",
           "headers": {
             "Authorization": "Bearer your-token-here",
@@ -60,20 +60,13 @@
       ]
     }
   ],
-  "database": {
-    "url": "postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay",
-    "poolSize": 10,
-    "connectionTimeout": 5000
-  },
-  "redis": {
-    "url": "redis://redis:6379",
-    "keyPrefix": "webhook-relay:",
-    "ttl": 3600
-  },
   "monitoring": {
-    "logLevel": "info",
+    "logLevel": "debug",
     "metricsEnabled": true,
-    "healthCheckPort": 3001
+    "healthCheckPort": 3001,
+    "loadFromDeliveries": true,
+    "loadHistoricalData": true,
+    "historicalDataHours": 24
   },
   "options": {
     "maxConcurrentWebhooks": 10,

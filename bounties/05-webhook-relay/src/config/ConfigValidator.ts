@@ -52,13 +52,13 @@ export class ConfigValidator implements IConfigValidator {
       errors.push({ field: 'database.url', message: 'Database URL must be a valid PostgreSQL connection string', value: config.url });
     }
 
-    // Validate pool size
-    if (typeof config.poolSize !== 'number' || config.poolSize <= 0) {
+    // Validate pool size (now optional with default value)
+    if (config.poolSize !== undefined && (typeof config.poolSize !== 'number' || config.poolSize <= 0)) {
       errors.push({ field: 'database.poolSize', message: 'Pool size must be a positive number', value: config.poolSize });
     }
 
-    // Validate connection timeout
-    if (typeof config.connectionTimeout !== 'number' || config.connectionTimeout <= 0) {
+    // Validate connection timeout (now optional with default value)
+    if (config.connectionTimeout !== undefined && (typeof config.connectionTimeout !== 'number' || config.connectionTimeout <= 0)) {
       errors.push({ field: 'database.connectionTimeout', message: 'Connection timeout must be a positive number', value: config.connectionTimeout });
     }
 

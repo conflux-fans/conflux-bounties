@@ -521,4 +521,186 @@ describe('BlockchainConnection', () => {
 
 
   });
+
+  describe('additional coverage for uncovered branches', () => {
+    it('should handle status monitoring and logging', async () => {
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+      
+      mockWebSocket.readyState = 1;
+      const connectPromise = connection.connect();
+      const openHandler = mockWebSocket.on.mock.calls.find((call: any) => call[0] === 'open')?.[1];
+      if (openHandler) openHandler();
+      await connectPromise;
+
+      // Access private method to test status logging
+      const logStatus = (connection as any).logStatus;
+      if (logStatus) {
+        logStatus.call(connection);
+      }
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should handle getWebSocketStateText method', async () => {
+      const getWebSocketStateText = (connection as any).getWebSocketStateText;
+      
+      expect(getWebSocketStateText.call(connection, 0)).toBe('CONNECTING');
+      expect(getWebSocketStateText.call(connection, 1)).toBe('OPEN');
+      expect(getWebSocketStateText.call(connection, 2)).toBe('CLOSING');
+      expect(getWebSocketStateText.call(connection, 3)).toBe('CLOSED');
+      expect(getWebSocketStateText.call(connection, 99)).toBe('UNKNOWN(99)');
+      expect(getWebSocketStateText.call(connection, null)).toBe('N/A');
+    });
+
+    it('should handle block monitoring and event processing', async () => {
+      // 启用 block monitoring
+      (connection as any).blockMonitoringEnabled = true;
+      mockWebSocket.readyState = 1;
+      const connectPromise = connection.connect();
+      const openHandler = mockWebSocket.on.mock.calls.find((call: any) => call[0] === 'open')?.[1];
+      if (openHandler) openHandler();
+      await connectPromise;
+
+      // Verify that block event listener was registered
+      const blockCalls = mockProvider.on.mock.calls.filter((call: any) => call[0] === 'block');
+      expect(blockCalls.length).toBeGreaterThan(0);
+      
+      // Simulate block event
+      const blockHandler = blockCalls[0]?.[1];
+      if (blockHandler) {
+        await blockHandler(123456);
+      }
+
+      // Verify block monitoring is working
+      expect((connection as any).blockCount).toBeGreaterThan(0);
+    });
+
+    it('should handle contract monitoring', async () => {
+      mockWebSocket.readyState = 1;
+      const connectPromise = connection.connect();
+      const openHandler = mockWebSocket.on.mock.calls.find((call: any) => call[0] === 'open')?.[1];
+      if (openHandler) openHandler();
+      await connectPromise;
+
+      // Test addContractAddress method
+      const addContractAddress = (connection as any).addContractAddress;
+      if (addContractAddress) {
+        addContractAddress.call(connection, '0x1234567890123456789012345678901234567890');
+        expect((connection as any).contractAddresses.size).toBe(1);
+      }
+    });
+
+    it('should handle health check with connection recovery', async () => {
+      const healthFailedSpy = jest.fn();
+      connection.on('healthCheckFailed', healthFailedSpy);
+
+      mockWebSocket.readyState = 1;
+      const connectPromise = connection.connect();
+      const openHandler = mockWebSocket.on.mock.calls.find((call: any) => call[0] === 'open')?.[1];
+      if (openHandler) openHandler();
+      await connectPromise;
+
+      // Simulate connection loss and recovery
+      mockWebSocket.readyState = 3; // CLOSED
+      jest.advanceTimersByTime(30000); // Trigger health check
+
+      // Simulate connection recovery
+      mockWebSocket.readyState = 1; // OPEN
+      jest.advanceTimersByTime(30000); // Trigger another health check
+
+      expect(healthFailedSpy).toHaveBeenCalled();
+    });
+
+    it('should handle reconnection with shouldReconnect disabled', async () => {
+      mockWebSocket.readyState = 1;
+      const connectPromise = connection.connect();
+      const openHandler = mockWebSocket.on.mock.calls.find((call: any) => call[0] === 'open')?.[1];
+      if (openHandler) openHandler();
+      await connectPromise;
+
+      // Disable reconnection
+      (connection as any).shouldReconnect = false;
+
+      // Simulate connection loss
+      const closeHandler = mockWebSocket.on.mock.calls.find((call: any) => call[0] === 'close')?.[1];
+      if (closeHandler) closeHandler(1000, 'Normal closure');
+
+      // Should not attempt reconnection
+      MockedWebSocketProvider.mockClear();
+      jest.advanceTimersByTime(5000);
+      expect(MockedWebSocketProvider).not.toHaveBeenCalled();
+    });
+
+    it('should handle connection timeout in waitForConnection', async () => {
+      // Mock websocket to never open (stay in CONNECTING state)
+      mockWebSocket.readyState = 0; // CONNECTING
+      
+      // Don't call the open handler to simulate timeout
+      mockWebSocket.on.mockImplementation((event: string, handler: Function) => {
+        // Don't call handler for 'open' event to simulate timeout
+      });
+
+      const connectPromise = connection.connect();
+      
+      // Fast-forward past timeout
+      jest.advanceTimersByTime(10000);
+
+      await expect(connectPromise).rejects.toThrow('Connection timeout');
+    }, 20000);
+
+    it('should handle provider destroy errors gracefully', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      
+      mockWebSocket.readyState = 1;
+      const connectPromise = connection.connect();
+      const openHandler = mockWebSocket.on.mock.calls.find((call: any) => call[0] === 'open')?.[1];
+      if (openHandler) openHandler();
+      await connectPromise;
+
+      // Mock destroy to throw error
+      const destroyError = new Error('Destroy failed');
+      mockProvider.destroy.mockRejectedValue(destroyError);
+
+      await connection.disconnect();
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Error during provider cleanup:', destroyError);
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should handle removeAllListeners errors during disconnect', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      
+      mockWebSocket.readyState = 1;
+      const connectPromise = connection.connect();
+      const openHandler = mockWebSocket.on.mock.calls.find((call: any) => call[0] === 'open')?.[1];
+      if (openHandler) openHandler();
+      await connectPromise;
+
+      // Mock removeAllListeners to throw error
+      const removeError = new Error('Remove listeners failed');
+      mockProvider.removeAllListeners.mockImplementation(() => {
+        throw removeError;
+      });
+
+      await connection.disconnect();
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Error during provider cleanup:', removeError);
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should handle status interval cleanup', async () => {
+      const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+      
+      mockWebSocket.readyState = 1;
+      const connectPromise = connection.connect();
+      const openHandler = mockWebSocket.on.mock.calls.find((call: any) => call[0] === 'open')?.[1];
+      if (openHandler) openHandler();
+      await connectPromise;
+
+      await connection.disconnect();
+
+      // Should clear both health check and status intervals
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+    });
+  });
 });

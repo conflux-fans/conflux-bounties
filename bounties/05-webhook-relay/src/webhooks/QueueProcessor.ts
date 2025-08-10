@@ -47,7 +47,7 @@ export class QueueProcessor implements IQueueProcessor {
     this.webhookSender = webhookSender;
     this.logger = logger;
     this.deadLetterQueue = options.deadLetterQueue;
-    
+
     this.options = {
       maxConcurrentDeliveries: options.maxConcurrentDeliveries || 10,
       processingInterval: options.processingInterval || 1000,
@@ -118,7 +118,7 @@ export class QueueProcessor implements IQueueProcessor {
    */
   private async processWebhookDelivery(delivery: WebhookDelivery): Promise<void> {
     const startTime = Date.now();
-    
+
     this.logger.debug('Processing webhook delivery', {
       deliveryId: delivery.id,
       webhookId: delivery.webhookId,
@@ -129,7 +129,7 @@ export class QueueProcessor implements IQueueProcessor {
     try {
       // Get webhook configuration
       const webhookConfig = await this.options.webhookConfigProvider(delivery.webhookId);
-      
+
       if (!webhookConfig) {
         throw new Error(`Webhook configuration not found for ID: ${delivery.webhookId}`);
       }
@@ -166,9 +166,9 @@ export class QueueProcessor implements IQueueProcessor {
 
     } catch (error) {
       this.stats.failedDeliveries++;
-      
+
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
+
       this.logger.error('Webhook delivery failed', error instanceof Error ? error : undefined, {
         deliveryId: delivery.id,
         webhookId: delivery.webhookId,

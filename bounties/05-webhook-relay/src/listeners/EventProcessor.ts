@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 export interface IEventProcessor {
   start(): Promise<void>;
   stop(): Promise<void>;
-  addSubscription(subscription: EventSubscription): void;
+  addSubscription(subscription: EventSubscription): Promise<void>;
   removeSubscription(subscriptionId: string): void;
   getSubscriptions(): EventSubscription[];
   isProcessing(): boolean;
@@ -57,9 +57,25 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
       return;
     }
 
+    let startTimeoutHandle: NodeJS.Timeout | null = null;
+
     try {
-      // Start the event listener
-      await this.eventListener.start();
+      // Start the event listener with timeout
+      const startTimeout = new Promise<never>((_, reject) => {
+        startTimeoutHandle = setTimeout(() => reject(new Error('EventProcessor start timeout')), 10000);
+      });
+
+      const startPromise = this.eventListener.start().finally(() => {
+        if (startTimeoutHandle) {
+          clearTimeout(startTimeoutHandle);
+          startTimeoutHandle = null;
+        }
+      });
+
+      await Promise.race([
+        startPromise,
+        startTimeout
+      ]);
 
       // Start delivery queue processing
       this.deliveryQueue.startProcessing(this.processWebhookDelivery.bind(this));
@@ -67,14 +83,26 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
       this.isRunning = true;
       this.startTime = Date.now();
 
-      // Start periodic status display
-      this.statusInterval = setInterval(() => {
-        this.displayProcessorStatus();
-      }, 60000); // Every minute
+      // Start periodic status display only in non-test environments
+      if (process.env['NODE_ENV'] !== 'test') {
+        this.statusInterval = setInterval(() => {
+          this.displayProcessorStatus();
+        }, 60000); // Every minute
+      }
 
       this.emit('started');
       console.log('🚀 EventProcessor started successfully - Real-time processing active!');
     } catch (error) {
+      // Cleanup on error
+      this.isRunning = false;
+      if (startTimeoutHandle) {
+        clearTimeout(startTimeoutHandle);
+        startTimeoutHandle = null;
+      }
+      if (this.statusInterval) {
+        clearInterval(this.statusInterval);
+        this.statusInterval = null;
+      }
       this.emit('error', error);
       throw error;
     }
@@ -88,7 +116,7 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
     try {
       console.log('\n🛑 Stopping EventProcessor...');
 
-      // Stop status display
+      // Stop status display first to prevent hanging
       if (this.statusInterval) {
         clearInterval(this.statusInterval);
         this.statusInterval = null;
@@ -100,6 +128,9 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
       // Stop event listener
       await this.eventListener.stop();
 
+      // Remove all listeners to prevent memory leaks
+      this.removeAllListeners();
+
       this.isRunning = false;
       this.emit('stopped');
       console.log('✅ EventProcessor stopped');
@@ -109,7 +140,7 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
     }
   }
 
-  addSubscription(subscription: EventSubscription): void {
+  async addSubscription(subscription: EventSubscription): Promise<void> {
     // Validate subscription
     if (!subscription.id || !subscription.contractAddress || !subscription.eventSignature) {
       throw new Error('Invalid subscription: missing required fields');
@@ -118,21 +149,25 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
     // Store subscription locally
     this.subscriptions.set(subscription.id, subscription);
 
-    // Persist subscription to database
-    this.persistSubscription(subscription).catch(error => {
-      console.error(`Failed to persist subscription ${subscription.id} to database:`, error);
-    });
+    try {
+      // Persist subscription to database (synchronously)
+      await this.persistSubscription(subscription);
 
-    // Persist webhooks to database
-    this.persistWebhooks(subscription).catch(error => {
-      console.error(`Failed to persist webhooks for subscription ${subscription.id} to database:`, error);
-    });
+      // Persist webhooks to database (synchronously)
+      await this.persistWebhooks(subscription);
 
-    // Add to event listener
-    this.eventListener.addSubscription(subscription);
+      // Add to event listener only after database persistence is complete
+      this.eventListener.addSubscription(subscription);
 
-    this.emit('subscriptionAdded', subscription);
+      this.emit('subscriptionAdded', subscription);
+      console.log(`✅ Successfully added subscription ${subscription.id} with ${subscription.webhooks.length} webhooks`);
 
+    } catch (error) {
+      // Remove from local storage if database persistence failed
+      this.subscriptions.delete(subscription.id);
+      console.error(`❌ Failed to add subscription ${subscription.id}:`, error);
+      throw error;
+    }
   }
 
   removeSubscription(subscriptionId: string): void {
@@ -204,21 +239,18 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
   private async persistWebhooks(subscription: EventSubscription): Promise<void> {
     try {
       for (const webhook of subscription.webhooks) {
-        // Check if webhook already exists
-        const existingResult = await this.database.query(
-          'SELECT id FROM webhooks WHERE id = $1',
-          [webhook.id]
-        );
-
-        if (existingResult.rows.length > 0) {
-          console.log(`Webhook ${webhook.id} already exists in database`);
-          continue;
-        }
-
-        // Insert webhook into database
+        // Use INSERT ... ON CONFLICT to handle existing webhooks gracefully
         await this.database.query(`
           INSERT INTO webhooks (id, subscription_id, url, format, headers, timeout, retry_attempts, active)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ON CONFLICT (id) DO UPDATE SET
+            subscription_id = EXCLUDED.subscription_id,
+            url = EXCLUDED.url,
+            format = EXCLUDED.format,
+            headers = EXCLUDED.headers,
+            timeout = EXCLUDED.timeout,
+            retry_attempts = EXCLUDED.retry_attempts,
+            active = EXCLUDED.active
         `, [
           webhook.id,
           subscription.id,

@@ -12,19 +12,7 @@ module.exports = {
       ],
       transform: {
         '^.+\\.ts$': ['ts-jest', {
-          tsconfig: {
-            module: 'commonjs',
-            target: 'es2020',
-            lib: ['es2020'],
-            allowSyntheticDefaultImports: true,
-            esModuleInterop: true,
-            skipLibCheck: true,
-            strict: true,
-            resolveJsonModule: true,
-            declaration: false,
-            declarationMap: false,
-            sourceMap: false
-          }
+          tsconfig: '<rootDir>/tests/tsconfig.json'
         }],
       },
       collectCoverageFrom: [
@@ -49,19 +37,7 @@ module.exports = {
       ],
       transform: {
         '^.+\\.ts$': ['ts-jest', {
-          tsconfig: {
-            module: 'commonjs',
-            target: 'es2020',
-            lib: ['es2020'],
-            allowSyntheticDefaultImports: true,
-            esModuleInterop: true,
-            skipLibCheck: true,
-            strict: true,
-            resolveJsonModule: true,
-            declaration: false,
-            declarationMap: false,
-            sourceMap: false
-          }
+          tsconfig: '<rootDir>/tests/tsconfig.json'
         }],
       },
       setupFilesAfterEnv: ['<rootDir>/tests/setup.ts']
@@ -76,19 +52,7 @@ module.exports = {
       ],
       transform: {
         '^.+\\.ts$': ['ts-jest', {
-          tsconfig: {
-            module: 'commonjs',
-            target: 'es2020',
-            lib: ['es2020'],
-            allowSyntheticDefaultImports: true,
-            esModuleInterop: true,
-            skipLibCheck: true,
-            strict: true,
-            resolveJsonModule: true,
-            declaration: false,
-            declarationMap: false,
-            sourceMap: false
-          }
+          tsconfig: '<rootDir>/tests/tsconfig.json'
         }],
       },
       setupFilesAfterEnv: ['<rootDir>/tests/setup.ts']
@@ -103,19 +67,7 @@ module.exports = {
       ],
       transform: {
         '^.+\\.ts$': ['ts-jest', {
-          tsconfig: {
-            module: 'commonjs',
-            target: 'es2020',
-            lib: ['es2020'],
-            allowSyntheticDefaultImports: true,
-            esModuleInterop: true,
-            skipLibCheck: true,
-            strict: true,
-            resolveJsonModule: true,
-            declaration: false,
-            declarationMap: false,
-            sourceMap: false
-          }
+          tsconfig: '<rootDir>/tests/tsconfig.json'
         }],
       },
       setupFilesAfterEnv: ['<rootDir>/tests/setup.ts']
@@ -129,12 +81,20 @@ module.exports = {
   ],
   coverageThreshold: {
     global: {
-      branches: 80,
-      functions: 80,
-      lines: 80,
-      statements: 80
+      branches: 90,
+      functions: 90,
+      lines: 90,
+      statements: 90
     }
   },
   testTimeout: 30000,
-  verbose: true
+  verbose: true,
+  // Global teardown to ensure cleanup
+  globalTeardown: '<rootDir>/tests/globalTeardown.js',
+  // Detect open handles to identify resource leaks
+  detectOpenHandles: true,
+  // Force exit after tests complete
+  forceExit: true,
+  // Maximum number of worker processes
+  maxWorkers: '50%'
 };

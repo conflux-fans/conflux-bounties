@@ -344,7 +344,6 @@ export class EventListener extends EventEmitter implements IEventListener {
   }
 
   private async startSubscription(subscription: EventSubscription): Promise<void> {
-    console.log(`🛑 startSubscription`)
     try {
       const provider = this.connection.getProvider();
       if (!provider) {
@@ -370,15 +369,11 @@ export class EventListener extends EventEmitter implements IEventListener {
         const abi = subscriptionEventSignatures.filter(Boolean).map(sig => `event ${sig}`);
         if (!abi.length) continue;
         const contract = new ethers.Contract(contractAddress, abi, provider);
-        // 打印所有 ABI 事件名，辅助调试
-        const eventFragments = contract.interface.fragments.filter((f: any) => f.type === 'event');
-        console.log('ABI events:', eventFragments.map((f: any) => f.name));
         // 记录所有监听器，便于 stop 时移除
         const listeners: Array<{ eventName: string, handler: (...args: any[]) => void }> = [];
         for (const sig of subscriptionEventSignatures) {
           if (!sig) continue;
           const eventName = this.parseEventName(sig);
-          console.log(`eventName: ${eventName}`)
           // 监听事件
           const handler = async (...args: any[]) => {
             const event = args[args.length - 1];

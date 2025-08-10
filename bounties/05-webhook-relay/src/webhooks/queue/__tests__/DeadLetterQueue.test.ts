@@ -44,9 +44,30 @@ describe('DeadLetterQueue', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Clean up dead letter queue with timeout
+    if (deadLetterQueue) {
+      try {
+        await Promise.race([
+          Promise.resolve(deadLetterQueue.stopCleanup()),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Cleanup timeout')), 2000))
+        ]);
+      } catch (error) {
+        console.warn('Error stopping dead letter queue cleanup:', error);
+      }
+    }
+
+    // Clean up global resources
+    if ((global as any).cleanupGlobalResources) {
+      try {
+        await (global as any).cleanupGlobalResources();
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+    }
+
     jest.clearAllMocks();
-    deadLetterQueue.stopCleanup();
+    jest.clearAllTimers();
   });
 
   describe('addFailedDelivery', () => {

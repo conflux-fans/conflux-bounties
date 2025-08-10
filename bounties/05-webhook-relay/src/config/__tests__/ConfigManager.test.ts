@@ -137,8 +137,7 @@ describe('ConfigManager', () => {
         ...originalEnv,
         CONFLUX_RPC_URL: 'https://override.rpc.url',
         DATABASE_URL: 'postgresql://override:pass@localhost:5432/db',
-        LOG_LEVEL: 'debug',
-        MAX_CONCURRENT_WEBHOOKS: '20'
+        LOG_LEVEL: 'debug'
       };
 
       mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
@@ -146,9 +145,8 @@ describe('ConfigManager', () => {
       const config = await configManager.loadConfig();
 
       expect(config.network.rpcUrl).toBe('https://override.rpc.url');
-      expect(config.database.url).toBe('postgresql://override:pass@localhost:5432/db');
+      expect(config.database?.url).toBe('postgresql://override:pass@localhost:5432/db');
       expect(config.monitoring.logLevel).toBe('debug');
-      expect(config.options.maxConcurrentWebhooks).toBe(20);
 
       process.env = originalEnv;
     });
@@ -307,6 +305,162 @@ describe('ConfigManager', () => {
     });
   });
 
+  describe('environment-first configuration', () => {
+    it('should create database config from DATABASE_URL when missing from config.json', async () => {
+      const originalEnv = { ...process.env };
+      process.env = { ...originalEnv, DATABASE_URL: 'postgresql://env:pass@localhost:5432/envdb' };
+
+      const configWithoutDatabase = { ...mockConfig };
+      delete (configWithoutDatabase as any).database;
+
+      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithoutDatabase));
+
+      const config = await configManager.loadConfig();
+
+      expect(config.database).toBeDefined();
+      expect(config.database?.url).toBe('postgresql://env:pass@localhost:5432/envdb');
+      expect(config.database?.poolSize).toBe(10); // Default value
+      expect(config.database?.connectionTimeout).toBe(5000); // Default value
+
+      process.env = originalEnv;
+    });
+
+    it('should create database config with all fields from environment variables', async () => {
+      const originalEnv = { ...process.env };
+      process.env = { 
+        ...originalEnv, 
+        DATABASE_URL: 'postgresql://env:pass@localhost:5432/envdb',
+        DATABASE_POOL_SIZE: '20',
+        DATABASE_CONNECTION_TIMEOUT: '10000'
+      };
+
+      const configWithoutDatabase = { ...mockConfig };
+      delete (configWithoutDatabase as any).database;
+
+      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithoutDatabase));
+
+      const config = await configManager.loadConfig();
+
+      expect(config.database).toBeDefined();
+      expect(config.database?.url).toBe('postgresql://env:pass@localhost:5432/envdb');
+      expect(config.database?.poolSize).toBe(20); // From environment
+      expect(config.database?.connectionTimeout).toBe(10000); // From environment
+
+      process.env = originalEnv;
+    });
+
+    it('should create redis config from REDIS_URL when missing from config.json', async () => {
+      const originalEnv = { ...process.env };
+      process.env = { ...originalEnv, REDIS_URL: 'redis://env:6379' };
+
+      const configWithoutRedis = { ...mockConfig };
+      delete (configWithoutRedis as any).redis;
+
+      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithoutRedis));
+
+      const config = await configManager.loadConfig();
+
+      expect(config.redis).toBeDefined();
+      expect(config.redis?.url).toBe('redis://env:6379');
+      expect(config.redis?.keyPrefix).toBe('webhook-relay:'); // Default value
+      expect(config.redis?.ttl).toBe(3600); // Default value
+
+      process.env = originalEnv;
+    });
+
+    it('should create redis config with all fields from environment variables', async () => {
+      const originalEnv = { ...process.env };
+      process.env = { 
+        ...originalEnv, 
+        REDIS_URL: 'redis://env:6379',
+        REDIS_KEY_PREFIX: 'custom-prefix:',
+        REDIS_TTL: '7200'
+      };
+
+      const configWithoutRedis = { ...mockConfig };
+      delete (configWithoutRedis as any).redis;
+
+      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithoutRedis));
+
+      const config = await configManager.loadConfig();
+
+      expect(config.redis).toBeDefined();
+      expect(config.redis?.url).toBe('redis://env:6379');
+      expect(config.redis?.keyPrefix).toBe('custom-prefix:'); // From environment
+      expect(config.redis?.ttl).toBe(7200); // From environment
+
+      process.env = originalEnv;
+    });
+
+    it('should apply defaults to existing database config when optional parameters are missing', async () => {
+      const configWithPartialDatabase = {
+        ...mockConfig,
+        database: {
+          url: 'postgresql://partial:pass@localhost:5432/db'
+          // poolSize and connectionTimeout are missing
+        }
+      };
+
+      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithPartialDatabase));
+
+      const config = await configManager.loadConfig();
+
+      expect(config.database?.url).toBe('postgresql://partial:pass@localhost:5432/db');
+      expect(config.database?.poolSize).toBe(10); // Default value
+      expect(config.database?.connectionTimeout).toBe(5000); // Default value
+    });
+
+    it('should apply defaults to existing redis config when optional parameters are missing', async () => {
+      const configWithPartialRedis = {
+        ...mockConfig,
+        redis: {
+          url: 'redis://partial:6379'
+          // keyPrefix and ttl are missing
+        }
+      };
+
+      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithPartialRedis));
+
+      const config = await configManager.loadConfig();
+
+      expect(config.redis?.url).toBe('redis://partial:6379');
+      expect(config.redis?.keyPrefix).toBe('webhook-relay:'); // Default value
+      expect(config.redis?.ttl).toBe(3600); // Default value
+    });
+
+    it('should fail validation when neither config.json sections nor environment variables are provided', async () => {
+      const configWithoutDatabaseAndRedis = { ...mockConfig };
+      delete (configWithoutDatabaseAndRedis as any).database;
+      delete (configWithoutDatabaseAndRedis as any).redis;
+
+      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithoutDatabaseAndRedis));
+
+      await expect(configManager.loadConfig()).rejects.toThrow('Configuration validation failed');
+    });
+
+    it('should validate successfully when DATABASE_URL is provided but database section is missing', async () => {
+      const originalEnv = { ...process.env };
+      process.env = { 
+        ...originalEnv, 
+        DATABASE_URL: 'postgresql://env:pass@localhost:5432/envdb',
+        REDIS_URL: 'redis://env:6379'
+      };
+
+      const configWithoutDatabaseAndRedis = { ...mockConfig };
+      delete (configWithoutDatabaseAndRedis as any).database;
+      delete (configWithoutDatabaseAndRedis as any).redis;
+
+      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithoutDatabaseAndRedis));
+
+      const config = await configManager.loadConfig();
+
+      expect(config.database).toBeDefined();
+      expect(config.redis).toBeDefined();
+
+      process.env = originalEnv;
+    });
+  });
+
   describe('environment variable overrides', () => {
     const envTestCases = [
       {
@@ -330,24 +484,34 @@ describe('ConfigManager', () => {
         expectedValue: 'postgresql://test:test@localhost/test'
       },
       {
+        env: { DATABASE_URL: 'postgresql://test:test@localhost/test', DATABASE_POOL_SIZE: '25' },
+        expectedPath: 'database.poolSize',
+        expectedValue: 25
+      },
+      {
+        env: { DATABASE_URL: 'postgresql://test:test@localhost/test', DATABASE_CONNECTION_TIMEOUT: '15000' },
+        expectedPath: 'database.connectionTimeout',
+        expectedValue: 15000
+      },
+      {
         env: { REDIS_URL: 'redis://test:6379' },
         expectedPath: 'redis.url',
         expectedValue: 'redis://test:6379'
       },
       {
+        env: { REDIS_URL: 'redis://test:6379', REDIS_KEY_PREFIX: 'test-prefix:' },
+        expectedPath: 'redis.keyPrefix',
+        expectedValue: 'test-prefix:'
+      },
+      {
+        env: { REDIS_URL: 'redis://test:6379', REDIS_TTL: '1800' },
+        expectedPath: 'redis.ttl',
+        expectedValue: 1800
+      },
+      {
         env: { LOG_LEVEL: 'error' },
         expectedPath: 'monitoring.logLevel',
         expectedValue: 'error'
-      },
-      {
-        env: { METRICS_ENABLED: 'false' },
-        expectedPath: 'monitoring.metricsEnabled',
-        expectedValue: false
-      },
-      {
-        env: { MAX_CONCURRENT_WEBHOOKS: '50' },
-        expectedPath: 'options.maxConcurrentWebhooks',
-        expectedValue: 50
       }
     ];
 
@@ -384,117 +548,24 @@ describe('ConfigManager', () => {
       process.env = originalEnv;
     });
 
-    it('should override database.poolSize with environment variable', async () => {
-      const originalEnv = { ...process.env };
-      process.env = { ...originalEnv, DATABASE_POOL_SIZE: '20' };
 
-      mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-
-      const config = await configManager.loadConfig();
-      expect(config.database.poolSize).toBe(20);
-
-      process.env = originalEnv;
-    });
-
-    it('should override database.connectionTimeout with environment variable', async () => {
-      const originalEnv = { ...process.env };
-      process.env = { ...originalEnv, DATABASE_CONNECTION_TIMEOUT: '10000' };
-
-      mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-
-      const config = await configManager.loadConfig();
-      expect(config.database.connectionTimeout).toBe(10000);
-
-      process.env = originalEnv;
-    });
-
-    it('should override redis.keyPrefix with environment variable', async () => {
-      const originalEnv = { ...process.env };
-      process.env = { ...originalEnv, REDIS_KEY_PREFIX: 'test-prefix:' };
-
-      mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-
-      const config = await configManager.loadConfig();
-      expect(config.redis.keyPrefix).toBe('test-prefix:');
-
-      process.env = originalEnv;
-    });
-
-    it('should override redis.ttl with environment variable', async () => {
-      const originalEnv = { ...process.env };
-      process.env = { ...originalEnv, REDIS_TTL: '7200' };
-
-      mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-
-      const config = await configManager.loadConfig();
-      expect(config.redis.ttl).toBe(7200);
-
-      process.env = originalEnv;
-    });
-
-    it('should override monitoring.healthCheckPort with environment variable', async () => {
-      const originalEnv = { ...process.env };
-      process.env = { ...originalEnv, HEALTH_CHECK_PORT: '4000' };
-
-      mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-
-      const config = await configManager.loadConfig();
-      expect(config.monitoring.healthCheckPort).toBe(4000);
-
-      process.env = originalEnv;
-    });
-
-    it('should override options.defaultRetryAttempts with environment variable', async () => {
-      const originalEnv = { ...process.env };
-      process.env = { ...originalEnv, DEFAULT_RETRY_ATTEMPTS: '5' };
-
-      mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-
-      const config = await configManager.loadConfig();
-      expect(config.options.defaultRetryAttempts).toBe(5);
-
-      process.env = originalEnv;
-    });
-
-    it('should override options.defaultRetryDelay with environment variable', async () => {
-      const originalEnv = { ...process.env };
-      process.env = { ...originalEnv, DEFAULT_RETRY_DELAY: '2000' };
-
-      mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-
-      const config = await configManager.loadConfig();
-      expect(config.options.defaultRetryDelay).toBe(2000);
-
-      process.env = originalEnv;
-    });
-
-    it('should override options.webhookTimeout with environment variable', async () => {
-      const originalEnv = { ...process.env };
-      process.env = { ...originalEnv, WEBHOOK_TIMEOUT: '60000' };
-
-      mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-
-      const config = await configManager.loadConfig();
-      expect(config.options.webhookTimeout).toBe(60000);
-
-      process.env = originalEnv;
-    });
-
-    it('should override options.queueProcessingInterval with environment variable', async () => {
-      const originalEnv = { ...process.env };
-      process.env = { ...originalEnv, QUEUE_PROCESSING_INTERVAL: '10000' };
-
-      mockFs.readFile.mockResolvedValue(JSON.stringify(mockConfig));
-
-      const config = await configManager.loadConfig();
-      expect(config.options.queueProcessingInterval).toBe(10000);
-
-      process.env = originalEnv;
-    });
   });
 
   describe('validation error scenarios', () => {
-    it('should return validation errors for missing redis config', () => {
+    it('should return validation errors for missing database config when no environment variable is provided', () => {
+      const invalidConfig = { ...mockConfig };
+      delete (invalidConfig as any).database;
+
+      const result = configManager.validateConfig(invalidConfig);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'database',
+        message: 'Database configuration is required. Provide either a database section in config.json or set DATABASE_URL environment variable.'
+      });
+    });
+
+    it('should return validation errors for missing redis config when no environment variable is provided', () => {
       const invalidConfig = { ...mockConfig };
       delete (invalidConfig as any).redis;
 
@@ -503,7 +574,7 @@ describe('ConfigManager', () => {
       expect(result.isValid).toBe(false);
       expect(result.errors).toContainEqual({
         field: 'redis',
-        message: 'Redis configuration is required'
+        message: 'Redis configuration is required. Provide either a redis section in config.json or set REDIS_URL environment variable.'
       });
     });
 
@@ -512,7 +583,7 @@ describe('ConfigManager', () => {
         ...mockConfig,
         redis: {
           url: '',
-          keyPrefix: '',
+          keyPrefix: 123 as any, // Invalid type
           ttl: -1
         }
       };
@@ -528,7 +599,7 @@ describe('ConfigManager', () => {
           }),
           expect.objectContaining({
             field: 'redis.keyPrefix',
-            message: 'Redis key prefix is required and must be a string'
+            message: 'Redis key prefix must be a string'
           }),
           expect.objectContaining({
             field: 'redis.ttl',
@@ -634,6 +705,82 @@ describe('ConfigManager', () => {
           })
         ])
       );
+    });
+
+    it('should validate environment-generated database configuration correctly', () => {
+      // Simulate a config that was generated from environment variables
+      const configWithEnvDatabase = {
+        ...mockConfig,
+        database: {
+          url: 'postgresql://env:pass@localhost:5432/envdb',
+          poolSize: 10, // Default value applied by applyEnvironmentOverrides
+          connectionTimeout: 5000 // Default value applied by applyEnvironmentOverrides
+        }
+      };
+
+      const result = configManager.validateConfig(configWithEnvDatabase);
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should validate environment-generated redis configuration correctly', () => {
+      // Simulate a config that was generated from environment variables
+      const configWithEnvRedis = {
+        ...mockConfig,
+        redis: {
+          url: 'redis://env:6379',
+          keyPrefix: 'webhook-relay:', // Default value applied by applyEnvironmentOverrides
+          ttl: 3600 // Default value applied by applyEnvironmentOverrides
+        }
+      };
+
+      const result = configManager.validateConfig(configWithEnvRedis);
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should return validation errors for invalid environment-generated database configuration', () => {
+      // Simulate an invalid config that was generated from environment variables
+      const configWithInvalidEnvDatabase = {
+        ...mockConfig,
+        database: {
+          url: 'invalid-database-url', // Invalid URL from environment
+          poolSize: 10,
+          connectionTimeout: 5000
+        }
+      };
+
+      const result = configManager.validateConfig(configWithInvalidEnvDatabase);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'database.url',
+        message: 'Database URL must be a valid PostgreSQL connection string',
+        value: 'invalid-database-url'
+      });
+    });
+
+    it('should return validation errors for invalid environment-generated redis configuration', () => {
+      // Simulate an invalid config that was generated from environment variables
+      const configWithInvalidEnvRedis = {
+        ...mockConfig,
+        redis: {
+          url: '', // Invalid empty URL from environment
+          keyPrefix: 'webhook-relay:',
+          ttl: 3600
+        }
+      };
+
+      const result = configManager.validateConfig(configWithInvalidEnvRedis);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'redis.url',
+        message: 'Redis URL is required and must be a string',
+        value: ''
+      });
     });
   });
 

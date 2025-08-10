@@ -72,17 +72,15 @@ describe('MigrationManager', () => {
 
   describe('getPendingMigrations', () => {
     it('should return migrations that have not been applied', async () => {
-      // Mock that only migration 001 has been applied
+      // Mock that migration 001 has been applied
       mockDb.query.mockResolvedValue({
         rows: [{ version: '001' }]
       });
 
       const result = await migrationManager.getPendingMigrations();
 
-      // Should return migration 002 since only 001 is applied
-      expect(result).toHaveLength(1);
-      expect(result[0]?.version).toBe('002');
-      expect(result[0]?.name).toBe('add_dead_letter_queue');
+      // Should return no pending migrations since only 001 exists and is applied
+      expect(result).toHaveLength(0);
     });
 
     it('should return all migrations when none have been applied', async () => {
@@ -90,11 +88,9 @@ describe('MigrationManager', () => {
 
       const result = await migrationManager.getPendingMigrations();
 
-      expect(result).toHaveLength(2);
+      expect(result).toHaveLength(1);
       expect(result[0]?.version).toBe('001');
       expect(result[0]?.name).toBe('initial_schema');
-      expect(result[1]?.version).toBe('002');
-      expect(result[1]?.name).toBe('add_dead_letter_queue');
     });
   });
 
@@ -180,14 +176,14 @@ describe('MigrationManager', () => {
       await migrationManager.migrate();
 
       expect(mockDb.transaction).toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalledWith('Running 2 pending migrations...');
+      expect(consoleSpy).toHaveBeenCalledWith('Running 1 pending migrations...');
       expect(consoleSpy).toHaveBeenCalledWith('All migrations completed successfully');
     });
 
     it('should do nothing when no pending migrations', async () => {
-      // Mock that both migrations are already applied
+      // Mock that the migration is already applied
       mockDb.query.mockResolvedValue({
-        rows: [{ version: '001' }, { version: '002' }]
+        rows: [{ version: '001' }]
       });
 
       await migrationManager.migrate();
@@ -254,7 +250,7 @@ describe('MigrationManager', () => {
 
       expect(status).toEqual({
         applied: ['001'],
-        pending: ['002']
+        pending: []
       });
     });
 
@@ -265,7 +261,7 @@ describe('MigrationManager', () => {
 
       expect(status).toEqual({
         applied: [],
-        pending: ['001', '002']
+        pending: ['001']
       });
     });
   });

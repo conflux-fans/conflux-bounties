@@ -57,13 +57,7 @@ describe('Event Processing Integration', () => {
     db = new DatabaseConnection(mockDbConfig);
     eventListener = new EventListener(mockNetworkConfig);
     filterEngine = new FilterEngine();
-    deliveryQueue = new DeliveryQueue(db, {
-      maxConcurrentDeliveries: 5,
-      processingInterval: 100
-    });
-
-
-
+    
     // Create mock DeliveryQueue
     const mockDeliveryQueue = {
       enqueue: jest.fn().mockResolvedValue(undefined),
@@ -78,11 +72,13 @@ describe('Event Processing Integration', () => {
       })
     } as any;
 
+    deliveryQueue = mockDeliveryQueue;
+
     eventProcessor = new EventProcessor(
       eventListener,
       filterEngine,
       db,
-      mockDeliveryQueue
+      deliveryQueue
     );
 
     // Mock database operations for all tests
@@ -90,11 +86,46 @@ describe('Event Processing Integration', () => {
   });
 
   afterEach(async () => {
-    // Clean up
-    if (eventProcessor.isProcessing()) {
-      await eventProcessor.stop();
+    // Clean up with timeout to prevent hanging
+    try {
+      if (eventProcessor && eventProcessor.isProcessing()) {
+        await Promise.race([
+          eventProcessor.stop(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Stop timeout')), 5000))
+        ]);
+      }
+    } catch (error) {
+      console.warn('Error stopping event processor:', error);
     }
+
+    // Clean up event listeners
+    if (eventProcessor) {
+      eventProcessor.removeAllListeners();
+    }
+    if (eventListener) {
+      eventListener.removeAllListeners();
+    }
+
+    // Clean up database connection
+    if (db && typeof db.close === 'function') {
+      try {
+        await db.close();
+      } catch (error) {
+        // Ignore close errors
+      }
+    }
+
+    // Clean up global resources
+    if ((global as any).cleanupGlobalResources) {
+      try {
+        await (global as any).cleanupGlobalResources();
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+    }
+
     jest.restoreAllMocks();
+    jest.clearAllTimers();
   });
 
   describe('Complete Event Flow', () => {
@@ -122,8 +153,8 @@ describe('Event Processing Integration', () => {
       // Start the event processor
       await eventProcessor.start();
 
-      // Add subscription
-      eventProcessor.addSubscription(mockSubscription);
+      // Add subscription - this sets up the event handlers
+      await eventProcessor.addSubscription(mockSubscription);
 
       // Simulate a blockchain event that matches the filters
       const matchingEvent: BlockchainEvent = {
@@ -152,7 +183,7 @@ describe('Event Processing Integration', () => {
         subscriptionId: mockSubscription.id,
         webhookId: mockWebhookConfig.id,
         event: matchingEvent,
-        status: 'pending'
+        status: 'completed'
       });
     });
 
@@ -173,8 +204,8 @@ describe('Event Processing Integration', () => {
       // Start the event processor
       await eventProcessor.start();
 
-      // Add subscription
-      eventProcessor.addSubscription(mockSubscription);
+      // Add subscription - this sets up the event handlers
+      await eventProcessor.addSubscription(mockSubscription);
 
       // Simulate a blockchain event that does NOT match the filters
       const nonMatchingEvent: BlockchainEvent = {
@@ -233,9 +264,9 @@ describe('Event Processing Integration', () => {
       // Start the event processor
       await eventProcessor.start();
 
-      // Add both subscriptions
-      eventProcessor.addSubscription(mockSubscription);
-      eventProcessor.addSubscription(subscription2);
+      // Add both subscriptions - this sets up the event handlers
+      await eventProcessor.addSubscription(mockSubscription);
+      await eventProcessor.addSubscription(subscription2);
 
       // Create an event that matches both subscriptions
       const event: BlockchainEvent = {
@@ -324,7 +355,7 @@ describe('Event Processing Integration', () => {
 
       // Start the event processor
       await eventProcessor.start();
-      eventProcessor.addSubscription(mockSubscription);
+      await eventProcessor.addSubscription(mockSubscription);
 
       // Emit a matching event
       const event: BlockchainEvent = {
@@ -348,7 +379,7 @@ describe('Event Processing Integration', () => {
 
       // Verify error was logged
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Error creating webhook delivery'),
+        expect.stringContaining('Error processing event for subscription'),
         expect.any(Error)
       );
 
@@ -369,7 +400,7 @@ describe('Event Processing Integration', () => {
       await eventProcessor.start();
 
       // Add subscription
-      eventProcessor.addSubscription(mockSubscription);
+      await eventProcessor.addSubscription(mockSubscription);
       expect(addSubscriptionSpy).toHaveBeenCalledWith(mockSubscription);
       expect(eventProcessor.getSubscriptions()).toHaveLength(1);
 

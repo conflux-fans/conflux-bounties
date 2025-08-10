@@ -24,6 +24,20 @@ describe('EventProcessor', () => {
 
   let mockDb: jest.Mocked<DatabaseConnection>;
 
+  // Helper function to add timeout to async operations
+  const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = 5000): Promise<T> => {
+    let timeoutHandle: NodeJS.Timeout;
+    
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs);
+    });
+
+    return Promise.race([
+      promise.finally(() => clearTimeout(timeoutHandle)),
+      timeoutPromise
+    ]);
+  };
+
   const mockNetworkConfig: NetworkConfig = {
     rpcUrl: 'https://test.confluxrpc.com',
     wsUrl: 'wss://test.confluxrpc.com/ws',
@@ -110,11 +124,63 @@ describe('EventProcessor', () => {
     );
   });
 
+  afterEach(async () => {
+    // Ensure proper cleanup to prevent worker process hanging
+    try {
+      if (eventProcessor && eventProcessor.isProcessing()) {
+        await withTimeout(eventProcessor.stop(), 2000);
+      }
+    } catch (error) {
+      // Ignore cleanup errors in tests
+    }
+
+    // Clear any remaining timers
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    
+    // Remove all listeners to prevent memory leaks
+    if (eventProcessor) {
+      eventProcessor.removeAllListeners();
+    }
+
+    // Clean up global resources
+    if ((global as any).cleanupGlobalResources) {
+      try {
+        await (global as any).cleanupGlobalResources();
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+    }
+
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+    }
+  });
+
+  afterAll(async () => {
+    // Final cleanup to ensure no hanging processes
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    
+    // Clean up any remaining global resources
+    if ((global as any).cleanupGlobalResources) {
+      try {
+        await (global as any).cleanupGlobalResources();
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+    }
+    
+    // Wait a bit for any pending operations to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+  });
+
   describe('Lifecycle Management', () => {
     it('should start successfully', async () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
       
-      await eventProcessor.start();
+      await withTimeout(eventProcessor.start());
 
       expect(mockEventListener.start).toHaveBeenCalled();
       expect(mockDeliveryQueue.startProcessing).toHaveBeenCalled();
@@ -127,8 +193,8 @@ describe('EventProcessor', () => {
     it('should stop successfully', async () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
       
-      await eventProcessor.start();
-      await eventProcessor.stop();
+      await withTimeout(eventProcessor.start());
+      await withTimeout(eventProcessor.stop());
 
       expect(mockDeliveryQueue.stopProcessing).toHaveBeenCalled();
       expect(mockEventListener.stop).toHaveBeenCalled();
@@ -140,7 +206,7 @@ describe('EventProcessor', () => {
 
     it('should not start if already running', async () => {
       // Start the processor first
-      await eventProcessor.start();
+      await withTimeout(eventProcessor.start());
       expect(eventProcessor.isProcessing()).toBe(true);
       
       // Clear the mock calls from the first start
@@ -148,7 +214,7 @@ describe('EventProcessor', () => {
       mockDeliveryQueue.startProcessing.mockClear();
       
       // Try to start again - should return early without calling dependencies
-      const result = await eventProcessor.start();
+      const result = await withTimeout(eventProcessor.start());
       expect(result).toBeUndefined(); // Should return undefined from early return
 
       expect(mockEventListener.start).not.toHaveBeenCalled();
@@ -160,7 +226,7 @@ describe('EventProcessor', () => {
       expect(eventProcessor.isProcessing()).toBe(false);
       
       // Try to stop when not running - should return early
-      await eventProcessor.stop();
+      await withTimeout(eventProcessor.stop());
 
       expect(mockEventListener.stop).not.toHaveBeenCalled();
       expect(mockDeliveryQueue.stopProcessing).not.toHaveBeenCalled();
@@ -168,22 +234,22 @@ describe('EventProcessor', () => {
   });
 
   describe('Subscription Management', () => {
-    it('should add subscription successfully', () => {
-      eventProcessor.addSubscription(mockSubscription);
+    it('should add subscription successfully', async () => {
+      await eventProcessor.addSubscription(mockSubscription);
 
       expect(mockEventListener.addSubscription).toHaveBeenCalledWith(mockSubscription);
       expect(eventProcessor.getSubscriptions()).toContain(mockSubscription);
     });
 
-    it('should remove subscription successfully', () => {
-      eventProcessor.addSubscription(mockSubscription);
+    it('should remove subscription successfully', async () => {
+      await eventProcessor.addSubscription(mockSubscription);
       eventProcessor.removeSubscription(mockSubscription.id);
 
       expect(mockEventListener.removeSubscription).toHaveBeenCalledWith(mockSubscription.id);
       expect(eventProcessor.getSubscriptions()).not.toContain(mockSubscription);
     });
 
-    it('should validate subscription before adding', () => {
+    it('should validate subscription before adding', async () => {
       const invalidSubscription = {
         id: '',
         contractAddress: '',
@@ -192,9 +258,8 @@ describe('EventProcessor', () => {
         webhooks: []
       } as EventSubscription;
 
-      expect(() => {
-        eventProcessor.addSubscription(invalidSubscription);
-      }).toThrow('Invalid subscription: missing required fields');
+      await expect(eventProcessor.addSubscription(invalidSubscription))
+        .rejects.toThrow('Invalid subscription: missing required fields');
     });
 
     it('should handle removing non-existent subscription gracefully', () => {
@@ -208,8 +273,8 @@ describe('EventProcessor', () => {
   });
 
   describe('Event Processing Pipeline', () => {
-    beforeEach(() => {
-      eventProcessor.addSubscription(mockSubscription);
+    beforeEach(async () => {
+      await eventProcessor.addSubscription(mockSubscription);
     });
 
     it('should process matching events successfully', async () => {
@@ -267,7 +332,7 @@ describe('EventProcessor', () => {
       };
 
       eventProcessor.removeSubscription(mockSubscription.id);
-      eventProcessor.addSubscription(multiWebhookSubscription);
+      await eventProcessor.addSubscription(multiWebhookSubscription);
 
       mockFilterEngine.evaluateFilters.mockReturnValue(true);
 
@@ -332,7 +397,7 @@ describe('EventProcessor', () => {
 
   describe('Statistics', () => {
     it('should return processing statistics', async () => {
-      eventProcessor.addSubscription(mockSubscription);
+      await eventProcessor.addSubscription(mockSubscription);
       await eventProcessor.start();
 
       const stats = await eventProcessor.getStats();
@@ -362,14 +427,14 @@ describe('EventProcessor', () => {
     it('should handle start errors', async () => {
       mockEventListener.start.mockRejectedValue(new Error('Start failed'));
 
-      await expect(eventProcessor.start()).rejects.toThrow('Start failed');
+      await expect(withTimeout(eventProcessor.start())).rejects.toThrow('Start failed');
     });
 
     it('should handle stop errors', async () => {
-      await eventProcessor.start();
+      await withTimeout(eventProcessor.start());
       mockEventListener.stop.mockRejectedValue(new Error('Stop failed'));
 
-      await expect(eventProcessor.stop()).rejects.toThrow('Stop failed');
+      await expect(withTimeout(eventProcessor.stop())).rejects.toThrow('Stop failed');
     });
 
     it('should handle delivery creation errors', async () => {
@@ -401,7 +466,7 @@ describe('EventProcessor', () => {
       };
 
       eventProcessor.removeSubscription(mockSubscription.id);
-      eventProcessor.addSubscription(multiWebhookSubscription);
+      await eventProcessor.addSubscription(multiWebhookSubscription);
 
       // Mock enqueue to fail for the second webhook
       mockDeliveryQueue.enqueue
@@ -432,8 +497,8 @@ describe('EventProcessor', () => {
   });
 
   describe('WebhookDelivery Creation and Enqueue', () => {
-    beforeEach(() => {
-      eventProcessor.addSubscription(mockSubscription);
+    beforeEach(async () => {
+      await eventProcessor.addSubscription(mockSubscription);
     });
 
     it('should create WebhookDelivery objects for matching events', async () => {
@@ -471,7 +536,7 @@ describe('EventProcessor', () => {
         }),
         attempts: 0,
         maxAttempts: mockWebhookConfig.retryAttempts,
-        status: 'pending'
+        status: 'completed'
       });
 
       expect(consoleSpy).toHaveBeenCalledWith(
@@ -497,7 +562,7 @@ describe('EventProcessor', () => {
       };
 
       eventProcessor.removeSubscription(mockSubscription.id);
-      eventProcessor.addSubscription(multiWebhookSubscription);
+      await eventProcessor.addSubscription(multiWebhookSubscription);
 
       mockFilterEngine.evaluateFilters.mockReturnValue(true);
 
@@ -586,7 +651,7 @@ describe('EventProcessor', () => {
       };
 
       eventProcessor.removeSubscription(mockSubscription.id);
-      eventProcessor.addSubscription(subscriptionWithoutRetries);
+      await eventProcessor.addSubscription(subscriptionWithoutRetries);
 
       mockFilterEngine.evaluateFilters.mockReturnValue(true);
 

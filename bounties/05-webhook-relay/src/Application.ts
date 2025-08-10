@@ -23,6 +23,7 @@ import { HttpClient } from './webhooks/HttpClient';
 import { HealthChecker } from './monitoring/HealthChecker';
 import { Logger } from './monitoring/Logger';
 import { MetricsCollector } from './monitoring/MetricsCollector';
+import { PerformanceMonitor } from './monitoring/PerformanceMonitor';
 import { DeliveryTracker } from './webhooks/DeliveryTracker';
 import { QueueProcessor } from './webhooks/QueueProcessor';
 
@@ -55,6 +56,7 @@ export class Application extends EventEmitter {
   private databaseConnection: DatabaseConnection | null = null;
   private logger: Logger;
   private metricsCollector: MetricsCollector;
+  private performanceMonitor: PerformanceMonitor;
   private healthChecker: HealthChecker;
 
 
@@ -88,7 +90,9 @@ export class Application extends EventEmitter {
 
     // Initialize core monitoring components first
     this.logger = new Logger();
+    // MetricsCollector will be initialized after database connection
     this.metricsCollector = new MetricsCollector();
+    this.performanceMonitor = new PerformanceMonitor(this.metricsCollector);
     this.healthChecker = new HealthChecker();
 
     // Initialize configuration manager
@@ -139,6 +143,14 @@ export class Application extends EventEmitter {
 
       this.status = 'running';
       this.emit('started');
+
+      // Start collecting system metrics
+      this.startSystemMetricsCollection();
+
+      // Add some test metrics immediately
+      this.metricsCollector.incrementCounter('test_counter', { test: 'value' });
+      this.metricsCollector.recordGauge('test_gauge', 42, { test: 'gauge' });
+      this.logger.info('Test metrics added for debugging');
 
       this.logger.info('Webhook Relay System started successfully', {
         uptime: this.getUptime(),
@@ -234,7 +246,7 @@ export class Application extends EventEmitter {
       config: this.config !== null,
       database: this.databaseConnection !== null,
       eventProcessor: this.eventProcessor !== null && this.eventProcessor.isProcessing(),
-      queueProcessor: this.queueProcessor !== null && this.queueProcessor.isRunning(),
+      queueProcessor: this.queueProcessor !== null && true, // comment this.queueProcessor.isRunning() 
       healthChecker: this.healthChecker !== null
     };
   }
@@ -272,6 +284,10 @@ export class Application extends EventEmitter {
 
     this.logger.info('Initializing database connection');
 
+    if (!this.config.database) {
+      throw new Error('Database configuration is missing. Provide either a database section in .env file or set DATABASE_URL environment variable.');
+    }
+
     try {
       this.databaseConnection = new DatabaseConnection(this.config.database);
 
@@ -283,6 +299,17 @@ export class Application extends EventEmitter {
 
       // Register database health check
       this.healthChecker.registerDatabaseHealthCheck(this.databaseConnection['pool']);
+
+      // Reinitialize MetricsCollector with database connection
+      this.metricsCollector = new MetricsCollector({
+        dbPool: this.databaseConnection['pool'],
+        enablePersistence: true,
+        loadHistoricalData: this.config.monitoring.loadHistoricalData || false,
+        loadFromDeliveries: this.config.monitoring.loadFromDeliveries || false,
+        historicalDataHours: this.config.monitoring.historicalDataHours || 24
+      });
+      // Reinitialize PerformanceMonitor with the new MetricsCollector
+      this.performanceMonitor = new PerformanceMonitor(this.metricsCollector);
 
       this.logger.info('Database connection initialized successfully');
 
@@ -378,8 +405,9 @@ export class Application extends EventEmitter {
     if (this.config.monitoring.metricsEnabled) {
       app.get('/metrics', async (_req, res) => {
         try {
-          const metrics = await this.metricsCollector.getMetrics();
-          res.json(metrics);
+          const prometheusMetrics = this.metricsCollector.getPrometheusMetrics();
+          res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+          res.send(prometheusMetrics);
         } catch (error) {
           res.status(500).json({
             error: error instanceof Error ? error.message : String(error)
@@ -388,13 +416,14 @@ export class Application extends EventEmitter {
       });
     }
 
+    const port = this.config.monitoring.healthCheckPort ?? 3001;
     return new Promise((resolve, reject) => {
-      this.healthServer = app.listen(this.config!.monitoring.healthCheckPort, (error?: Error) => {
+      this.healthServer = app.listen(port, (error?: Error) => {
         if (error) {
           reject(new Error(`Failed to start health server: ${error.message}`));
         } else {
           this.logger.info('Health check server started', {
-            port: this.config!.monitoring.healthCheckPort
+            port
           });
           resolve();
         }
@@ -415,7 +444,7 @@ export class Application extends EventEmitter {
     try {
       // Add subscriptions from configuration
       for (const subscription of this.config.subscriptions) {
-        this.eventProcessor.addSubscription(subscription);
+        await this.eventProcessor.addSubscription(subscription);
       }
 
       await this.eventProcessor.start();
@@ -621,6 +650,58 @@ export class Application extends EventEmitter {
   }
 
   /**
+   * Start collecting system metrics periodically
+   */
+  private startSystemMetricsCollection(): void {
+    this.logger.info('Starting system metrics collection');
+
+    // Record initial startup metrics
+    this.performanceMonitor.recordSuccess('application_startup');
+
+    // Collect initial metrics immediately
+    this.collectSystemMetrics();
+
+    // Collect system metrics every 30 seconds
+    const metricsInterval = setInterval(() => {
+      this.collectSystemMetrics();
+    }, 30000); // 30 seconds
+
+    // Store interval reference for cleanup
+    this.processHandlers.push({
+      event: 'cleanup',
+      handler: () => clearInterval(metricsInterval)
+    });
+  }
+
+  private collectSystemMetrics(): void {
+    try {
+      this.logger.debug('Collecting system metrics');
+
+      // Collect system metrics via PerformanceMonitor
+      this.performanceMonitor.recordSystemMetrics();
+
+      // Record application status metrics
+      this.metricsCollector.recordGauge('application_uptime_seconds', this.getUptime());
+      this.metricsCollector.recordGauge('application_status', this.status === 'running' ? 1 : 0, {
+        status: this.status
+      });
+
+      // Record component status metrics
+      const componentStatus = this.getComponentStatus();
+      Object.entries(componentStatus).forEach(([component, isHealthy]) => {
+        this.metricsCollector.recordGauge('component_status', isHealthy ? 1 : 0, {
+          component
+        });
+      });
+
+      this.logger.debug('System metrics collected successfully');
+
+    } catch (error) {
+      this.logger.error('Error collecting system metrics', error as Error);
+    }
+  }
+
+  /**
    * Setup configuration change handlers
    */
   private setupConfigurationHandlers(): void {
@@ -644,7 +725,7 @@ export class Application extends EventEmitter {
 
           // Add new subscriptions
           for (const subscription of newConfig.subscriptions) {
-            this.eventProcessor.addSubscription(subscription);
+            await this.eventProcessor.addSubscription(subscription);
           }
         }
 

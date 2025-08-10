@@ -55,7 +55,14 @@ describe('QueueProcessor', () => {
       getQueueSize: jest.fn().mockResolvedValue(0),
       getProcessingCount: jest.fn().mockResolvedValue(0),
       startProcessing: jest.fn(),
-      stopProcessing: jest.fn()
+      stopProcessing: jest.fn(),
+      getStats: jest.fn().mockResolvedValue({
+        pendingCount: 0,
+        processingCount: 0,
+        completedCount: 0,
+        failedCount: 0,
+        maxConcurrentDeliveries: 10
+      })
     };
 
     mockWebhookSender = {
@@ -86,8 +93,30 @@ describe('QueueProcessor', () => {
     );
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Clean up queue processor with timeout
+    if (queueProcessor) {
+      try {
+        await Promise.race([
+          queueProcessor.stop(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('QueueProcessor stop timeout')), 3000))
+        ]);
+      } catch (error) {
+        console.warn('Error stopping queue processor:', error);
+      }
+    }
+
+    // Clean up global resources
+    if ((global as any).cleanupGlobalResources) {
+      try {
+        await (global as any).cleanupGlobalResources();
+      } catch (error) {
+        // Ignore cleanup errors
+      }
+    }
+
     jest.clearAllMocks();
+    jest.clearAllTimers();
   });
 
   describe('start', () => {

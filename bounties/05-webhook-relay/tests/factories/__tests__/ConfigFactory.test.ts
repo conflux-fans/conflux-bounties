@@ -69,7 +69,7 @@ describe('ConfigFactory', () => {
       expect(config.network).toEqual(overrides.network);
       expect(config.options).toEqual(overrides.options);
       // Other properties should remain default
-      expect(config.database.url).toBe('postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay_test');
+      expect(config.database?.url).toBe('postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay_test');
     });
 
     it('should handle partial overrides', () => {
@@ -214,7 +214,7 @@ describe('ConfigFactory', () => {
       });
 
       // Other properties should remain the same as default
-      expect(config.database.url).toBe('postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay_test');
+      expect(config.database?.url).toBe('postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay_test');
       expect(config.monitoring.logLevel).toBe('info');
       expect(config.subscriptions).toHaveLength(1);
     });
@@ -242,7 +242,7 @@ describe('ConfigFactory', () => {
       // Validate required properties exist
       expect(config.network.rpcUrl).toBeTruthy();
       expect(config.network.chainId).toBeGreaterThan(0);
-      expect(config.database.url).toBeTruthy();
+      expect(config.database?.url).toBeTruthy();
       expect(config.options.maxConcurrentWebhooks).toBeGreaterThan(0);
       expect(config.subscriptions.length).toBeGreaterThanOrEqual(0);
     });

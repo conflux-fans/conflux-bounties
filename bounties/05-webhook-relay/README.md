@@ -121,9 +121,9 @@ Create a `config.json` file based on the example:
       "filters": {},
       "webhooks": [
         {
-          "id": "zapier-webhook",
-          "url": "https://hooks.zapier.com/hooks/catch/123456/abcdef/",
-          "format": "zapier",
+          "id": "hookdeck-webhook",
+          "url": "https://hkdk.events/m0t8gxe2jfe4j91",
+          "format": "generic",
           "headers": {
             "Content-Type": "application/json"
           },
