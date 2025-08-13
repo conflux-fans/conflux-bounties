@@ -21,9 +21,13 @@ export const CONTRACT_ADDRESSES: Record<number, { FACTORY: string }> = {
   },
   // Sepolia
   [sepolia.id]: {
-    FACTORY:
-      process.env.NEXT_PUBLIC_SEPOLIA_FACTORY_ADDRESS ||
-      "0x1121C77E3AcC2281982AD91c53702A71E56d6Cd2",
+    FACTORY: process.env.NEXT_PUBLIC_SEPOLIA_FACTORY_ADDRESS || "",
+  },
+  [confluxESpace.id]: {
+    FACTORY: process.env.NEXT_PUBLIC_ESPACE_FACTORY_ADDRESS || "",
+  },
+  [confluxESpaceTestnet.id]: {
+    FACTORY: process.env.NEXT_PUBLIC_ESPACE_TESTNET_FACTORY_ADDRESS || "",
   },
 } as const;
 
@@ -53,7 +57,17 @@ export const CHAIN_INFO: Record<
   [sepolia.id]: {
     name: "Sepolia Testnet",
     explorer: "https://sepolia.etherscan.io",
-    rpc: `https://eth-sepolia.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+    rpc: `https://sepolia.infura.io/v3/46b505ffcd8c4bf68c49e95b77da3813`,
+  },
+  [confluxESpace.id]: {
+    name: "Conflux Espace",
+    explorer: "https://evm.confluxscan.io",
+    rpc: `https://evm.confluxrpc.org`,
+  },
+  [confluxESpaceTestnet.id]: {
+    name: "Conflux Espace Testnet",
+    explorer: "https://evm.confluxscan.io",
+    rpc: `https://evmtestnet.confluxrpc.com`,
   },
 };
 
