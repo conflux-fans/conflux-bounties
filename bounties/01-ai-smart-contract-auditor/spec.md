@@ -59,28 +59,29 @@ Build a web application with backend services that uses Large Language Models to
 
 ### Architecture
 
-- **Frontend**: **Next.js 15** dashboard with RSC streaming + optimistic UI
-- **AI Framework**: **Mastra** agent chain calling Slither & Mythril docker images
-- **Vector Database**: **Pinecone** index for "known vuln" patterns and code snippet embeddings
-- **Database**: **Supabase** for audit reports and contract metadata
-- **Alternative**: **FastAPI** backend running **AutoGen** + open-source SWC dataset
-- **Blockchain Integration**: ConfluxScan API and ethers.js
+- Frontend: Next.js 15 dashboard with RSC streaming + optimistic UI
+- Static Analysis (Required): Slither and Mythril executed via Docker containers and integrated into the analysis pipeline
+- AI Framework (Preferred): Mastra agent chain, or an equivalent orchestration approach that combines static tool outputs with LLM analysis
+- Vector Retrieval (Preferred/Optional): Pinecone index for "known vuln" patterns and code snippet embeddings, or an equivalent retrieval system; optional if not materially impacting MVP functionality
+- Database: Supabase, or PostgreSQL + Prisma as an acceptable alternative for audit reports and contract metadata
+- Alternative: FastAPI backend running AutoGen + open-source SWC dataset
+- Blockchain Integration: ConfluxScan API and ethers.js
 
 ### Core Components
 
-1. **Contract Fetcher**: ConfluxScan API integration for source code retrieval
-2. **Code Analyzer**: AI-powered vulnerability detection and analysis
-3. **Report Generator**: Structured report creation with multiple formats
-4. **Web Interface**: User-friendly frontend for analysis requests
-5. **Database Manager**: Audit history and result storage
-6. **API Server**: RESTful API for programmatic access
+1. Contract Fetcher: ConfluxScan API integration for source code retrieval
+2. Code Analyzer: AI-powered vulnerability detection and analysis
+3. Report Generator: Structured report creation with multiple formats
+4. Web Interface: User-friendly frontend for analysis requests
+5. Database Manager: Audit history and result storage
+6. API Server: RESTful API for programmatic access
 
 ### Analysis Categories
 
-- **Security Vulnerabilities**: Reentrancy, overflow, access control
-- **Gas Optimization**: Inefficient patterns, optimization opportunities
-- **Code Quality**: Best practices, maintainability issues
-- **Logic Analysis**: Business logic flaws, edge cases
+- Security Vulnerabilities: Reentrancy, overflow, access control
+- Gas Optimization: Inefficient patterns, optimization opportunities
+- Code Quality: Best practices, maintainability issues
+- Logic Analysis: Business logic flaws, edge cases
 
 ## Deliverables
 
@@ -143,7 +144,8 @@ Build a web application with backend services that uses Large Language Models to
 - ✅ Uses AI/LLM services for vulnerability analysis
 - ✅ Provides consistent JSON and Markdown report formats
 - ✅ Handles errors gracefully (invalid addresses, unverified contracts)
-- ✅ Docker deployment ready
+- ✅ Static analysis via Slither & Mythril (Docker) integrated into the analysis pipeline
+- ✅ Docker deployment ready (containerized web app and database; `docker compose up` should run the full stack)
 
 ### Quality Requirements
 
@@ -157,34 +159,34 @@ Build a web application with backend services that uses Large Language Models to
 
 ### Contract Audit Request
 
-1. **User enters contract address** in web interface
-2. **System validates address** and checks if contract is verified
-3. **Fetches source code** from ConfluxScan API
-4. **Initiates AI analysis** with progress indicator
-5. **Generates comprehensive report** with findings
-6. **Displays interactive results** with code highlighting
+1. User enters contract address in web interface
+2. System validates address and checks if contract is verified
+3. Fetches source code from ConfluxScan API
+4. Initiates AI analysis with progress indicator
+5. Generates comprehensive report with findings
+6. Displays interactive results with code highlighting
 
 ### Batch Analysis
 
-1. **User uploads CSV** with multiple contract addresses
-2. **System processes each contract** sequentially
-3. **Generates individual reports** for each contract
-4. **Creates summary report** with aggregate findings
-5. **Provides download link** for all results
+1. User uploads CSV with multiple contract addresses
+2. System processes each contract sequentially
+3. Generates individual reports for each contract
+4. Creates summary report with aggregate findings
+5. Provides download link for all results
 
 ### API Integration
 
-1. **Developer makes API call** with contract address
-2. **System returns analysis status** and job ID
-3. **Developer polls for completion** or uses webhooks
-4. **Receives structured JSON report** with findings
-5. **Integrates results** into their development workflow
+1. Developer makes API call with contract address
+2. System returns analysis status and job ID
+3. Developer polls for completion or uses webhooks
+4. Receives structured JSON report with findings
+5. Integrates results into their development workflow
 
 ## Technical Specifications
 
 ### Environment Variables
 
-```
+```bash
 CONFLUXSCAN_API_URL=https://api.confluxscan.net
 CONFLUXSCAN_API_KEY=<optional_api_key>
 OPENAI_API_KEY=<openai_api_key>
@@ -194,8 +196,12 @@ REDIS_URL=redis://localhost:6379
 JWT_SECRET=<session_secret>
 MAX_CONTRACT_SIZE=1000000
 ANALYSIS_TIMEOUT=300000
-
 ```
+
+### Address & ID Formats
+
+- eSpace addresses MUST be accepted as EVM `0x...` (required). Support for `cfx:` form is optional; if accepted, normalize to EVM `0x...` internally.
+- Report IDs returned by the API MAY be UUID or cuid. API endpoints MUST accept both formats for `:jobId`.
 
 ### Database Schema
 
@@ -251,14 +257,13 @@ CREATE TABLE analysis_jobs (
   completed_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW()
 );
-
 ```
 
 ### API Endpoints
 
 - `POST /api/audit/start` - Start contract analysis
-- `GET /api/audit/status/:jobId` - Check analysis status
-- `GET /api/audit/report/:jobId` - Get audit report
+- `GET /api/audit/status/:jobId` - Check analysis status (accepts `jobId` as UUID or cuid)
+- `GET /api/audit/report/:jobId` - Get audit report (accepts `jobId` as UUID or cuid)
 - `POST /api/audit/batch` - Batch analysis request
 - `GET /api/contracts/:address` - Get contract information
 - `GET /api/reports/:address/history` - Get audit history
@@ -300,10 +305,9 @@ CREATE TABLE analysis_jobs (
       "recommendation": "Add onlyOwner modifier or similar access control mechanism"
     }
   ],
-  "gasOptimizations": [...],
-  "codeQuality": [...]
+  "gasOptimizations": [],
+  "codeQuality": []
 }
-
 ```
 
 ## Bonus Features (Optional)
@@ -328,6 +332,7 @@ CREATE TABLE analysis_jobs (
 - CI/CD pipeline integration
 - Slack/Discord notifications
 - API rate limiting and usage analytics
+- Docker images for web app and database with a single `docker compose up` flow
 
 ## Evaluation Criteria
 
@@ -363,11 +368,11 @@ CREATE TABLE analysis_jobs (
 
 ### Security Issues
 
-- **SWC-107**: Reentrancy vulnerabilities
-- **SWC-101**: Integer overflow/underflow
-- **SWC-104**: Unchecked call return values
-- **SWC-105**: Unprotected Ether withdrawal
-- **SWC-115**: Authorization through tx.origin
+- SWC-107: Reentrancy vulnerabilities
+- SWC-101: Integer overflow/underflow
+- SWC-104: Unchecked call return values
+- SWC-105: Unprotected Ether withdrawal
+- SWC-115: Authorization through tx.origin
 
 ### Gas Optimization
 
@@ -387,28 +392,28 @@ CREATE TABLE analysis_jobs (
 
 ### Conflux Documentation
 
-- [Conflux eSpace Guide](https://doc.confluxnetwork.org/docs/espace/)
-- [ConfluxScan API Documentation](https://doc.confluxnetwork.org/docs/espace/UserGuide/#confluxscan)
-- [Smart Contract Security](https://doc.confluxnetwork.org/docs/espace/DevelopmentGuide)
+- Conflux eSpace Guide: https://doc.confluxnetwork.org/docs/espace/
+- ConfluxScan API Documentation: https://doc.confluxnetwork.org/docs/espace/UserGuide/#confluxscan
+- Smart Contract Security: https://doc.confluxnetwork.org/docs/espace/DevelopmentGuide
 
 ### Security Resources
 
-- [Smart Contract Weakness Classification](https://swcregistry.io/)
-- [Common Weakness Enumeration](https://cwe.mitre.org/)
-- [ConsenSys Security Best Practices](https://consensys.github.io/smart-contract-best-practices/)
-- [OpenZeppelin Security Considerations](https://docs.openzeppelin.com/contracts/4.x/security-considerations)
+- Smart Contract Weakness Classification: https://swcregistry.io/
+- Common Weakness Enumeration: https://cwe.mitre.org/
+- ConsenSys Security Best Practices: https://consensys.github.io/smart-contract-best-practices/
+- OpenZeppelin Security Considerations: https://docs.openzeppelin.com/contracts/4.x/security-considerations
 
 ### AI/ML Tools
 
-- [OpenAI API Documentation](https://platform.openai.com/docs)
-- [Anthropic Claude Documentation](https://docs.anthropic.com/)
-- [LangChain for AI Applications](https://docs.langchain.com/)
+- OpenAI API Documentation: https://platform.openai.com/docs
+- Anthropic Claude Documentation: https://docs.anthropic.com/
+- LangChain for AI Applications: https://docs.langchain.com/
 
 ### Development Tools
 
-- [Solidity Documentation](https://docs.soliditylang.org/)
-- [Hardhat Security Testing](https://hardhat.org/tutorial/testing-contracts)
-- [Slither Static Analysis](https://github.com/crytic/slither)
+- Solidity Documentation: https://docs.soliditylang.org/
+- Hardhat Security Testing: https://hardhat.org/tutorial/testing-contracts
+- Slither Static Analysis: https://github.com/crytic/slither
 
 ---
 

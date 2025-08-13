@@ -59,7 +59,7 @@ Develop a backend listener service that subscribes to specific eSpace contract e
 
 ### Architecture
 
-- **Backend**: **Node Fastify** listener (optimal for webhook performance)
+- **Backend**: **Node.js service** (Fastify recommended; Express acceptable) – choose a framework that meets latency and throughput SLOs for health/metrics endpoints and control APIs
 - **Automation**: **n8n** self-host instance for UI mapping and webhook templates
 - **Database**: **Postgres** queue table for reliable delivery
 - **Blockchain Integration**: **ethers.js** for event listening
@@ -435,6 +435,7 @@ src/
 ### Development Tools
 
 - [ethers.js Documentation](https://docs.ethers.org/)
+- [Fastify Documentation](https://www.fastify.io/docs/latest/)
 - [Express.js Documentation](https://expressjs.com/)
 - [Winston Logging](https://github.com/winstonjs/winston)
 - [Redis Documentation](https://redis.io/docs/)

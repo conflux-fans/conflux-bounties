@@ -1,4 +1,4 @@
-# Bounty #04: Conflux MCP Server (eSpace Read-Only Wrapper)
+# Bounty #04: Conflux eSpace MCP Server (EVM Read/Write, MCP-first)
 
 ## Overview
 
@@ -8,160 +8,138 @@
 
 **Timeline**: 4-5 weeks
 
-**Type**: Infrastructure, API Server, MCP Protocol
+**Type**: Infrastructure, MCP Server, EVM (Conflux eSpace)
 
 ## Problem Statement
 
-AI agents and applications need structured, reliable access to Conflux eSpace blockchain data, but ConfluxScan APIs can be complex and inconsistent for AI consumption. There's a need for a simplified, standardized API that wraps ConfluxScan and provides clean, normalized data endpoints specifically designed for AI agents and modern applications.
+AI agents need a consistent, MCP-native way to read and write data on Conflux eSpace. Typical explorer APIs are not optimized for MCP flows, and raw RPC can be hard for agents to use without well-defined tools, resources, and schemas.
 
 ## Solution Overview
 
-Create a lightweight Model Context Protocol (MCP) server using Express.js or Koa.js that wraps ConfluxScan APIs and provides simplified, normalized endpoints for accessing contract metadata, token information, transaction history, and account data. The server should include comprehensive OpenAPI documentation and be optimized for AI agent consumption.
+Build a Model Context Protocol (MCP) server for Conflux eSpace that exposes a robust set of EVM tools and resources for AI agents. The primary interface is MCP (stdio and SSE). The server should support both read and write operations, with client-supplied private keys used only in-memory for signing and never persisted.
 
 ## Core Features
 
-### 1. MCP Protocol Implementation
+### 1. MCP Protocol Implementation (Required)
 
-- Full Model Context Protocol server implementation
-- Standard MCP endpoints and resource management
-- Resource discovery and capability advertisement
-- Tool execution and response formatting
+- Full MCP server using `@modelcontextprotocol/sdk`
+- MCP stdio mode and HTTP SSE transport
+- Resource discovery and capability advertisement (tools/resources/prompts)
+- Tool execution and JSON output with bigint-safe formatting
 
-### 2. ConfluxScan API Wrapper
+### 2. EVM Read/Write for Conflux eSpace (Required)
 
-- Unified interface to ConfluxScan APIs
-- Data normalization and standardization
-- Rate limiting and caching for performance
-- Error handling and retry logic
+- Read: chain info, blocks, transactions, balances, ERC20/721/1155 data
+- Write: native transfers, ERC20 transfers/approvals, ERC721/1155 transfers, generic contract writes
+- Contract reads and writes with supplied ABI and arguments
+- Client supplies private key; keys are not stored or logged
 
-### 3. Contract Data Access
+### 3. Documentation (Required)
 
-- Contract metadata retrieval and formatting
-- ABI parsing and method information
-- Contract verification status and source code
-- Contract creation and deployment information
+- Clear README with setup, environment variables, examples for Cursor/Claude
+- Tool and resource listings with sample inputs/outputs
+- Health check endpoint
 
-### 4. Token Information
+### 4. Optional HTTP Facade and Docs (Bonus)
 
-- Token holder lists and distribution
-- Token supply and circulation data
-- Token transfer history and analytics
-- Token metadata and contract information
+- Optional REST facade mirroring key MCP read endpoints
+- Optional OpenAPI 3.0 spec and Swagger UI
+- Optional Postman collection
 
-### 5. Transaction and Account Data
+### 5. Optional Enrichment via ConfluxScan (Bonus)
 
-- Transaction history with detailed information
-- Account balance and transaction analytics
-- Block information and network statistics
-- Address activity and interaction patterns
-
-### 6. API Documentation
-
-- Comprehensive OpenAPI/Swagger documentation
-- Postman collection for easy testing
-- Example requests and responses
-- Integration guides for common use cases
+- Optional ConfluxScan client for token holders/distribution, transfer history, contract verification/source
+- Optional normalization, retry/backoff, caching, and rate limiting
 
 ## Technical Requirements
 
 ### Architecture
 
-- **Server Framework**: **Fastify 5** (recommended for low-latency, minimal runtime footprint)
-- **Language**: **TypeScript** for type safety and better maintainability
+- **Server Framework**: **Express 4** or **Fastify 5** (examples assume Express)
+- **Language**: **TypeScript**
 - **MCP Protocol**: Official MCP SDK implementation
-- **API Integration**: ConfluxScan API wrapper with enhanced error handling
-- **Caching**: **Redis** cache for performance optimization
-- **Documentation**: **OpenAPI 3.0** auto-docs generation
-- **Alternative**: **FastAPI** (pydantic models) for Python preference
+- **EVM Integration**: via `viem` against Conflux eSpace mainnet and testnet
+- **Docs**: README required; OpenAPI/Swagger optional (bonus)
+- **Caching/Rate Limiting**: optional (bonus)
 
 ### Core Components
 
-1. **MCP Server Core**: Protocol implementation and resource management
-2. **ConfluxScan Client**: API wrapper with rate limiting and caching
-3. **Data Normalizer**: Consistent data formatting and validation
-4. **Resource Manager**: MCP resource discovery and management
-5. **Tool Handler**: MCP tool execution and response formatting
-6. **Documentation Generator**: OpenAPI spec and Swagger UI
+1. **MCP Server Core**: Protocol implementation, tools/resources/prompts
+2. **EVM Services**: `viem`-based clients for reads/writes and formatting utilities
+3. **HTTP SSE Server**: Optional transport for MCP over HTTP
+4. **(Bonus) REST + Docs**: Optional REST facade, OpenAPI, Swagger UI
+5. **(Bonus) ConfluxScan Client**: Optional enrichment, normalization, caching
 
-### API Endpoints (MCP Resources)
+### MCP Resources
 
-- **Contracts**: Contract metadata, ABI, and verification info
-- **Tokens**: Token data, holders, and transfer history
-- **Accounts**: Account balances, transactions, and activity
-- **Transactions**: Transaction details and history
-- **Blocks**: Block information and statistics
-- **Network**: Network stats and health information
+Use the `evm://{network}/...` URI scheme for consistency with EVM MCP servers. At minimum:
+
+- `evm://{network}/chain` – network, chainId, current block, RPC URL
+- `evm://{network}/block/{blockNumber}` – block by number
+- `evm://{network}/block/hash/{blockHash}` – block by hash
+- `evm://{network}/block/latest` and `evm://block/latest` – latest block (default network)
+- `evm://{network}/tx/{txHash}` and `evm://tx/{txHash}` – transaction details
+- `evm://{network}/address/{address}/balance` – native balance
+- `evm://{network}/token/{tokenAddress}` – ERC20 token info
+- `evm://{network}/token/{tokenAddress}/balanceOf/{address}` – ERC20 balance
+- `evm://{network}/nft/{tokenAddress}/{tokenId}` – ERC721 token info
+- `evm://{network}/nft/{tokenAddress}/{tokenId}/isOwnedBy/{address}` – ERC721 ownership
+- `evm://{network}/erc1155/{tokenAddress}/{tokenId}/uri` – ERC1155 URI
+- `evm://{network}/erc1155/{tokenAddress}/{tokenId}/balanceOf/{address}` – ERC1155 balance
 
 ## Deliverables
 
-### 1. MCP Server Implementation
+### 1. MCP Server (Required)
 
-- [ ]  Full MCP protocol server implementation
-- [ ]  Resource discovery and management
-- [ ]  Tool execution framework
-- [ ]  Standard MCP endpoints and responses
+- [ ] Full MCP server with stdio and HTTP SSE transport
+- [ ] Tools/resources/prompts registration with capabilities and schemas
+- [ ] EVM reads and writes for Conflux eSpace mainnet/testnet via `viem`
+- [ ] Health check endpoint
 
-### 2. ConfluxScan Integration
+### 2. Documentation (Required)
 
-- [ ]  Complete ConfluxScan API wrapper
-- [ ]  Rate limiting and retry logic
-- [ ]  Response caching system
-- [ ]  Error handling and logging
+- [ ] README with setup, environment, examples (Cursor/Claude), and tool/resource catalog
 
-### 3. Data Access Endpoints
+### 3. Testing and Docker (Required)
 
-- [ ]  Contract metadata and ABI endpoints
-- [ ]  Token information and holder data
-- [ ]  Transaction history and details
-- [ ]  Account balance and activity data
+- [ ] Unit tests for core services and tools; runnable test script
+- [ ] Dockerfile, docker-compose, and working health check
 
-### 4. Performance Optimization
+### 4. Optional Enhancements (Bonus)
 
-- [ ]  Redis caching implementation (optional)
-- [ ]  Request batching and optimization
-- [ ]  Response compression and pagination
-- [ ]  Performance monitoring and metrics
-
-### 5. Documentation and Testing
-
-- [ ]  Comprehensive OpenAPI 3.0 specification
-- [ ]  Swagger UI for interactive testing
-- [ ]  Postman collection with examples
-- [ ]  Integration guide and tutorials
-
-### 6. Deployment and Quality
-
-- [ ]  Docker containerization
-- [ ]  Environment configuration management
-- [ ]  Health check endpoints
-- [ ]  Unit and integration tests (80%+ coverage)
+- [ ] REST facade + OpenAPI 3.0 spec + Swagger UI + Postman collection
+- [ ] ConfluxScan enrichment client with normalization, retry/backoff
+- [ ] Caching (Redis or equivalent) and rate limiting
+- [ ] Compression, pagination envelopes, request batching
+- [ ] Monitoring/metrics
 
 ## Acceptance Criteria
 
-### Functional Requirements
+### Functional (Required)
 
-- ✅ Implements complete MCP protocol specification
-- ✅ Provides normalized access to all major ConfluxScan data
-- ✅ Handles rate limiting and API errors gracefully
-- ✅ Returns consistent, well-formatted JSON responses
-- ✅ Supports pagination for large data sets
-- ✅ Includes comprehensive API documentation
+- ✅ Implements MCP protocol with stdio and SSE transports
+- ✅ Provides the required EVM read/write tools and resources listed below
+- ✅ Returns consistent JSON with bigint-safe formatting
+- ✅ Proper error messages when private key is missing for write ops
+- ✅ Health endpoint responds with server status
 
-### Technical Requirements
+### Technical (Required)
 
-- ✅ Built with TypeScript for type safety
-- ✅ Implements proper error handling and logging
-- ✅ Includes caching for performance optimization
-- ✅ Provides health check and monitoring endpoints
-- ✅ Docker deployment ready
+- ✅ TypeScript codebase using `@modelcontextprotocol/sdk` and `viem`
+- ✅ Proper error handling; no private keys are stored or logged
+- ✅ Dockerized with working health check
 
-### Quality Requirements
+### Quality (Required)
 
-- ✅ 80% minimum test coverage
-- ✅ Clean, maintainable code with proper documentation
-- ✅ Performance optimized for concurrent requests
-- ✅ Comprehensive OpenAPI documentation
-- ✅ Production-ready error handling
+- ✅ Unit tests for core services/tools; tests pass in CI/local
+- ✅ Clear README with examples and client configuration
+
+### Bonus
+
+- ✅ REST facade with OpenAPI/Swagger/Postman
+- ✅ ConfluxScan enrichment with normalization/caching/rate limiting
+- ✅ Pagination, compression, batching
+- ✅ Monitoring/metrics endpoints
 
 ## MCP Resource Examples
 
@@ -169,7 +147,7 @@ Create a lightweight Model Context Protocol (MCP) server using Express.js or Koa
 
 ```json
 {
-  "uri": "conflux://contracts/0x123...",
+  "uri": "evm://conflux/token/0x123...",
   "name": "Smart Contract Details",
   "description": "Detailed information about a smart contract",
   "mimeType": "application/json"
@@ -181,7 +159,7 @@ Create a lightweight Model Context Protocol (MCP) server using Express.js or Koa
 
 ```json
 {
-  "uri": "conflux://tokens/0x456.../holders",
+  "uri": "evm://conflux/token/0x456.../balanceOf/0xOwner...",
   "name": "Token Holders",
   "description": "List of token holders and their balances",
   "mimeType": "application/json"
@@ -197,149 +175,80 @@ Create a lightweight Model Context Protocol (MCP) server using Express.js or Koa
 - `get_account_balance` - Get account balance and token holdings
 - `search_contracts` - Search for contracts by various criteria
 
-## API Endpoint Examples
+## Tooling and Resources (Required)
 
-### Contract Information
+### Supported Networks
 
-```
-GET /mcp/resources/contracts/{address}
+- `conflux` (mainnet, chainId 1030)
+- `conflux-testnet` (testnet, chainId 71)
 
-```
+### Tools (must be implemented)
 
-Response:
+- Network: `get_supported_networks`, `get_chain_info`
+- Blocks/Tx: `get_block_by_number`, `get_latest_block`, `get_transaction`, `get_transaction_receipt`, `estimate_gas`
+- Balances/Tokens: `get_balance`, `get_erc20_balance`, `get_token_info`, `get_nft_info`, `get_erc1155_token_uri`, `get_nft_balance`, `get_erc1155_balance`
+- Contracts: `read_contract`, `write_contract`, `is_contract`
+- Transfers: `transfer_conflux`, `transfer_erc20`, `approve_token_spending`, `transfer_nft`, `transfer_erc1155`
+- Wallet: `get_address_from_private_key`
 
-```json
-{
-  "address": "0x123...",
-  "name": "MyToken",
-  "verified": true,
-  "abi": [...],
-  "sourceCode": "contract MyToken {...}",
-  "compiler": "0.8.19",
-  "createdAt": "2025-01-01T00:00:00Z"
-}
-
-```
-
-### Token Holders
-
-```
-GET /mcp/resources/tokens/{address}/holders
-
-```
-
-Response:
-
-```json
-{
-  "token": {
-    "address": "0x456...",
-    "name": "MyToken",
-    "symbol": "MTK",
-    "totalSupply": "1000000000000000000000000"
-  },
-  "holders": [
-    {
-      "address": "0x789...",
-      "balance": "100000000000000000000",
-      "percentage": "10.0"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 100,
-    "total": 1500
-  }
-}
-
-```
-
-### Account Balance
-
-```
-GET /mcp/resources/accounts/{address}/balance
-
-```
-
-Response:
-
-```json
-{
-  "address": "0x789...",
-  "balance": {
-    "cfx": "1000000000000000000",
-    "tokens": [
-      {
-        "address": "0x456...",
-        "name": "MyToken",
-        "symbol": "MTK",
-        "balance": "100000000000000000000"
-      }
-    ]
-  },
-  "lastUpdated": "2025-01-01T12:00:00Z"
-}
-
-```
+Note: Additional overlapping helpers like `get_token_balance`, `get_token_balance_erc20`, and `transfer_token` MAY be provided and are acceptable.
 
 ## Technical Specifications
 
 ### Environment Variables
 
-```
-PORT=3000
+```text
+MCP_SERVER_PORT=3333
+HOST=0.0.0.0
+LOG_LEVEL=info
+PRIVATE_KEY=<optional, used only for signing in-memory>
+
+# Bonus (if REST/ConfluxScan/caching included)
 CONFLUXSCAN_API_URL=https://api.confluxscan.net
 CONFLUXSCAN_API_KEY=<optional_api_key>
 REDIS_URL=<optional_redis_connection>
-LOG_LEVEL=info
 CACHE_TTL=300
 RATE_LIMIT_REQUESTS=100
 RATE_LIMIT_WINDOW=60
-
 ```
 
-### Project Structure
+### Project Structure (example)
 
-```
+```text
 src/
-├── mcp/
-│   ├── server.ts          # MCP server implementation
-│   ├── resources.ts       # Resource definitions and handlers
-│   └── tools.ts           # Tool implementations
-├── services/
-│   ├── confluxscan.ts     # ConfluxScan API client
-│   ├── cache.ts           # Caching service
-│   └── normalizer.ts      # Data normalization
-├── routes/
-│   ├── contracts.ts       # Contract endpoints
-│   ├── tokens.ts          # Token endpoints
-│   └── accounts.ts        # Account endpoints
-├── middleware/
-│   ├── rateLimit.ts       # Rate limiting
-│   ├── cache.ts           # Cache middleware
-│   └── error.ts           # Error handling
-└── docs/
-    ├── openapi.yaml       # OpenAPI specification
-    └── postman.json       # Postman collection
+├── core/
+│   ├── chains.ts           # chain maps and helpers
+│   ├── config.ts           # runtime config and key handling
+│   ├── prompts.ts          # MCP prompts
+│   ├── resources.ts        # MCP resources (evm://...)
+│   ├── tools.ts            # MCP tools
+│   └── services/           # viem-based services (blocks, tx, tokens, transfers)
+├── server/
+│   ├── server.ts           # MCP server setup
+│   └── http-server.ts      # HTTP SSE transport and health
+└── tests/                  # unit tests
 
+# Bonus (if included):
+src/services/confluxscan.ts
+src/services/cache.ts
+src/middleware/*
+src/routes/*
+src/docs/openapi.yaml
+src/docs/postman.json
 ```
 
-### Package Dependencies
+### Package Dependencies (baseline)
 
 ```json
 {
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "express": "^4.18.0",
-    "axios": "^1.6.0",
-    "redis": "^4.6.0",
-    "express-rate-limit": "^7.1.0",
-    "swagger-ui-express": "^5.0.0",
-    "joi": "^17.11.0",
-    "winston": "^3.11.0"
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "viem": "^2.23.0",
+    "zod": "^3.24.0"
   }
 }
-
 ```
 
 ## Bonus Features (Optional)
@@ -405,16 +314,16 @@ src/
 
 ### Conflux Documentation
 
-- [ConfluxScan API Documentation](https://doc.confluxnetwork.org/docs/espace/UserGuide/#confluxscan)
 - [Conflux eSpace Guide](https://doc.confluxnetwork.org/docs/espace/)
 - [Conflux RPC Documentation](https://doc.confluxnetwork.org/docs/core/build/json-rpc/)
+- (Bonus) [ConfluxScan API Documentation](https://doc.confluxnetwork.org/docs/espace/UserGuide/#confluxscan)
 
 ### Development Tools
 
 - [Express.js Documentation](https://expressjs.com/)
-- [OpenAPI 3.0 Specification](https://swagger.io/specification/)
-- [Redis Documentation](https://redis.io/docs/)
 - [TypeScript Documentation](https://www.typescriptlang.org/docs/)
+- (Bonus) [OpenAPI 3.0 Specification](https://swagger.io/specification/)
+- (Bonus) [Redis Documentation](https://redis.io/docs/)
 
 ---
 
