@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
+    "test:verbose": "jest --verbose",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "db:generate": "prisma generate",
@@ -51,8 +52,9 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/fs-extra": "^11.0.4",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
@@ -63,6 +65,7 @@
     "eslint-config-next": "15.4.4",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",
+    "msw": "^2.10.4",
     "supertest": "^7.1.4",
     "tsx": "^4.20.3",
     "typescript": "^5"

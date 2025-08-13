@@ -557,8 +557,7 @@ async function callOpenAI(prompt: string): Promise<Finding[]> {
             }
           ],
           temperature: 0.1,
-          max_tokens: 8000,
-          timeout: 60000 
+          max_tokens: 8000
         })
       });
 
