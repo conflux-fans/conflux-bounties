@@ -36,7 +36,7 @@ Before you begin, ensure you have the following installed:
 
 ```bash
 git clone <repository-url>
-cd vesting-dapp
+cd project_name
 ```
 
 ### 2. Install Dependencies
@@ -47,13 +47,14 @@ npm install
 
 ### 3. Environment Configuration
 
-Create a `.env.local` file with the following variables:
+Create a `.env` file with the following variables:
 
 ```env
 # Blockchain Configuration
 NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID="your_wallet_connect_project_id"
 NEXT_PUBLIC_ALCHEMY_API_KEY="your_alchemy_api_key"
-NEXT_PUBLIC_FACTORY_CONTRACT_ADDRESS="0x1121C77E3AcC2281982AD91c53702A71E56d6Cd2"
+NEXT_PUBLIC_MAINNET_FACTORY_ADDRESS="0x1121C77E3AcC2281982AD91c53702A71E56d6Cd2"
+NEXT_PUBLIC_SEPOLIA_FACTORY_ADDRESS="XXXX"
 
 
 # Supabase Configuration
