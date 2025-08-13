@@ -19,6 +19,40 @@ A comprehensive blockchain platform for deploying ERC20 tokens with built-in ves
 - **Blockchain**: Ethereum Sepolia, Wagmi, RainbowKit
 - **File Processing**: PapaParse for CSV handling
 
+## 🧪 Testing
+
+The project includes a comprehensive testing setup with Jest and React Testing Library.
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+```
+
+### Test Coverage
+
+Current test coverage focuses on:
+- **Utility Functions**: 100% coverage
+- **State Management**: 71.69% coverage (stores)
+- **Custom Hooks**: 12.1% coverage
+- **UI Components**: 2.82% coverage
+
+### Test Structure
+
+- `src/lib/utils.test.ts` - Utility function tests
+- `src/store/*.test.ts` - Zustand store tests
+- `src/lib/hooks/*.test.ts` - Custom hook tests
+- `src/components/ui/*.test.tsx` - UI component tests
+
+For detailed testing information, see [TESTING.md](./TESTING.md).
+
 ## 📋 Prerequisites
 
 Before you begin, ensure you have the following installed:
