@@ -18,7 +18,7 @@ Create a `.env` file in the root directory with the following variables:
 PRIVATE_KEY=your_private_key_here
 
 # eSpace Testnet RPC URL
-ESPACE_TESTNET_URL=https://evmtestnet.confluxrpc.com
+ESPACE_TESTNET_RPC_URL=https://evmtestnet.confluxrpc.com
 
 # Sepolia Testnet RPC URL (Infura, Alchemy, or your own node)
 SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/your_project_id

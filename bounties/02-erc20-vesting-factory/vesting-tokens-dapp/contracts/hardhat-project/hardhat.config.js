@@ -8,7 +8,7 @@ module.exports = {
   solidity: "0.8.20",
   networks: {
     espaceTestnet: {
-      url: process.env.ESPACE_TESTNET_URL || "",
+      url: process.env.ESPACE_TESTNET_RPC_URL || "",
       accounts:
         process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
     },

@@ -9,7 +9,8 @@ Before deploying, you need to set up your environment variables. Create a `.env`
 PRIVATE_KEY=your_private_key_here
 
 # eSpace Testnet RPC URL
-ESPACE_TESTNET_URL=https://evmtestnet.confluxrpc.com
+ESPACE_TESTNET_RPC_URL=https://evmtestnet.confluxrpc.com
+
 
 # Sepolia Testnet RPC URL
 # Options:
