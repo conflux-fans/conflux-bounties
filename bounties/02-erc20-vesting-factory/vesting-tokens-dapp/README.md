@@ -112,6 +112,53 @@ make status       # Check service status
 
 For detailed Docker information, see [DOCKER.md](./DOCKER.md).
 
+## ⚡ Quick Deploy & Start (Alternative Method)
+
+For developers who want to quickly deploy the contract and start the application in one command, we provide an automated deployment script.
+
+### One-Command Deployment
+
+```bash
+# Make the script executable (first time only)
+chmod +x deploy-and-start.sh
+
+# Run the automated deployment and startup
+./deploy-and-start.sh
+```
+
+### What the Script Does
+
+The `deploy-and-start.sh` script automates the entire process:
+
+1. **🚀 Contract Deployment**: Navigates to `contracts/hardhat-project` and deploys to Sepolia
+2. **⚙️ Environment Setup**: Automatically extracts the contract address and updates `.env`
+3. **▶️ Service Startup**: Starts the application using `make start`
+4. **✅ Verification**: Checks if services are running properly
+
+### Prerequisites for Quick Deploy
+
+Before running the script, ensure you have:
+
+- **Hardhat Configuration**: `.env` file in `contracts/hardhat-project/` with:
+  ```env
+  PRIVATE_KEY=your_private_key
+  SEPOLIA_RPC_URL=your_sepolia_rpc_url
+  ETHERSCAN_API_KEY=your_etherscan_key  # Optional
+  ```
+- **Sufficient Sepolia ETH** for contract deployment
+- **Make** installed on your system
+
+### Benefits of Quick Deploy
+
+- **⏱️ Time Saving**: Deploy and start in one command
+- **🔄 Automated**: No manual environment variable updates
+- **✅ Error Handling**: Built-in validation and error checking
+- **🎯 Focus**: Concentrate on development, not deployment setup
+
+### Manual Alternative
+
+If you prefer the traditional approach, follow the [Installation & Setup](#-installation--setup) section below.
+
 ## 📋 Prerequisites
 
 Before you begin, ensure you have the following installed:
