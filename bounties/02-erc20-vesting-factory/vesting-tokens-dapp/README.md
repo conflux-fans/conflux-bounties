@@ -53,6 +53,65 @@ Current test coverage focuses on:
 
 For detailed testing information, see [TESTING.md](./TESTING.md).
 
+## 🐳 Docker
+
+The project includes comprehensive Docker support for development and production environments.
+
+### Quick Start with Docker
+
+```bash
+# Start development environment
+make start
+
+# Or manually with docker-compose
+docker-compose -f docker-compose.dev.yml up -d
+
+# View logs
+make dev-logs
+
+# Stop services
+make stop
+```
+
+### Docker Features
+
+- **Multi-stage builds** for optimized production images
+- **Hot reloading** in development environment
+- **PostgreSQL database** with pgAdmin management
+- **Redis caching** for improved performance
+- **Health checks** and service dependencies
+- **Volume mounting** for development workflow
+
+### Docker Commands
+
+```bash
+# Development
+make dev          # Start development environment
+make dev-build    # Build and start development
+make dev-logs     # View development logs
+make dev-stop     # Stop development environment
+
+# Production
+make prod         # Start production environment
+make prod-build   # Build and start production
+make prod-logs    # View production logs
+
+# Database
+make migrate      # Run database migrations
+make db-admin     # Start pgAdmin
+
+# Testing
+make test         # Run tests in Docker
+make test-cov     # Run tests with coverage
+
+# Utilities
+make build        # Build Docker images
+make clean        # Clean up Docker resources
+make status       # Check service status
+```
+
+For detailed Docker information, see [DOCKER.md](./DOCKER.md).
+
 ## 📋 Prerequisites
 
 Before you begin, ensure you have the following installed:
