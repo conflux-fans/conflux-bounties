@@ -127,6 +127,13 @@ Object.assign(global, {
   }
 })
 
+// Mock TextEncoder/TextDecoder for cuid2 compatibility
+if (typeof global.TextEncoder === 'undefined') {
+  const { TextEncoder, TextDecoder } = require('util');
+  global.TextEncoder = TextEncoder;
+  global.TextDecoder = TextDecoder;
+}
+
 // Mock console methods to reduce noise in tests
 const originalConsoleLog = console.log
 const originalConsoleError = console.error

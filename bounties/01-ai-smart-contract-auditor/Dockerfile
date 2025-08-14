@@ -1,6 +1,9 @@
 # Use Node.js 18 Alpine as base image
 FROM node:18-alpine
 
+# Install Docker CLI for static analysis integration
+RUN apk add --no-cache docker-cli
+
 # Set working directory
 WORKDIR /app
 
@@ -25,14 +28,6 @@ RUN npm ci --only=production && npm cache clean --force
 
 # Expose port
 EXPOSE 3000
-
-# Create a non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
-
-# Change ownership of the app directory
-RUN chown -R nextjs:nodejs /app
-USER nextjs
 
 # Start the application
 CMD ["npm", "start"]

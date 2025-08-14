@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuditReportById } from '@/lib/database';
+import { validateId } from '@/lib/idUtils';
 
 interface AuditReportParams {
   jobId: string;
-}
-
-function validateUUID(id: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(id);
 }
 
 export async function GET(
@@ -24,11 +20,12 @@ export async function GET(
       );
     }
 
-    if (!validateUUID(jobId)) {
+    const idValidation = validateId(jobId);
+    if (!idValidation.isValid) {
       return NextResponse.json(
         { 
           error: 'Invalid job ID format',
-          details: 'Job ID must be a valid UUID'
+          details: 'Job ID must be a valid UUID or cuid format'
         },
         { status: 400 }
       );

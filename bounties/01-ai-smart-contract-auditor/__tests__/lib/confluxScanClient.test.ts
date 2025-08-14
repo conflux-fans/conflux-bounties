@@ -8,6 +8,9 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 describe('confluxScanClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Clear environment variables to ensure consistent test behavior
+    delete process.env.CONFLUXSCAN_API_KEY;
+    delete process.env.CONFLUXSCAN_API_URL;
   });
 
   describe('ContractNotFound', () => {
@@ -57,13 +60,14 @@ contract TestContract {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       const result = await getContractSource(testAddress);
       
-      expect(mockedAxios.get).toHaveBeenCalledWith(
-        `https://evmapi.confluxscan.org/api?module=contract&action=getsourcecode&address=${testAddress}`
-      );
+      expect(mockedAxios).toHaveBeenCalledWith({
+        url: `https://evmapi.confluxscan.org/api?module=contract&action=getsourcecode&address=${testAddress}`,
+        method: 'GET'
+      });
       expect(result).toBeTruthy();
       expect(result.length).toBeGreaterThan(0);
       // Should have removed comments
@@ -85,7 +89,7 @@ contract TestContract {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       const result = await getContractSource(testAddress);
       expect(result).toBeTruthy();
@@ -100,7 +104,7 @@ contract TestContract {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       await expect(getContractSource(testAddress)).rejects.toThrow(ContractNotFound);
     });
@@ -114,7 +118,7 @@ contract TestContract {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       await expect(getContractSource(testAddress)).rejects.toThrow(ContractNotFound);
     });
@@ -128,7 +132,7 @@ contract TestContract {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       await expect(getContractSource(testAddress)).rejects.toThrow(ContractNotFound);
     });
@@ -147,7 +151,7 @@ contract TestContract {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       await expect(getContractSource(testAddress)).rejects.toThrow(ContractNotFound);
     });
@@ -166,7 +170,7 @@ contract TestContract {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       await expect(getContractSource(testAddress)).rejects.toThrow(ContractNotFound);
     });
@@ -180,7 +184,7 @@ contract TestContract {
         }
       };
 
-      mockedAxios.get.mockRejectedValueOnce(axiosError);
+      mockedAxios.mockRejectedValueOnce(axiosError);
       mockedAxios.isAxiosError.mockReturnValueOnce(true);
 
       await expect(getContractSource(testAddress)).rejects.toThrow(ContractNotFound);
@@ -196,7 +200,7 @@ contract TestContract {
         }
       });
 
-      mockedAxios.get.mockRejectedValueOnce(axiosError);
+      mockedAxios.mockRejectedValueOnce(axiosError);
       mockedAxios.isAxiosError.mockReturnValueOnce(true);
 
       await expect(getContractSource(testAddress)).rejects.toThrow('Server Error');
@@ -205,7 +209,7 @@ contract TestContract {
     it('should handle non-axios errors', async () => {
       const genericError = new Error('Network timeout');
 
-      mockedAxios.get.mockRejectedValueOnce(genericError);
+      mockedAxios.mockRejectedValueOnce(genericError);
       mockedAxios.isAxiosError.mockReturnValueOnce(false);
 
       await expect(getContractSource(testAddress)).rejects.toThrow(genericError);
@@ -214,7 +218,7 @@ contract TestContract {
     it('should preserve ContractNotFound errors when re-throwing', async () => {
       const contractNotFoundError = new ContractNotFound(testAddress);
 
-      mockedAxios.get.mockRejectedValueOnce(contractNotFoundError);
+      mockedAxios.mockRejectedValueOnce(contractNotFoundError);
       mockedAxios.isAxiosError.mockReturnValueOnce(false);
 
       await expect(getContractSource(testAddress)).rejects.toThrow(ContractNotFound);
@@ -235,7 +239,7 @@ contract Test {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       const result = await getContractSource(testAddress);
       expect(result).not.toContain('// This is a single line comment');
@@ -258,7 +262,7 @@ contract Test {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       const result = await getContractSource(testAddress);
       expect(result).not.toContain('/* This is a');
@@ -281,7 +285,7 @@ contract Test {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       const result = await getContractSource(testAddress);
       expect(result).toContain('"This // is not a comment"');
@@ -302,7 +306,7 @@ contract Test {
         }
       };
 
-      mockedAxios.get.mockResolvedValueOnce(mockResponse);
+      mockedAxios.mockResolvedValueOnce(mockResponse);
 
       const result = await getContractSource(testAddress);
       expect(result).toContain('\\"quote\\"');

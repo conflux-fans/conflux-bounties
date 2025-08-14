@@ -1,31 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getContractSource, ContractNotFound } from '../../../../lib/confluxScanClient';
-
-const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+import { getContractSource, getVerifiedContract, ContractNotFound } from '../../../../lib/confluxScanClient';
+import { validateAndNormalizeAddress } from '../../../../lib/addressUtils';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { address: string } }
+  { params }: { params: Promise<{ address: string }> }
 ) {
-  const { address } = params;
+  const { address } = await params;
 
-  if (!ADDRESS_REGEX.test(address)) {
+  // Validate address using unified validation
+  const addressValidation = validateAndNormalizeAddress(address);
+  if (!addressValidation.isValid) {
     return NextResponse.json(
-      { error: 'Invalid address format' },
+      { error: addressValidation.error },
       { status: 400 }
     );
   }
 
+  const normalizedAddress = addressValidation.normalized!;
+
   try {
-    const source = await getContractSource(address);
-    return NextResponse.json({ source });
+    // Get detailed contract information with multi-file support
+    const { searchParams } = new URL(request.url);
+    const detailed = searchParams.get('detailed') === 'true';
+
+    if (detailed) {
+      const verifiedContract = await getVerifiedContract(normalizedAddress);
+      return NextResponse.json({
+        address: verifiedContract.address,
+        contractName: verifiedContract.contractName,
+        sources: verifiedContract.sources,
+        compiler: verifiedContract.compiler,
+        constructorArguments: verifiedContract.constructorArguments,
+        abi: verifiedContract.abi
+      });
+    } else {
+      // Legacy single source response
+      const source = await getContractSource(normalizedAddress);
+      return NextResponse.json({ 
+        address: normalizedAddress,
+        source 
+      });
+    }
   } catch (error) {
     if (error instanceof ContractNotFound) {
       return NextResponse.json(
-        { error: 'Contract not found' },
+        { error: 'Contract not found or not verified' },
         { status: 404 }
       );
     }
+    console.error('Error fetching contract:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

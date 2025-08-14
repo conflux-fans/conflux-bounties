@@ -33,10 +33,9 @@ describe('staticAnalyzer', () => {
       const result = await runStaticAnalysis(mockSourceFiles);
       
       expect(result).toEqual([]);
-      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Static analysis tools (Slither/Mythril) disabled - using AI-only analysis');
-      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Skipping Docker-based static analysis for 1 source files');
-      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Total findings: 0 (AI analysis will be performed separately)');
-    });
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Starting static analysis with Slither and Mythril');
+      // Should handle Docker container unavailability gracefully
+    }, 15000);
 
     it('should handle multiple source files', async () => {
       const multipleFiles: SourceFile[] = [
@@ -48,8 +47,8 @@ describe('staticAnalyzer', () => {
       const result = await runStaticAnalysis(multipleFiles);
       
       expect(result).toEqual([]);
-      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Skipping Docker-based static analysis for 3 source files');
-    });
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Starting static analysis with Slither and Mythril');
+    }, 15000);
 
     it('should return StaticFinding array type', async () => {
       const result = await runStaticAnalysis(mockSourceFiles);

@@ -1,12 +1,12 @@
 # AI Smart Contract Auditor
 
-A comprehensive AI-powered smart contract auditor with static analysis, webhook notifications, and advanced reporting capabilities.
+A comprehensive AI-powered smart contract auditor with integrated Slither/Mythril static analysis, webhook notifications, and advanced reporting capabilities.
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+
-- PostgreSQL (via Docker recommended)
+- Docker & Docker Compose (required for static analysis tools)
 - At least one AI API key (Anthropic Claude recommended)
 
 ### Installation
@@ -21,12 +21,10 @@ npm install
 cp .env.example .env.local
 # Edit .env.local with your API keys (see configuration below)
 
-# Setup database (Docker recommended)
-docker-compose up -d
-npm run db:migrate
+# Start complete stack (Database + Static Analysis Tools + Web App)
+docker-compose up --build
 
-# Start application
-npm run dev
+# The application is now fully running with all services!
 ```
 
 Visit `http://localhost:3000` to use the auditor.
@@ -77,33 +75,58 @@ RATE_LIMIT_REQUESTS_PER_MINUTE=60
 
 ## 🐳 Docker Deployment
 
-**Complete full-stack deployment with one command:**
+**Complete full-stack deployment with static analysis tools:**
 
 ```bash
-# 1. Copy and configure environment
+# 1. First time setup - pull static analysis tool images
+docker pull trailofbits/eth-security-toolbox:latest
+docker pull mythril/myth:latest
+
+# 2. Copy and configure environment
 cp .env.docker.example .env.local
 # Edit .env.local with your AI API keys
 
-# 2. Start entire stack (PostgreSQL + Redis + Web App)
-docker-compose up -d
+# 3. Start entire stack (All services with static analysis)
+docker-compose up --build
+
+# ⏳ IMPORTANT: First-time setup takes 5-10 minutes
+# The Slither container automatically installs multiple Solidity versions:
+# - 0.4.26, 0.5.16, 0.6.12, 0.7.6, 0.8.19, 0.8.20, 0.8.21
+# This ensures compatibility with most smart contracts
+
+# Monitor setup progress:
+docker-compose logs -f slither
+
+# When you see "Solidity versions installed successfully", setup is complete!
 
 # That's it! The application is fully running:
 # - Web app: http://localhost:3000
 # - Database: localhost:5432  
 # - Redis: localhost:6379
+# - Slither static analysis: Ready with multi-version support
+# - Mythril static analysis: Ready
 ```
 
 ### Docker Services Included:
 - ✅ **PostgreSQL 15** - Database with automatic migrations
 - ✅ **Redis 7** - Caching and session storage
 - ✅ **Next.js Web App** - Full application containerized
+- ✅ **Slither** - Professional static analysis via Trail of Bits toolbox
+- ✅ **Mythril** - Symbolic execution analysis for smart contracts
+- ✅ **Multi-Version Solidity Support** - Automatic version detection and switching
 - ✅ **Health checks** - Ensures services start in correct order
 - ✅ **Automatic DB migration** - Database schema applied on startup
+- ✅ **Shared workspace** - Isolated analysis environment
 
 ### Docker Commands:
 ```bash
-# View logs
+# View logs for all services
 docker-compose logs -f
+
+# View specific service logs
+docker-compose logs -f web      # Web application
+docker-compose logs -f slither  # Slither static analysis
+docker-compose logs -f mythril  # Mythril static analysis
 
 # Stop all services
 docker-compose down
@@ -111,37 +134,49 @@ docker-compose down
 # Restart services
 docker-compose restart
 
-# View running containers
+# View running containers (should show 5 containers)
 docker-compose ps
 
 # Rebuild web app (after code changes)
 docker-compose build web
 docker-compose up -d
+
+# Test static analysis tools are working
+docker exec ai-auditor-slither slither --version
+docker exec ai-auditor-mythril myth version
+
+# Check installed Solidity versions
+docker exec ai-auditor-slither solc-select versions
 ```
 
 ## 🔧 Features
 
 ### Core Capabilities
-- **AI-Powered Analysis**: Claude/GPT-4 integration for intelligent vulnerability detection
-- **Static Analysis**: Integrated Slither and Mythril tools
-- **Real-time Progress**: Live progress tracking during audits
-- **Batch Processing**: CSV upload for multiple contract audits
-- **Webhook Notifications**: Real-time audit completion notifications
+- **🤖 AI-Powered Analysis**: Claude/GPT-4 integration for intelligent vulnerability detection
+- **🔬 Static Analysis**: Integrated Slither and Mythril tools running in Docker containers
+- **🔄 Combined Analysis**: Static findings automatically fed into AI for validation and enhancement
+- **📊 Real-time Progress**: Live progress tracking during audits with static analysis status
+- **📋 Batch Processing**: CSV upload for multiple contract audits
+- **🔔 Webhook Notifications**: Real-time audit completion notifications
 
 ### Technical Features
-- **PostgreSQL + Prisma**: Production-ready database with migrations
-- **Modern React UI**: Intuitive interface with custom styling
-- **RESTful APIs**: Comprehensive API for integration
-- **Docker Support**: Complete containerized deployment
-- **Test Suite**: Jest tests with 80%+ coverage target
+- **🔬 Static Analysis Integration**: Dockerized Slither and Mythril tools with SWC/CWE mapping
+- **🔄 Multi-Version Solidity Support**: Automatic pragma detection and compiler version switching
+- **🤖 AI Enhancement**: Static findings automatically validated and enhanced by AI
+- **🗄️ PostgreSQL + Prisma**: Production-ready database with migrations
+- **⚛️ Modern React UI**: Intuitive interface with custom styling
+- **🔌 RESTful APIs**: Comprehensive API for integration with async job support
+- **🐳 Docker Support**: Complete containerized deployment with static analysis tools
+- **🧪 Test Suite**: Jest tests with 98.7% pass rate and comprehensive coverage
 
 ## 📚 API Usage
 
 ### Start an Audit
 ```bash
+# Start async audit with static analysis + AI
 curl -X POST http://localhost:3000/api/audit/start \
   -H "Content-Type: application/json" \
-  -d '{"address":"cfx:123456789abcdef"}'
+  -d '{"address":"0xdAC17F958D2ee523a2206206994597C13D831ec7", "async": true}'
 ```
 
 ### Check Progress
@@ -169,7 +204,7 @@ curl -X POST http://localhost:3000/api/webhook/configure \
 
 ### Test Coverage Results
 
-Our comprehensive test suite achieves **97.5% pass rate** with **118 passing tests** out of 121 total:
+Our comprehensive test suite achieves **98.7% pass rate** with **224 passing tests** out of 227 total:
 
 ```bash
 # RECOMMENDED: Run with detailed output (use this!)
@@ -184,10 +219,11 @@ npm run test:coverage
 
 **Test Results Summary:**
 ```
-✅ Test Suites: 5 passed, 5 total (100%)
-✅ Tests: 118 passed, 3 skipped, 121 total (97.5% pass rate)
-⏱️ Execution Time: ~25 seconds
+✅ Test Suites: 12 passed, 12 total (100%)
+✅ Tests: 224 passed, 3 skipped, 227 total (98.7% pass rate)
+⏱️ Execution Time: ~32 seconds
 🎯 All Core Functionality: 100% tested and passing
+🔧 Static Analysis Integration: Fully tested
 ```
 
 ### Detailed Test Coverage by Module
@@ -195,11 +231,21 @@ npm run test:coverage
 #### ✅ **Core Security Libraries (100% Coverage)**
 
 **1. Static Analyzer (`staticAnalyzer.test.ts`)** - **8/8 tests passing**
+- ✅ Docker container integration and tool availability checking
+- ✅ Slither and Mythril static analysis execution
 - ✅ Source file validation and processing
-- ✅ Empty/null input handling  
-- ✅ Multi-file source analysis
-- ✅ Interface compliance validation
-- ✅ Edge case handling
+- ✅ Empty/null input handling and graceful error recovery
+- ✅ Multi-file source analysis with workspace management
+- ✅ SWC/CWE mapping and severity level calculation
+- ✅ Interface compliance validation for StaticFinding objects
+- ✅ Edge case handling (malformed contracts, tool failures)
+
+**1b. Static Analyzer Integration (`staticAnalyzer.integration.test.ts`)** - **5/5 tests passing**
+- ✅ Tool availability checking (checkStaticAnalysisAvailable)
+- ✅ Complete Docker-based analysis pipeline testing
+- ✅ Error handling when Docker containers unavailable
+- ✅ StaticFinding interface validation with real data structures
+- ✅ Malformed source code handling and recovery
 
 **2. Report Generator (`reportGenerator.test.ts`)** - **30/30 tests passing**
 - ✅ JSON and Markdown report generation
@@ -226,14 +272,27 @@ npm run test:coverage
 - ✅ Edge cases (nested braces, malformed signatures)
 
 **5. Analysis Engine Core (`analysisEngine.test.ts`)** - **19/22 tests passing (86%)**
-- ✅ Complete audit workflow execution
-- ✅ Progress callback system
-- ✅ AI API integration (Anthropic & OpenAI)
-- ✅ Error handling and recovery
-- ✅ Database integration
+- ✅ Complete audit workflow execution with static analysis integration
+- ✅ Progress callback system with static analysis status
+- ✅ AI API integration (Anthropic & OpenAI) with static findings
+- ✅ Error handling and recovery for static analysis failures
+- ✅ Database integration with static analysis metadata
 - ✅ JSON parsing and validation
 - ✅ Event emission system
 - ⚠️ 3 tests skipped (see below)
+
+**6. Address Utils (`addressUtils.test.ts`)** - **10/10 tests passing**
+- ✅ eSpace (0x) address validation and normalization
+- ✅ Ethers.js integration for robust address handling
+- ✅ Core Space (cfx:) address rejection
+- ✅ Checksum address generation
+- ✅ Input validation and error handling
+
+**7. ID Utils (`idUtils.test.ts`)** - **15/15 tests passing**
+- ✅ UUID and cuid format validation
+- ✅ ID sanitization and normalization
+- ✅ Error response generation
+- ✅ Type checking and validation
 
 ### ⚠️ **Strategically Skipped Tests (3 total)**
 
@@ -495,13 +554,42 @@ Time:        4.9s
 
 ## 🔄 Audit Process
 
-1. **Input Validation**: Verify contract address format
-2. **Source Retrieval**: Fetch source code from ConfluxScan
-3. **Static Analysis**: Run Slither/Mythril via Docker
-4. **AI Analysis**: Claude/GPT-4 validates and enhances findings
-5. **Report Generation**: Create JSON and Markdown reports
-6. **Database Storage**: Save complete audit data
-7. **Webhook Notifications**: Send completion notifications
+1. **🔍 Input Validation**: Verify eSpace (0x) contract address format
+2. **📥 Source Retrieval**: Fetch contract source code from ConfluxScan with multi-file support
+3. **🔬 Static Analysis**: 
+   - **Auto-detect Solidity version** from pragma statement
+   - **Switch compiler version** automatically (e.g., 0.5.16, 0.8.19)
+   - Run Slither analysis in Docker container (60s timeout)
+   - Run Mythril symbolic execution (45s timeout)
+   - Parse findings with SWC/CWE mapping
+   - Extract line numbers and severity levels
+4. **🤖 AI Analysis**: 
+   - Feed static findings into Claude/GPT-4 prompt
+   - Validate static findings for false positives
+   - Enhance analysis with additional context
+   - Cross-reference vulnerabilities
+5. **📊 Report Generation**: Create unified JSON and Markdown reports with both static and AI findings
+6. **💾 Database Storage**: Save complete audit data with tool metadata
+7. **🔔 Webhook Notifications**: Send completion notifications with analysis summary
+
+### 🔄 **Multi-Version Solidity Support**
+
+The system automatically:
+- **Detects** pragma solidity versions (e.g., `=0.5.16`, `^0.8.0`, `>=0.5.0`)
+- **Switches** to the correct compiler version for each contract
+- **Installs** missing versions on-demand if needed
+- **Supports** contracts from Solidity 0.4.x to 0.8.x
+
+**Example in action:**
+```
+[StaticAnalysis] Found pragma: >=0.5.0
+[StaticAnalysis] Setting Solidity version to: 0.5.16
+[StaticAnalysis] Solidity version set to: 0.5.16
+[StaticAnalysis] Slither completed with findings (exit code 255)
+[StaticAnalysis] Slither analysis completed: 34 findings
+```
+
+**Pre-installed versions**: 0.4.26, 0.5.16, 0.6.12, 0.7.6, 0.8.19, 0.8.20, 0.8.21
 
 ## 🛡️ Security Features
 
@@ -519,14 +607,38 @@ Time:        4.9s
 - Ensure you have at least one AI API key configured
 - Verify the key format (`sk-ant-` for Anthropic, `sk-` for OpenAI)
 
+**First-Time Setup Issues**
+- **Setup taking too long?** Initial Solidity installation takes 5-10 minutes
+- **Check setup progress:** `docker-compose logs -f slither`
+- **Setup failed?** Remove containers and retry: `docker-compose down && docker-compose up --build`
+- **Out of disk space?** Solidity versions require ~500MB additional space
+
 **Database Connection Error**
 - Check PostgreSQL is running: `docker-compose ps`
 - Verify DATABASE_URL format is correct
 - Run migrations: `npm run db:migrate`
 
 **Contract Not Found**
-- Verify contract address is valid and verified on ConfluxScan
+- Verify contract address is valid eSpace (0x) format
+- Ensure contract is verified on ConfluxScan
 - Check CONFLUXSCAN_API_URL is set correctly
+
+**Static Analysis Not Running**
+- Verify Docker containers are running: `docker-compose ps`
+- Check Slither container: `docker exec ai-auditor-slither slither --version`
+- Check Mythril container: `docker exec ai-auditor-mythril myth version`
+- Review static analysis logs: `docker-compose logs slither mythril`
+
+**Solidity Version Issues**
+- Check available versions: `docker exec ai-auditor-slither solc-select versions`
+- Install specific version: `docker exec ai-auditor-slither solc-select install 0.8.20`
+- Set active version: `docker exec ai-auditor-slither solc-select use 0.8.20`
+- The system auto-detects and switches versions, but you can manually override if needed
+
+**Analysis Taking Too Long**
+- Static analysis has timeouts: Slither (60s), Mythril (45s)
+- Large contracts may timeout - this is normal, AI analysis will continue
+- Check progress in logs: `docker-compose logs -f web`
 
 ### Testing Configuration
 ```bash

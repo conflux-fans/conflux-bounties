@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuditReportsByAddress, getAuditReportStats, AuditReport } from '@/lib/database';
+import { validateAndNormalizeAddress } from '@/lib/addressUtils';
 
 interface AuditHistoryParams {
   address: string;
@@ -58,15 +59,6 @@ interface AuditHistoryResponse {
   };
 }
 
-function validateAddress(address: string): boolean {
-  if (!address || typeof address !== 'string') return false;
-  
-  const trimmed = address.trim();
-  if (trimmed.length < 10) return false;
-  
-  return /^0x[a-fA-F0-9]{8,}$/i.test(trimmed);
-}
-
 function validateQueryParams(searchParams: URLSearchParams): {
   limit: number;
   offset: number;
@@ -122,18 +114,21 @@ export async function GET(
     console.log(`[ReportsHistory] Full URL: ${request.url}`);
     console.log(`[ReportsHistory] Search params:`, Object.fromEntries(searchParams.entries()));
 
-    if (!validateAddress(address)) {
+    // Validate and normalize address (0x format only)
+    const addressValidation = validateAndNormalizeAddress(address);
+    if (!addressValidation.isValid) {
       console.log(`[ReportsHistory] Address validation failed for: "${address}"`);
       return NextResponse.json(
         { 
           error: 'Invalid contract address format',
-          details: 'Address must be a valid EVM address starting with "0x" and containing at least 8 hex characters'
+          details: addressValidation.error
         },
         { status: 400 }
       );
     }
 
-    console.log(`[ReportsHistory] Address validation passed for: "${address}"`);
+    const normalizedAddress = addressValidation.normalized!;
+    console.log(`[ReportsHistory] Address validation passed for: "${address}" -> "${normalizedAddress}"`);
 
     let queryParams;
     try {
@@ -152,10 +147,10 @@ export async function GET(
 
     const { limit, offset, includeStats, status } = queryParams;
 
-    console.log(`[ReportsHistory] Fetching audit history for address: "${address}", limit: ${limit}, offset: ${offset}, status: ${status}, includeStats: ${includeStats}`);
+    console.log(`[ReportsHistory] Fetching audit history for address: "${normalizedAddress}", limit: ${limit}, offset: ${offset}, status: ${status}, includeStats: ${includeStats}`);
 
     const startTime = Date.now();
-    const result = await getAuditReportsByAddress(address, limit + 1, offset, status);
+    const result = await getAuditReportsByAddress(normalizedAddress.toLowerCase(), limit + 1, offset, status);
     const dbQueryTime = Date.now() - startTime;
     
     console.log(`[ReportsHistory] Database query completed in ${dbQueryTime}ms`);
@@ -175,10 +170,10 @@ export async function GET(
 
     let stats;
     if (includeStats) {
-      console.log(`[ReportsHistory] Fetching stats for address: "${address}"`);
+      console.log(`[ReportsHistory] Fetching stats for address: "${normalizedAddress}"`);
       try {
         const statsStartTime = Date.now();
-        const rawStats = await getAuditReportStats(address);
+        const rawStats = await getAuditReportStats(normalizedAddress.toLowerCase());
         const statsQueryTime = Date.now() - statsStartTime;
         
         console.log(`[ReportsHistory] Stats query completed in ${statsQueryTime}ms:`, rawStats);
@@ -201,7 +196,7 @@ export async function GET(
     }
 
     const response: AuditHistoryResponse = {
-      address,
+      address: normalizedAddress,
       reports: transformedReports,
       pagination: {
         limit,

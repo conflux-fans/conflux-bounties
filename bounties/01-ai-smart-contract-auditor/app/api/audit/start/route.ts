@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runAudit, AuditProgress, Report } from '@/lib/analysisEngine';
+import { runAudit, startAudit, AuditProgress, Report } from '@/lib/analysisEngine';
+import { validateAndNormalizeAddress, createAddressValidationError } from '@/lib/addressUtils';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { address, format = 'json' } = body;
+    const { address, format = 'json', async = false } = body;
 
     if (!address) {
       return NextResponse.json(
@@ -13,20 +14,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!address.startsWith('cfx:') && !address.startsWith('0x')) {
+    // Validate and normalize address (0x format only)
+    const addressValidation = validateAndNormalizeAddress(address);
+    if (!addressValidation.isValid) {
       return NextResponse.json(
-        { error: 'Invalid contract address format. Address should start with "cfx:" or "0x"' },
+        { error: addressValidation.error },
         { status: 400 }
       );
     }
 
-    if (address.length < 10) {
-      return NextResponse.json(
-        { error: 'Contract address appears to be too short' },
-        { status: 400 }
-      );
+    const normalizedAddress = addressValidation.normalized!;
+
+    // Handle async job creation
+    if (async) {
+      const jobId = await startAudit(normalizedAddress);
+      return NextResponse.json({
+        jobId,
+        status: 'pending',
+        message: 'Audit job created successfully',
+        address: normalizedAddress,
+        statusUrl: `/api/audit/status/${jobId}`,
+        reportUrl: `/api/audit/report/${jobId}`
+      });
     }
 
+    // Handle streaming response
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -43,7 +55,7 @@ export async function POST(request: NextRequest) {
           type: 'start',
           timestamp: new Date().toISOString(),
           message: 'Starting smart contract audit...',
-          address: address.trim()
+          address: normalizedAddress
         });
 
         try {
@@ -58,9 +70,9 @@ export async function POST(request: NextRequest) {
             });
           };
 
-          console.log(`[AuditStream] Starting audit for address: ${address}`);
+          console.log(`[AuditStream] Starting audit for address: ${normalizedAddress}`);
           
-          const report: Report = await runAudit(address.trim(), { 
+          const report: Report = await runAudit(normalizedAddress, { 
             onProgress: progressCallback 
           });
 
@@ -136,19 +148,16 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!address.startsWith('cfx:') && !address.startsWith('0x')) {
+  // Validate and normalize address (0x format only)
+  const addressValidation = validateAndNormalizeAddress(address);
+  if (!addressValidation.isValid) {
     return NextResponse.json(
-      { error: 'Invalid contract address format. Address should start with "cfx:" or "0x"' },
+      { error: addressValidation.error },
       { status: 400 }
     );
   }
 
-  if (address.length < 10) {
-    return NextResponse.json(
-      { error: 'Contract address appears to be too short' },
-      { status: 400 }
-    );
-  }
+  const normalizedAddress = addressValidation.normalized!;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -162,7 +171,7 @@ export async function GET(request: NextRequest) {
       sendEvent('start', {
         timestamp: new Date().toISOString(),
         message: 'Starting smart contract audit...',
-        address: address.trim()
+        address: normalizedAddress
       });
 
       try {
@@ -176,9 +185,9 @@ export async function GET(request: NextRequest) {
           });
         };
 
-        console.log(`[AuditSSE] Starting audit for address: ${address}`);
+        console.log(`[AuditSSE] Starting audit for address: ${normalizedAddress}`);
         
-        const report: Report = await runAudit(address.trim(), { 
+        const report: Report = await runAudit(normalizedAddress, { 
           onProgress: progressCallback 
         });
 

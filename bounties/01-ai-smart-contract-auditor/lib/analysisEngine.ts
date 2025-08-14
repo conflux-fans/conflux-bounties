@@ -163,7 +163,7 @@ export async function runAudit(address: string, options: AuditOptions = {}): Pro
         content: source
       }];
       
-      emitProgress('static_analysis_running', 25, 'Running AI-based static analysis (Docker tools disabled)...');
+      emitProgress('static_analysis_running', 25, 'Running static analysis with Slither and Mythril...');
       staticFindings = await runStaticAnalysis(sourceFiles);
       
       const usedTools = [...new Set(staticFindings.map(f => f.tool))];
@@ -535,6 +535,9 @@ async function callOpenAI(prompt: string): Promise<Finding[]> {
   let lastError: Error | null = null;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+    
     try {
       console.log(`[OpenAI] Attempt ${attempt}/${maxRetries}`);
       
@@ -544,6 +547,7 @@ async function callOpenAI(prompt: string): Promise<Finding[]> {
           'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json',
         },
+        signal: controller.signal,
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [
@@ -560,6 +564,8 @@ async function callOpenAI(prompt: string): Promise<Finding[]> {
           max_tokens: 8000
         })
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.text();
@@ -587,6 +593,7 @@ async function callOpenAI(prompt: string): Promise<Finding[]> {
       return parseAIResponse(content);
       
     } catch (error) {
+      clearTimeout(timeoutId);
       lastError = error instanceof Error ? error : new Error(String(error));
       console.error(`[OpenAI] Attempt ${attempt} failed:`, lastError);
       
