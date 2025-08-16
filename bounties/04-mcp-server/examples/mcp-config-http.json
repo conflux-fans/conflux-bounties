@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "conflux-mcp-server": {
+      "url": "http://localhost:3333/sse",
+      "headers": {
+        "X-Private-Key": "0x..."
+      }
+    }
+  },
+  "notes": {
+    "setup": "1. Start the server: './start.sh' (Mac/Linux) or '.\\start.ps1' (Windows)",
+    "private_key": "Replace '0x...' with your actual Conflux private key",
+    "networks": "Supports conflux and conflux-testnet networks",
+    "usage": "Use this configuration for HTTP/SSE mode (persistent server)",
+    "server_status": "Check server health: curl http://localhost:3333/health",
+    "alternatives": {
+      "docker_stdio": "For Docker STDIO mode, use mcp-config-local.json instead",
+      "local_dev": "For local development, use cursor-config-example.json instead"
+    }
+  }
+} 

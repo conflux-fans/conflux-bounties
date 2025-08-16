@@ -1,0 +1,15 @@
+[install]
+# Use exact versions for better reproducibility
+exact = true
+
+[install.scopes]
+# Configure scopes if needed
+@conflux-protocol = "https://registry.npmjs.org/"
+
+[test]
+# Configure test environment
+preload = ["./src/test/setup.ts"]
+
+[run]
+# Configure run environment
+bun = true 

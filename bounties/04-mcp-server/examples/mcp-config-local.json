@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "conflux-mcp-server": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e", "MCP_MODE=stdio",
+        "conflux-mcp-server:latest"
+      ],
+      "env": {
+        "PRIVATE_KEY": "0x..."
+      }
+    }
+  },
+  "notes": {
+    "setup": "First run './start.sh' (Mac/Linux) or '.\\start.ps1' (Windows) to build the Docker image",
+    "private_key": "Replace '0x...' with your actual Conflux private key",
+    "networks": "Supports conflux and conflux-testnet networks",
+    "usage": "Use this configuration for Claude Desktop or other MCP clients",
+    "alternatives": {
+      "http_mode": "For HTTP/SSE mode, use 'url': 'http://localhost:3333/sse' instead of command",
+      "local_mode": "For local development, use the cursor-config-example.json instead"
+    }
+  }
+} 

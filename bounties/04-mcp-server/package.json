@@ -1,0 +1,77 @@
+{
+  "name": "@conflux-protocol/conflux-mcp-server",
+  "module": "src/index.ts",
+  "version": "1.0.0",
+  "description": "Model Context Protocol (MCP) server for interacting with Conflux blockchain networks",
+  "bin": {
+    "conflux-mcp-server": "./bin/cli.js"
+  },
+  "main": "build/index.js",
+  "files": [
+    "build/",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir build --target node --format cjs",
+    "build:http": "bun build src/server/http-server.ts --outdir build --target node --format cjs --outfile http-server.js",
+    "dev": "bun --watch src/index.ts",
+    "start:http": "bun run src/server/http-server.ts",
+    "dev:http": "bun --watch src/server/http-server.ts",
+    "prepublishOnly": "bun run build && bun run build:http",
+    "test": "bun test",
+    "version:patch": "bun run version:patch",
+    "version:minor": "bun run version:minor", 
+    "version:major": "bun run version:major",
+    "release": "bun run publish",
+    "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s -r 0",
+    "changelog:latest": "conventional-changelog -p angular -r 1 > RELEASE_NOTES.md"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.1.0",
+    "conventional-changelog-cli": "^5.0.0",
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "node-fetch": "^2.7.0",
+    "viem": "^2.23.9",
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "evm",
+    "blockchain",
+    "conflux",
+    "web3",
+    "smart-contracts",
+    "ai",
+    "agent"
+  ],
+  "author": "Etheral <etheral.eth.dev@gmail.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/conflux-protocol/conflux-mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/conflux-protocol/conflux-mcp-server/issues"
+  },
+  "homepage": "https://github.com/conflux-protocol/conflux-mcp-server#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}

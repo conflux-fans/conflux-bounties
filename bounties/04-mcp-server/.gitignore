@@ -1,0 +1,242 @@
+# ===== Dependencies =====
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun.lockb
+
+# ===== Build Outputs =====
+out/
+dist/
+build/
+*.tgz
+*.tar.gz
+
+# ===== TypeScript =====
+*.tsbuildinfo
+.tscache/
+
+# ===== Testing & Coverage =====
+coverage/
+*.lcov
+.nyc_output/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# ===== Logs =====
+logs/
+*.log
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ===== Caches =====
+.eslintcache
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.vuepress/dist
+.serverless/
+.fusebox/
+.dynamodb/
+
+# ===== Environment Variables =====
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# ===== Runtime Files =====
+.pids
+.pid
+.seed
+.pid.lock
+*.pid
+
+# ===== IDE & Editor Files =====
+# IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# Cursor IDE
+.cursor/
+.cursor-config.json
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Atom
+.atom/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Neovim
+.vim/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ===== OS Generated Files =====
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===== Docker =====
+.dockerignore
+docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
+
+# ===== Development & Testing =====
+test-server.js
+mcp-config-sse.json
+*.bat
+*.cmd
+*.ps1
+!scripts/*.ps1
+!start.ps1
+
+# ===== Temporary Files =====
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+
+# ===== Security & Keys =====
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+*.keystore
+*.jks
+
+# ===== Database =====
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== MCP Context =====
+mcp-context/
+
+# ===== Package Managers =====
+# npm
+package-lock.json
+.npm
+
+# yarn
+.yarn-integrity
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# pnpm
+.pnpm-store/
+
+# ===== Monitoring & Metrics =====
+.prometheus/
+.grafana/
+
+# ===== Backup Files =====
+*.backup
+*.bak
+*.old
+*.orig
+
+# ===== Local Configuration =====
+config/local.json
+config/local.js
+config/local.ts
+
+# ===== SSL Certificates =====
+ssl/
+certs/
+*.crt
+*.key
+*.pem
+
+# ===== Documentation Build =====
+docs/_build/
+docs/.doctrees/
+docs/.buildinfo
+
+# ===== Performance Monitoring =====
+.flamegraph
+*.heapprofile
+*.cpuprofile
+
+mcp-server-reference/
