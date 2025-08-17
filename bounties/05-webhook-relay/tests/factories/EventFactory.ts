@@ -18,7 +18,35 @@ export class EventFactory {
     };
   }
 
-  static createTransferEvent(from: string, to: string, value: string): BlockchainEvent {
+  static createTransferEvent(params: { from?: string; to?: string; value?: string; contractAddress?: string; blockNumber?: number; transactionHash?: string; logIndex?: number } = {}): BlockchainEvent {
+    const baseEvent: Partial<BlockchainEvent> = {
+      eventName: 'Transfer',
+      args: { 
+        from: params.from || '0x0000000000000000000000000000000000000000',
+        to: params.to || '0x1111111111111111111111111111111111111111',
+        value: params.value || '1000000000000000000'
+      }
+    };
+
+    // Only add properties if they are defined
+    if (params.contractAddress !== undefined) {
+      baseEvent.contractAddress = params.contractAddress;
+    }
+    if (params.blockNumber !== undefined) {
+      baseEvent.blockNumber = params.blockNumber;
+    }
+    if (params.transactionHash !== undefined) {
+      baseEvent.transactionHash = params.transactionHash;
+    }
+    if (params.logIndex !== undefined) {
+      baseEvent.logIndex = params.logIndex;
+    }
+
+    return this.createBlockchainEvent(baseEvent);
+  }
+
+  // Keep the old method for backward compatibility
+  static createTransferEventLegacy(from: string, to: string, value: string): BlockchainEvent {
     return this.createBlockchainEvent({
       eventName: 'Transfer',
       args: { from, to, value }

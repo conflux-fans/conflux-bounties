@@ -257,10 +257,11 @@ describe('Retry Logic Integration Tests', () => {
 
     it('should provide access to dead letter queue functionality', async () => {
       // Verify that QueueProcessor can access dead letter queue stats
-      // const stats = await queueProcessor.getDeadLetterStats();
+      const stats = await queueProcessor.getDeadLetterStats();
       
       // Should call the dead letter queue's getStats method
       expect(mockDeadLetterQueue.getStats).toHaveBeenCalled();
+      expect(stats).toBeDefined();
     });
   });
 

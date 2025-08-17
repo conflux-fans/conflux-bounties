@@ -15,11 +15,11 @@ describe('Debug Minimal Test', () => {
   it('should create objects successfully', () => {
     console.log('Starting minimal test...');
 
-    const event = EventFactory.createTransferEvent(
-      '0x1234567890123456789012345678901234567890',
-      '0x0987654321098765432109876543210987654321',
-      '1000000000000000000'
-    );
+    const event = EventFactory.createTransferEvent({
+      from: '0x1234567890123456789012345678901234567890',
+      to: '0x0987654321098765432109876543210987654321',
+      value: '1000000000000000000'
+    });
     console.log('Event created:', !!event);
     expect(event).toBeTruthy();
 
@@ -41,11 +41,11 @@ describe('Debug Minimal Test', () => {
   it('should send webhook successfully', async () => {
     console.log('Starting webhook delivery test...');
 
-    const event = EventFactory.createTransferEvent(
-      '0x1234567890123456789012345678901234567890',
-      '0x0987654321098765432109876543210987654321',
-      '1000000000000000000'
-    );
+    const event = EventFactory.createTransferEvent({
+      from: '0x1234567890123456789012345678901234567890',
+      to: '0x0987654321098765432109876543210987654321',
+      value: '1000000000000000000'
+    });
 
     const zapierWebhook = WebhookFactory.createZapierWebhook('http://httpbin.org/post');
     // Increase timeout for better reliability

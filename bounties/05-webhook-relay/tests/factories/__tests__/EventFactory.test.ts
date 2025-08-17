@@ -87,7 +87,7 @@ describe('EventFactory', () => {
       const to = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
       const value = '2500000000000000000';
 
-      const event = EventFactory.createTransferEvent(from, to, value);
+      const event = EventFactory.createTransferEvent({ from, to, value });
 
       expect(event.eventName).toBe('Transfer');
       expect(event.args['from']).toBe(from);
@@ -96,11 +96,11 @@ describe('EventFactory', () => {
     });
 
     it('should inherit default properties for Transfer event', () => {
-      const event = EventFactory.createTransferEvent(
-        '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-        '1000000000000000000'
-      );
+      const event = EventFactory.createTransferEvent({
+        from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        value: '1000000000000000000'
+      });
 
       expect(event.contractAddress).toBe('0x1234567890123456789012345678901234567890');
       expect(event.blockNumber).toBe(12345);
@@ -111,11 +111,11 @@ describe('EventFactory', () => {
 
     it('should handle zero address transfers', () => {
       const zeroAddress = '0x0000000000000000000000000000000000000000';
-      const event = EventFactory.createTransferEvent(
-        zeroAddress,
-        '0x1111111111111111111111111111111111111111',
-        '1000000000000000000'
-      );
+      const event = EventFactory.createTransferEvent({
+        from: zeroAddress,
+        to: '0x1111111111111111111111111111111111111111',
+        value: '1000000000000000000'
+      });
 
       expect(event.args['from']).toBe(zeroAddress);
       expect(event.eventName).toBe('Transfer');
@@ -123,11 +123,11 @@ describe('EventFactory', () => {
 
     it('should handle large value transfers', () => {
       const largeValue = '999999999999999999999999999999';
-      const event = EventFactory.createTransferEvent(
-        '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-        largeValue
-      );
+      const event = EventFactory.createTransferEvent({
+        from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        value: largeValue
+      });
 
       expect(event.args['value']).toBe(largeValue);
     });

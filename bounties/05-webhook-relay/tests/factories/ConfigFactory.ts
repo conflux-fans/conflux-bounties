@@ -62,6 +62,10 @@ export class ConfigFactory {
     };
   }
 
+  static createTestConfig(overrides: Partial<SystemConfig> = {}): SystemConfig {
+    return this.createSystemConfig(overrides);
+  }
+
   static createTestnetConfig(): SystemConfig {
     return this.createSystemConfig({
       network: {
