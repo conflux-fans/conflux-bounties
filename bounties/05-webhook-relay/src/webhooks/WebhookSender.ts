@@ -18,11 +18,11 @@ export class WebhookSender implements IWebhookSender {
     this.deliveryTracker = deliveryTracker || new DeliveryTracker();
   }
 
-  async sendWebhook(delivery: WebhookDelivery): Promise<DeliveryResult> {
-    // Get webhook config from delivery (assuming it's embedded or we have access to it)
-    const webhookConfig = this.getWebhookConfig(delivery.webhookId);
+  async sendWebhook(delivery: WebhookDelivery, webhookConfig?: WebhookConfig): Promise<DeliveryResult> {
+    // Use provided config or try to get it from internal storage
+    const config = webhookConfig || this.getWebhookConfig(delivery.webhookId);
 
-    if (!webhookConfig) {
+    if (!config) {
       const result: DeliveryResult = {
         success: false,
         responseTime: 0,
@@ -34,7 +34,7 @@ export class WebhookSender implements IWebhookSender {
     }
 
     // Validate webhook config before sending
-    const validation = this.validateWebhookConfig(webhookConfig);
+    const validation = this.validateWebhookConfig(config);
     if (!validation.isValid) {
       const result: DeliveryResult = {
         success: false,
@@ -63,13 +63,20 @@ export class WebhookSender implements IWebhookSender {
     try {
       // Always format the event data according to the webhook format
       // The delivery.payload is for internal tracking, not for webhook delivery
-      const payloadToSend = this.formatPayload(delivery.event, webhookConfig.format);
+      const payloadToSend = this.formatPayload(delivery.event, config.format);
+
+      // Apply per-webhook headers and authentication from webhook configuration
+      // Ensure Content-Type is set if not provided by webhook config
+      const headers = {
+        'Content-Type': 'application/json',
+        ...config.headers // Per-webhook headers override defaults
+      };
 
       const result = await this.httpClient.post(
-        webhookConfig.url,
+        config.url,
         payloadToSend,
-        webhookConfig.headers,
-        webhookConfig.timeout
+        headers,
+        config.timeout
       );
 
       // Record success in circuit breaker

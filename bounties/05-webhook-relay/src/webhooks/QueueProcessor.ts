@@ -141,13 +141,8 @@ export class QueueProcessor implements IQueueProcessor {
         throw new Error(`Invalid webhook configuration: ${errorMessage}`);
       }
 
-      // Set webhook config for the sender (if it supports it)
-      if ('setWebhookConfigForTesting' in this.webhookSender) {
-        (this.webhookSender as any).setWebhookConfigForTesting(delivery.webhookId, webhookConfig);
-      }
-
-      // Send the webhook
-      const result = await this.webhookSender.sendWebhook(delivery);
+      // Send the webhook with the configuration
+      const result = await this.webhookSender.sendWebhook(delivery, webhookConfig);
 
       if (result.success) {
         this.stats.successfulDeliveries++;

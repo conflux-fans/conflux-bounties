@@ -246,7 +246,7 @@ export class Application extends EventEmitter {
       config: this.config !== null,
       database: this.databaseConnection !== null,
       eventProcessor: this.eventProcessor !== null && this.eventProcessor.isProcessing(),
-      queueProcessor: this.queueProcessor !== null && true, // comment this.queueProcessor.isRunning() 
+      queueProcessor: this.queueProcessor !== null && this.queueProcessor.isRunning(),
       healthChecker: this.healthChecker !== null
     };
   }
@@ -469,8 +469,8 @@ export class Application extends EventEmitter {
     this.logger.info('Starting queue processing');
 
     try {
-      // Note: Queue processing is not needed since EventListener handles webhook delivery directly
-      this.logger.info('Queue processing skipped - using direct webhook delivery');
+      await this.queueProcessor.start();
+      this.logger.info('Queue processing started successfully');
     } catch (error) {
       throw new Error(`Failed to start queue processing: ${error instanceof Error ? error.message : String(error)}`);
     }

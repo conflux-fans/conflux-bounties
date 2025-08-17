@@ -205,7 +205,7 @@ describe('QueueProcessor', () => {
       await deliveryProcessor(sampleDelivery);
 
       expect(mockWebhookSender.validateWebhookConfig).toHaveBeenCalledWith(sampleWebhookConfig);
-      expect(mockWebhookSender.sendWebhook).toHaveBeenCalledWith(sampleDelivery);
+      expect(mockWebhookSender.sendWebhook).toHaveBeenCalledWith(sampleDelivery, sampleWebhookConfig);
       expect(mockLogger.info).toHaveBeenCalledWith('Webhook delivery successful', {
         deliveryId: 'delivery-1',
         webhookId: 'webhook-1',
@@ -691,7 +691,7 @@ describe('QueueProcessor', () => {
 
       await deliveryProcessor(deliveryWithoutEvent);
 
-      expect(mockWebhookSender.sendWebhook).toHaveBeenCalledWith(deliveryWithoutEvent);
+      expect(mockWebhookSender.sendWebhook).toHaveBeenCalledWith(deliveryWithoutEvent, sampleWebhookConfig);
       expect(mockLogger.info).toHaveBeenCalledWith('Webhook delivery successful', expect.any(Object));
     });
 

@@ -104,7 +104,10 @@ describe('WebhookSender', () => {
           args: delivery.event.args,
           timestamp: expect.any(String),
         }),
-        validConfig.headers,
+        expect.objectContaining({
+          'Content-Type': 'application/json',
+          ...validConfig.headers,
+        }),
         validConfig.timeout
       );
       expect(mockDeliveryTracker.trackDelivery).toHaveBeenCalledWith(delivery, mockResult);
@@ -169,7 +172,10 @@ describe('WebhookSender', () => {
           args: delivery.event.args,
           timestamp: expect.any(String),
         }),
-        validConfig.headers,
+        expect.objectContaining({
+          'Content-Type': 'application/json',
+          ...validConfig.headers,
+        }),
         validConfig.timeout
       );
       expect(mockDeliveryTracker.trackDelivery).toHaveBeenCalledWith(delivery, mockResult);
@@ -644,7 +650,10 @@ describe('WebhookSender', () => {
       expect(mockHttpClient.post).toHaveBeenCalledWith(
         zapierConfig.url,
         { formatted: 'zapier-payload' },
-        zapierConfig.headers,
+        expect.objectContaining({
+          'Content-Type': 'application/json',
+          ...zapierConfig.headers,
+        }),
         zapierConfig.timeout
       );
 

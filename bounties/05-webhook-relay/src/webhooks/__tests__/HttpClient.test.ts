@@ -59,10 +59,7 @@ describe('HttpClient', () => {
       const result = await httpClient.post(testUrl, testData, testHeaders, testTimeout);
 
       expect(mockAxiosInstance.post).toHaveBeenCalledWith(testUrl, testData, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer token',
-        },
+        headers: testHeaders,
         timeout: testTimeout,
       });
 
@@ -188,7 +185,7 @@ describe('HttpClient', () => {
       expect(result.error).toBe('Unknown error');
     });
 
-    it('should include Content-Type header by default', async () => {
+    it('should use provided headers as-is without adding defaults', async () => {
       const mockResponse = {
         status: 200,
         statusText: 'OK',
@@ -200,14 +197,12 @@ describe('HttpClient', () => {
       await httpClient.post(testUrl, testData, {}, testTimeout);
 
       expect(mockAxiosInstance.post).toHaveBeenCalledWith(testUrl, testData, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: {},
         timeout: testTimeout,
       });
     });
 
-    it('should merge custom headers with default headers', async () => {
+    it('should pass custom headers exactly as provided', async () => {
       const mockResponse = {
         status: 200,
         statusText: 'OK',
@@ -224,11 +219,7 @@ describe('HttpClient', () => {
       await httpClient.post(testUrl, testData, customHeaders, testTimeout);
 
       expect(mockAxiosInstance.post).toHaveBeenCalledWith(testUrl, testData, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer token',
-          'X-Custom-Header': 'custom-value',
-        },
+        headers: customHeaders,
         timeout: testTimeout,
       });
     });

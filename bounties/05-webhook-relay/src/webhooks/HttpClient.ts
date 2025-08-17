@@ -21,10 +21,7 @@ export class HttpClient implements IHttpClient {
 
     try {
       const response: AxiosResponse = await this.client.post(url, data, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...headers,
-        },
+        headers,
         timeout,
       });
 

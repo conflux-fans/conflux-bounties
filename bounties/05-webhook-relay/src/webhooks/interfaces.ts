@@ -2,7 +2,7 @@
 import type { WebhookDelivery, WebhookConfig, DeliveryResult, ValidationResult } from '../types';
 
 export interface IWebhookSender {
-  sendWebhook(delivery: WebhookDelivery): Promise<DeliveryResult>;
+  sendWebhook(delivery: WebhookDelivery, webhookConfig?: WebhookConfig): Promise<DeliveryResult>;
   validateWebhookConfig(config: WebhookConfig): ValidationResult;
 }
 
