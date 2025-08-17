@@ -183,7 +183,7 @@ describe('Event Processing Integration', () => {
         subscriptionId: mockSubscription.id,
         webhookId: mockWebhookConfig.id,
         event: matchingEvent,
-        status: 'completed'
+        status: 'pending'
       });
     });
 

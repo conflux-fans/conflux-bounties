@@ -48,10 +48,10 @@ export class DeliveryQueue implements IDeliveryQueue {
   }
 
   async enqueue(delivery: WebhookDelivery): Promise<void> {
-    // Ensure delivery has required fields
+    // Ensure delivery has required fields and preserve the status from EventProcessor
     const queueDelivery: WebhookDelivery = {
       ...delivery,
-      status: 'completed',
+      status: delivery.status || 'pending', // Use provided status or default to 'pending'
       attempts: 0
     };
 

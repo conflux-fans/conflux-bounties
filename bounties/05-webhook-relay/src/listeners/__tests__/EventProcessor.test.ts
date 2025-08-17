@@ -523,24 +523,21 @@ describe('EventProcessor', () => {
         webhookId: mockWebhookConfig.id,
         event: mockEvent,
         payload: expect.objectContaining({
-          type: mockSubscription.id,
           contractAddress: mockEvent.contractAddress,
           eventName: mockEvent.eventName,
           blockNumber: mockEvent.blockNumber,
           transactionHash: mockEvent.transactionHash,
           logIndex: mockEvent.logIndex,
           args: mockEvent.args,
-          timestamp: mockEvent.timestamp.toISOString(),
-          webhookId: mockWebhookConfig.id,
-          subscriptionId: mockSubscription.id
+          timestamp: mockEvent.timestamp.toISOString()
         }),
         attempts: 0,
         maxAttempts: mockWebhookConfig.retryAttempts,
-        status: 'completed'
+        status: 'pending'
       });
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`Enqueued webhook delivery ${enqueuedDelivery.id} for webhook ${mockWebhookConfig.id}`)
+        expect.stringContaining(`Enqueued webhook delivery ${enqueuedDelivery.id} for webhook ${mockWebhookConfig.id} with ${mockWebhookConfig.format} format`)
       );
       
       consoleSpy.mockRestore();
@@ -614,7 +611,7 @@ describe('EventProcessor', () => {
       consoleSpy.mockRestore();
     });
 
-    it('should create correct webhook payload structure', async () => {
+    it('should create correct webhook payload structure using platform formatter', async () => {
       mockFilterEngine.evaluateFilters.mockReturnValue(true);
 
       const eventHandler = (mockEventListener.on as jest.Mock).mock.calls
@@ -625,17 +622,15 @@ describe('EventProcessor', () => {
       const enqueuedDelivery = (mockDeliveryQueue.enqueue as jest.Mock).mock.calls[0][0];
       const payload = enqueuedDelivery.payload;
 
+      // Since mockWebhookConfig uses 'generic' format, expect GenericFormatter output
       expect(payload).toEqual({
-        type: mockSubscription.id,
         contractAddress: mockEvent.contractAddress,
         eventName: mockEvent.eventName,
         blockNumber: mockEvent.blockNumber,
         transactionHash: mockEvent.transactionHash,
         logIndex: mockEvent.logIndex,
         args: mockEvent.args,
-        timestamp: mockEvent.timestamp.toISOString(),
-        webhookId: mockWebhookConfig.id,
-        subscriptionId: mockSubscription.id
+        timestamp: mockEvent.timestamp.toISOString()
       });
     });
 

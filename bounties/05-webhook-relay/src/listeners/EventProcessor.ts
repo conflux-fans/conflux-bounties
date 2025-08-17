@@ -8,6 +8,8 @@ import type {
   BlockchainEvent,
   WebhookDelivery
 } from '../types';
+import { createFormatter } from '../formatting';
+import type { WebhookConfig } from '../types/common';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface IEventProcessor {
@@ -344,7 +346,7 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
       this.processedEvents++;
       console.log(`🔄 Processing event: ${event.eventName} from ${event.contractAddress}`);
 
-      // Apply filters using FilterEngine
+      // Apply filters using FilterEngine BEFORE processing webhooks
       const matchesFilter = this.filterEngine.evaluateFilters(event, subscription.filters);
 
       if (!matchesFilter) {
@@ -357,71 +359,82 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
       console.log(`✅ Event matches filters for subscription ${subscription.id}`);
       this.emit('eventMatched', subscription.id, event);
 
-      // Create WebhookDelivery objects for each webhook in the subscription
-      const deliveryPromises = subscription.webhooks.map(async (webhook) => {
-        try {
-          const webhookDelivery: WebhookDelivery = {
-            id: uuidv4(),
-            subscriptionId: subscription.id,
-            webhookId: webhook.id,
-            event: event,
-            payload: this.createWebhookPayload(subscription, event, webhook),
-            attempts: 0,
-            maxAttempts: webhook.retryAttempts || 3,
-            status: 'completed'
-          };
-
-          // Enqueue the webhook delivery for processing
-          await this.deliveryQueue.enqueue(webhookDelivery);
-          console.log(`📤 Enqueued webhook delivery ${webhookDelivery.id} for webhook ${webhook.id}`);
-        } catch (error) {
-          console.error(`❌ Error creating webhook delivery for webhook ${webhook.id}:`, error);
-          throw error;
-        }
-      });
-
-      // Wait for all deliveries to be created
-      const results = await Promise.allSettled(deliveryPromises);
-
-      // Check if any deliveries failed
-      const failures = results.filter(result => result.status === 'rejected');
-      if (failures.length > 0) {
-        const firstFailure = failures[0] as PromiseRejectedResult;
-        throw firstFailure.reason;
-      }
+      // Process each webhook that matches the filter
+      await this.processMatchingWebhooks(subscription, event);
 
     } catch (error) {
-      // Check if the error is related to webhook delivery creation from multiple webhooks
-      if (error instanceof Error && error.message.includes('webhook fails')) {
-        console.error(`❌ Error creating webhook delivery for subscription ${subscription.id}:`, error);
-      } else {
-        console.error(`❌ Error processing event for subscription ${subscription.id}:`, error);
-      }
+      console.error(`❌ Error processing event for subscription ${subscription.id}:`, error);
       this.emit('processingError', subscription.id, event, error);
     }
   }
 
   /**
-   * Create webhook payload for delivery
+   * Process webhooks for events that match filters
    */
-  private createWebhookPayload(
+  private async processMatchingWebhooks(
     subscription: EventSubscription,
+    event: BlockchainEvent
+  ): Promise<void> {
+    // Create WebhookDelivery objects for each webhook in the subscription
+    const deliveryPromises = subscription.webhooks.map(async (webhook) => {
+      try {
+        // Apply platform-specific formatting before enqueueing
+        const formattedPayload = await this.formatPayloadForWebhook(event, webhook);
+
+        const webhookDelivery: WebhookDelivery = {
+          id: uuidv4(),
+          subscriptionId: subscription.id,
+          webhookId: webhook.id,
+          event: event,
+          payload: formattedPayload,
+          attempts: 0,
+          maxAttempts: webhook.retryAttempts || 3,
+          status: 'pending' // Enqueue with 'pending' status
+        };
+
+        // Enqueue the webhook delivery for processing
+        await this.deliveryQueue.enqueue(webhookDelivery);
+        console.log(`📤 Enqueued webhook delivery ${webhookDelivery.id} for webhook ${webhook.id} with ${webhook.format} format`);
+      } catch (error) {
+        console.error(`❌ Error creating webhook delivery for webhook ${webhook.id}:`, error);
+        throw error;
+      }
+    });
+
+    // Wait for all deliveries to be created
+    const results = await Promise.allSettled(deliveryPromises);
+
+    // Check if any deliveries failed
+    const failures = results.filter(result => result.status === 'rejected');
+    if (failures.length > 0) {
+      const firstFailure = failures[0] as PromiseRejectedResult;
+      throw firstFailure.reason;
+    }
+  }
+
+  /**
+   * Format payload using platform-specific formatter
+   */
+  private async formatPayloadForWebhook(
     event: BlockchainEvent,
-    webhook: any
-  ): any {
-    // Create a standardized webhook payload
-    return {
-      type: subscription.id,
-      contractAddress: event.contractAddress,
-      eventName: event.eventName,
-      blockNumber: event.blockNumber,
-      transactionHash: event.transactionHash,
-      logIndex: event.logIndex,
-      args: event.args,
-      timestamp: event.timestamp.toISOString(),
-      webhookId: webhook.id,
-      subscriptionId: subscription.id
-    };
+    webhook: WebhookConfig
+  ): Promise<any> {
+    try {
+      // Create appropriate formatter based on webhook format
+      const formatter = createFormatter(webhook.format);
+      
+      // Format the payload using the platform-specific formatter
+      const formattedPayload = formatter.formatPayload(event);
+      
+      console.log(`✅ Formatted payload for ${webhook.format} format`);
+      return formattedPayload;
+    } catch (error) {
+      console.error(`❌ Error formatting payload for webhook ${webhook.id} with format ${webhook.format}:`, error);
+      
+      // Fallback to generic format if platform-specific formatting fails
+      const genericFormatter = createFormatter('generic');
+      return genericFormatter.formatPayload(event);
+    }
   }
 
   /**
