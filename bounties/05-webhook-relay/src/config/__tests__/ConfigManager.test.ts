@@ -428,22 +428,22 @@ describe('ConfigManager', () => {
       expect(config.redis?.ttl).toBe(3600); // Default value
     });
 
-    it('should fail validation when neither config.json sections nor environment variables are provided', async () => {
-      const configWithoutDatabaseAndRedis = { ...mockConfig };
-      delete (configWithoutDatabaseAndRedis as any).database;
-      delete (configWithoutDatabaseAndRedis as any).redis;
+    it('should fail validation when database config is missing but redis is optional', async () => {
+      const configWithoutDatabase = { ...mockConfig };
+      delete (configWithoutDatabase as any).database;
+      delete (configWithoutDatabase as any).redis; // Redis is optional, so this should be fine
 
-      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithoutDatabaseAndRedis));
+      mockFs.readFile.mockResolvedValue(JSON.stringify(configWithoutDatabase));
 
       await expect(configManager.loadConfig()).rejects.toThrow('Configuration validation failed');
     });
 
-    it('should validate successfully when DATABASE_URL is provided but database section is missing', async () => {
+    it('should validate successfully when DATABASE_URL is provided but database and redis sections are missing', async () => {
       const originalEnv = { ...process.env };
       process.env = { 
         ...originalEnv, 
-        DATABASE_URL: 'postgresql://env:pass@localhost:5432/envdb',
-        REDIS_URL: 'redis://env:6379'
+        DATABASE_URL: 'postgresql://env:pass@localhost:5432/envdb'
+        // No REDIS_URL - Redis should be optional
       };
 
       const configWithoutDatabaseAndRedis = { ...mockConfig };
@@ -455,7 +455,7 @@ describe('ConfigManager', () => {
       const config = await configManager.loadConfig();
 
       expect(config.database).toBeDefined();
-      expect(config.redis).toBeDefined();
+      expect(config.redis).toBeUndefined(); // Redis should be optional
 
       process.env = originalEnv;
     });
@@ -565,17 +565,14 @@ describe('ConfigManager', () => {
       });
     });
 
-    it('should return validation errors for missing redis config when no environment variable is provided', () => {
-      const invalidConfig = { ...mockConfig };
-      delete (invalidConfig as any).redis;
+    it('should validate successfully when redis config is missing (Redis is optional)', () => {
+      const configWithoutRedis = { ...mockConfig };
+      delete (configWithoutRedis as any).redis;
 
-      const result = configManager.validateConfig(invalidConfig);
+      const result = configManager.validateConfig(configWithoutRedis);
 
-      expect(result.isValid).toBe(false);
-      expect(result.errors).toContainEqual({
-        field: 'redis',
-        message: 'Redis configuration is required. Provide either a redis section in config.json or set REDIS_URL environment variable.'
-      });
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
     });
 
     it('should return validation errors for invalid redis config', () => {

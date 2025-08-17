@@ -233,6 +233,43 @@ export class ConfigValidator implements IConfigValidator {
     return /^0x[a-fA-F0-9]{40}$/.test(address);
   }
 
+  validateRedisConfig(config: any): ValidationResult {
+    const errors: ValidationError[] = [];
+
+    if (!config) {
+      errors.push({ field: 'redis', message: 'Redis configuration is required when provided' });
+      return { isValid: false, errors };
+    }
+
+    // Validate Redis URL
+    if (!config.url || typeof config.url !== 'string') {
+      errors.push({ field: 'redis.url', message: 'Redis URL is required and must be a string', value: config.url });
+    } else if (!this.isValidRedisUrl(config.url)) {
+      errors.push({ field: 'redis.url', message: 'Redis URL must be a valid Redis connection string', value: config.url });
+    }
+
+    // Validate key prefix (optional)
+    if (config.keyPrefix !== undefined && typeof config.keyPrefix !== 'string') {
+      errors.push({ field: 'redis.keyPrefix', message: 'Redis key prefix must be a string', value: config.keyPrefix });
+    }
+
+    // Validate TTL (optional)
+    if (config.ttl !== undefined && (typeof config.ttl !== 'number' || config.ttl <= 0)) {
+      errors.push({ field: 'redis.ttl', message: 'Redis TTL must be a positive number', value: config.ttl });
+    }
+
+    return { isValid: errors.length === 0, errors };
+  }
+
+  private isValidRedisUrl(url: string): boolean {
+    try {
+      const parsedUrl = new URL(url);
+      return parsedUrl.protocol === 'redis:' || parsedUrl.protocol === 'rediss:';
+    } catch {
+      return false;
+    }
+  }
+
   private isValidEventSignature(signature: string): boolean {
     // Basic event signature validation (EventName(param1,param2,...))
     // Allow for indexed parameters and parameter names

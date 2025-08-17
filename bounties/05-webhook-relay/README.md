@@ -140,11 +140,13 @@ Create a `config.json` file based on the example:
 
 You can override configuration values using environment variables:
 
-- `DATABASE_URL`: PostgreSQL connection string
-- `REDIS_URL`: Redis connection string
+- `DATABASE_URL`: PostgreSQL connection string (required)
+- `REDIS_URL`: Redis connection string (optional - for caching and queue optimization)
 - `LOG_LEVEL`: Logging level (debug, info, warn, error)
 - `HEALTH_CHECK_PORT`: Port for health check endpoint
 - `MAX_CONCURRENT_WEBHOOKS`: Maximum concurrent webhook deliveries
+
+**Note**: Redis is completely optional. The system will operate without Redis using database-only storage for all functionality.
 
 ### Event Filters
 

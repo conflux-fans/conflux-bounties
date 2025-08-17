@@ -68,17 +68,11 @@ export class ConfigManager extends EventEmitter implements IConfigManager {
     const subscriptionsValidation = this.validator.validateSubscriptions(config.subscriptions);
     errors.push(...subscriptionsValidation.errors);
 
-    // Validate redis configuration
-    // At this point, applyEnvironmentOverrides should have already created the redis config
-    // from environment variables if needed, so we just validate what's present
+    // Validate redis configuration (optional)
+    // Redis is optional - only validate if configuration is provided
     if (config.redis) {
-      const redisValidation = this.validateRedisConfig(config.redis);
+      const redisValidation = this.validator.validateRedisConfig(config.redis);
       errors.push(...redisValidation.errors);
-    } else {
-      errors.push({ 
-        field: 'redis', 
-        message: 'Redis configuration is required. Provide either a redis section in config.json or set REDIS_URL environment variable.' 
-      });
     }
 
     // Validate monitoring configuration
@@ -231,30 +225,7 @@ export class ConfigManager extends EventEmitter implements IConfigManager {
     }
   }
 
-  private validateRedisConfig(config: any): ValidationResult {
-    const errors: ValidationError[] = [];
 
-    if (!config) {
-      errors.push({ field: 'redis', message: 'Redis configuration is required' });
-      return { isValid: false, errors };
-    }
-
-    if (!config.url || typeof config.url !== 'string') {
-      errors.push({ field: 'redis.url', message: 'Redis URL is required and must be a string', value: config.url });
-    }
-
-    // keyPrefix is now optional with default value
-    if (config.keyPrefix !== undefined && typeof config.keyPrefix !== 'string') {
-      errors.push({ field: 'redis.keyPrefix', message: 'Redis key prefix must be a string', value: config.keyPrefix });
-    }
-
-    // ttl is now optional with default value
-    if (config.ttl !== undefined && (typeof config.ttl !== 'number' || config.ttl <= 0)) {
-      errors.push({ field: 'redis.ttl', message: 'Redis TTL must be a positive number', value: config.ttl });
-    }
-
-    return { isValid: errors.length === 0, errors };
-  }
 
   private validateMonitoringConfig(config: any): ValidationResult {
     const errors: ValidationError[] = [];

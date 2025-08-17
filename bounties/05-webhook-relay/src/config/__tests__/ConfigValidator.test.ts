@@ -666,4 +666,161 @@ describe('ConfigValidator', () => {
       );
     });
   });
+
+  describe('validateRedisConfig', () => {
+    it('should validate correct Redis configuration', () => {
+      const config = {
+        url: 'redis://localhost:6379',
+        keyPrefix: 'webhook-relay:',
+        ttl: 3600
+      };
+
+      const result = validator.validateRedisConfig(config);
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should validate Redis configuration with minimal required fields', () => {
+      const config = {
+        url: 'redis://localhost:6379'
+      };
+
+      const result = validator.validateRedisConfig(config);
+
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should return error when Redis config is missing', () => {
+      const result = validator.validateRedisConfig(null);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'redis',
+        message: 'Redis configuration is required when provided'
+      });
+    });
+
+    it('should return error for missing Redis URL', () => {
+      const config = {
+        keyPrefix: 'webhook-relay:',
+        ttl: 3600
+      };
+
+      const result = validator.validateRedisConfig(config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'redis.url',
+        message: 'Redis URL is required and must be a string',
+        value: undefined
+      });
+    });
+
+    it('should return error for invalid Redis URL', () => {
+      const config = {
+        url: 'invalid-redis-url',
+        keyPrefix: 'webhook-relay:',
+        ttl: 3600
+      };
+
+      const result = validator.validateRedisConfig(config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'redis.url',
+        message: 'Redis URL must be a valid Redis connection string',
+        value: 'invalid-redis-url'
+      });
+    });
+
+    it('should accept valid Redis URL protocols', () => {
+      const testCases = [
+        'redis://localhost:6379',
+        'rediss://localhost:6380',
+        'redis://user:pass@localhost:6379/0',
+        'rediss://user:pass@localhost:6380/1'
+      ];
+
+      testCases.forEach(url => {
+        const config = {
+          url,
+          keyPrefix: 'webhook-relay:',
+          ttl: 3600
+        };
+
+        const result = validator.validateRedisConfig(config);
+        expect(result.isValid).toBe(true);
+      });
+    });
+
+    it('should return error for non-string Redis URL', () => {
+      const config = {
+        url: 123, // non-string value
+        keyPrefix: 'webhook-relay:',
+        ttl: 3600
+      };
+
+      const result = validator.validateRedisConfig(config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'redis.url',
+        message: 'Redis URL is required and must be a string',
+        value: 123
+      });
+    });
+
+    it('should return error for invalid key prefix type', () => {
+      const config = {
+        url: 'redis://localhost:6379',
+        keyPrefix: 123, // non-string value
+        ttl: 3600
+      };
+
+      const result = validator.validateRedisConfig(config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'redis.keyPrefix',
+        message: 'Redis key prefix must be a string',
+        value: 123
+      });
+    });
+
+    it('should return error for invalid TTL', () => {
+      const config = {
+        url: 'redis://localhost:6379',
+        keyPrefix: 'webhook-relay:',
+        ttl: -1 // invalid TTL
+      };
+
+      const result = validator.validateRedisConfig(config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'redis.ttl',
+        message: 'Redis TTL must be a positive number',
+        value: -1
+      });
+    });
+
+    it('should return error for non-number TTL', () => {
+      const config = {
+        url: 'redis://localhost:6379',
+        keyPrefix: 'webhook-relay:',
+        ttl: 'invalid' // non-number value
+      };
+
+      const result = validator.validateRedisConfig(config);
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContainEqual({
+        field: 'redis.ttl',
+        message: 'Redis TTL must be a positive number',
+        value: 'invalid'
+      });
+    });
+  });
 });

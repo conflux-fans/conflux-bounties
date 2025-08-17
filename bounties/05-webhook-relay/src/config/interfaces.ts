@@ -12,4 +12,5 @@ export interface IConfigValidator {
   validateNetworkConfig(config: any): ValidationResult;
   validateDatabaseConfig(config: any): ValidationResult;
   validateSubscriptions(subscriptions: any[]): ValidationResult;
+  validateRedisConfig(config: any): ValidationResult;
 }
