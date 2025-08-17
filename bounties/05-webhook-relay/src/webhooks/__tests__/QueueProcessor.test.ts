@@ -128,7 +128,8 @@ describe('QueueProcessor', () => {
       );
       expect(mockLogger.info).toHaveBeenCalledWith('Starting queue processor', {
         maxConcurrentDeliveries: 10,
-        processingInterval: 1000
+        processingInterval: 1000,
+        queueBacklogThreshold: 100
       });
       expect(mockLogger.info).toHaveBeenCalledWith('Queue processor started successfully');
       expect(queueProcessor.isRunning()).toBe(true);
@@ -175,7 +176,10 @@ describe('QueueProcessor', () => {
         successfulDeliveries: 0,
         failedDeliveries: 0,
         currentQueueSize: 5,
-        processingCount: 2
+        processingCount: 0,
+        maxConcurrentDeliveries: 10,
+        rateLimitedCount: 0,
+        queueBacklogWarnings: 0
       });
     });
   });
@@ -668,6 +672,75 @@ describe('QueueProcessor', () => {
     });
   });
 
+  describe('retry logic integration', () => {
+    it('should have access to retry scheduler with exponential backoff', () => {
+      const retryScheduler = queueProcessor.getRetryScheduler();
+      
+      expect(retryScheduler).toBeDefined();
+      
+      // Test exponential backoff delays: 1s, 2s, 4s, 8s, etc.
+      expect(retryScheduler.getBackoffDelay(0)).toBeGreaterThanOrEqual(1000); // ~1s
+      expect(retryScheduler.getBackoffDelay(1)).toBeGreaterThanOrEqual(2000); // ~2s  
+      expect(retryScheduler.getBackoffDelay(2)).toBeGreaterThanOrEqual(4000); // ~4s
+      expect(retryScheduler.getBackoffDelay(3)).toBeGreaterThanOrEqual(8000); // ~8s
+    });
+
+    it('should allow setting custom retry scheduler', () => {
+      const customRetryScheduler = {
+        calculateNextRetry: jest.fn().mockReturnValue(new Date()),
+        shouldRetry: jest.fn().mockReturnValue(true),
+        getBackoffDelay: jest.fn().mockReturnValue(5000)
+      };
+
+      queueProcessor.setRetryScheduler(customRetryScheduler);
+      
+      const retrievedScheduler = queueProcessor.getRetryScheduler();
+      expect(retrievedScheduler).toBe(customRetryScheduler);
+    });
+
+    it('should verify retry scheduler calculates correct exponential delays', () => {
+      const retryScheduler = queueProcessor.getRetryScheduler();
+      
+      // Test that delays follow exponential pattern
+      const delay0 = retryScheduler.getBackoffDelay(0);
+      const delay1 = retryScheduler.getBackoffDelay(1);
+      const delay2 = retryScheduler.getBackoffDelay(2);
+      
+      // Each delay should be approximately double the previous (allowing for jitter)
+      expect(delay1).toBeGreaterThan(delay0 * 1.5); // At least 1.5x due to jitter
+      expect(delay2).toBeGreaterThan(delay1 * 1.5); // At least 1.5x due to jitter
+    });
+
+    it('should verify shouldRetry logic works correctly', () => {
+      const retryScheduler = queueProcessor.getRetryScheduler();
+      
+      const deliveryWithRetriesLeft: WebhookDelivery = {
+        ...sampleDelivery,
+        attempts: 1,
+        maxAttempts: 3,
+        status: 'failed'
+      };
+      
+      const deliveryMaxRetriesReached: WebhookDelivery = {
+        ...sampleDelivery,
+        attempts: 3,
+        maxAttempts: 3,
+        status: 'failed'
+      };
+      
+      const completedDelivery: WebhookDelivery = {
+        ...sampleDelivery,
+        attempts: 1,
+        maxAttempts: 3,
+        status: 'completed'
+      };
+      
+      expect(retryScheduler.shouldRetry(deliveryWithRetriesLeft)).toBe(true);
+      expect(retryScheduler.shouldRetry(deliveryMaxRetriesReached)).toBe(false);
+      expect(retryScheduler.shouldRetry(completedDelivery)).toBe(false);
+    });
+  });
+
   describe('edge cases and error paths', () => {
     let deliveryProcessor: (delivery: WebhookDelivery) => Promise<void>;
 
@@ -753,6 +826,144 @@ describe('QueueProcessor', () => {
       );
 
       expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rate limiting controls', () => {
+    let deliveryProcessor: (delivery: WebhookDelivery) => Promise<void>;
+    let mockMetricsCollector: any;
+
+    beforeEach(async () => {
+      // Create mock metrics collector
+      mockMetricsCollector = {
+        incrementCounter: jest.fn(),
+        recordGauge: jest.fn()
+      };
+
+      // Create new processor with metrics collector and low concurrent limit
+      queueProcessor = new QueueProcessor(
+        mockDeliveryQueue,
+        mockWebhookSender,
+        mockLogger,
+        {
+          maxConcurrentDeliveries: 2,
+          processingInterval: 1000,
+          metricsCollector: mockMetricsCollector,
+          queueBacklogThreshold: 5
+        }
+      );
+
+      queueProcessor.setWebhookConfig('webhook-1', sampleWebhookConfig);
+      await queueProcessor.start();
+
+      // Capture the delivery processor function
+      deliveryProcessor = (mockDeliveryQueue.startProcessing as jest.Mock).mock.calls[0][0];
+    });
+
+    it('should enforce concurrent delivery limits', async () => {
+      // Mock webhook sender to simulate long-running deliveries
+      let resolveDelivery1!: () => void;
+      let resolveDelivery2!: () => void;
+      let resolveDelivery3!: () => void;
+
+      const delivery1Promise = new Promise<void>((resolve) => {
+        resolveDelivery1 = resolve;
+      });
+      const delivery2Promise = new Promise<void>((resolve) => {
+        resolveDelivery2 = resolve;
+      });
+      const delivery3Promise = new Promise<void>((resolve) => {
+        resolveDelivery3 = resolve;
+      });
+
+      mockWebhookSender.sendWebhook
+        .mockImplementationOnce(() => delivery1Promise.then(() => ({ success: true, statusCode: 200, responseTime: 100 })))
+        .mockImplementationOnce(() => delivery2Promise.then(() => ({ success: true, statusCode: 200, responseTime: 100 })))
+        .mockImplementationOnce(() => delivery3Promise.then(() => ({ success: true, statusCode: 200, responseTime: 100 })));
+
+      // Start first two deliveries (should fill up the concurrent limit)
+      const delivery1 = { ...sampleDelivery, id: 'delivery-1' };
+      const delivery2 = { ...sampleDelivery, id: 'delivery-2' };
+      const delivery3 = { ...sampleDelivery, id: 'delivery-3' };
+
+      const process1 = deliveryProcessor(delivery1);
+      const process2 = deliveryProcessor(delivery2);
+
+      // Wait a bit to ensure they start processing
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Third delivery should be rate limited
+      await expect(deliveryProcessor(delivery3)).rejects.toThrow('Rate limit exceeded');
+
+      // Verify rate limiting metrics were recorded
+      expect(mockMetricsCollector.incrementCounter).toHaveBeenCalledWith('queue_processor_rate_limited_total');
+
+      // Complete the first two deliveries
+      resolveDelivery1();
+      resolveDelivery2();
+      await Promise.all([process1, process2]);
+
+      // Now the third delivery should be able to proceed
+      const process3 = deliveryProcessor(delivery3);
+      resolveDelivery3();
+      await process3;
+
+      expect(mockWebhookSender.sendWebhook).toHaveBeenCalledTimes(3);
+    });
+
+    it('should track delivery slot utilization', () => {
+      const utilization = queueProcessor.getDeliverySlotUtilization();
+      
+      expect(utilization).toEqual({
+        active: 0,
+        max: 2,
+        utilizationPercent: 0
+      });
+    });
+
+    it('should check available delivery slots', () => {
+      expect(queueProcessor.hasAvailableDeliverySlots()).toBe(true);
+    });
+
+    it('should track active delivery IDs', async () => {
+      // Mock a long-running delivery
+      let resolveDelivery!: () => void;
+      const deliveryPromise = new Promise<void>((resolve) => {
+        resolveDelivery = resolve;
+      });
+
+      mockWebhookSender.sendWebhook.mockImplementationOnce(() => 
+        deliveryPromise.then(() => ({ success: true, statusCode: 200, responseTime: 100 }))
+      );
+
+      const delivery = { ...sampleDelivery, id: 'test-delivery' };
+      const processPromise = deliveryProcessor(delivery);
+
+      // Wait a bit for processing to start
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Check active deliveries
+      const activeIds = queueProcessor.getActiveDeliveryIds();
+      expect(activeIds).toContain('test-delivery');
+
+      // Complete the delivery
+      resolveDelivery();
+      await processPromise;
+
+      // Check that delivery is no longer active
+      const activeIdsAfter = queueProcessor.getActiveDeliveryIds();
+      expect(activeIdsAfter).not.toContain('test-delivery');
+    });
+
+    it('should record metrics during getStats', async () => {
+      mockDeliveryQueue.getQueueSize.mockResolvedValue(10);
+
+      await queueProcessor.getStats();
+
+      expect(mockMetricsCollector.recordGauge).toHaveBeenCalledWith('queue_processor_active_deliveries', 0);
+      expect(mockMetricsCollector.recordGauge).toHaveBeenCalledWith('queue_processor_max_concurrent', 2);
+      expect(mockMetricsCollector.recordGauge).toHaveBeenCalledWith('queue_processor_queue_size', 10);
+      expect(mockMetricsCollector.recordGauge).toHaveBeenCalledWith('queue_processor_rate_limited_total', 0);
     });
   });
 });

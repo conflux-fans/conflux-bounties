@@ -360,7 +360,8 @@ export class Application extends EventEmitter {
         this.logger,
         {
           maxConcurrentDeliveries: this.config.options.maxConcurrentWebhooks,
-          processingInterval: this.config.options.queueProcessingInterval
+          processingInterval: this.config.options.queueProcessingInterval,
+          metricsCollector: this.metricsCollector
         }
       );
 
