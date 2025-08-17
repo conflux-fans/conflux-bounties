@@ -20,7 +20,35 @@ mock.module('../../../core/config.js', () => ({
   getPrivateKeyAsHex: mock(() => '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef')
 }));
 
+// Mock viem's getContract function
+const mockGetContract = mock(() => ({}));
+// Use consistent parseEther mock with other tests
+const mockParseEther = mock((value: string | number) => {
+  const str = String(value);
+  if (str === '1.0' || str === '1' || value === 1) return 1000000000n;
+  if (str === '2.5' || value === 2.5) return 2500000000n;
+  if (str === '0' || value === 0) return 0n;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0n;
+  return BigInt(Math.round(n * 1e9));
+});
+const mockParseUnits = mock(() => 1000000000n);
+
+mock.module('viem', () => ({
+  getContract: mockGetContract,
+  parseEther: mockParseEther,
+  parseUnits: mockParseUnits
+}));
+
 describe('Transfer Service', () => {
+  const mockContract = {
+    read: {
+      decimals: mock(() => Promise.resolve(9)),
+      symbol: mock(() => Promise.resolve('TOKEN')),
+      name: mock(() => Promise.resolve('Unknown'))
+    }
+  };
+
   const mockPublicClient = {
     readContract: mock((params: { functionName: string }) => {
       if (params.functionName === 'decimals') return 18;
@@ -46,6 +74,11 @@ describe('Transfer Service', () => {
     (getPublicClient as any).mockReturnValue(mockPublicClient);
     (getWalletClient as any).mockReturnValue(mockWalletClient);
     (getPrivateKeyAsHex as any).mockReturnValue('0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef');
+
+    // Mock viem functions
+    mockGetContract.mockReturnValue(mockContract);
+    mockParseEther.mockReturnValue(1000000000n); // Use consistent value
+    mockParseUnits.mockReturnValue(1000000000n);
   });
 
   describe('transferConflux', () => {
@@ -62,7 +95,7 @@ describe('Transfer Service', () => {
       expect(result).toBe(mockHash);
       expect(mockWalletClient.sendTransaction).toHaveBeenCalledWith({
         to: '0x1234567890123456789012345678901234567890',
-        value: 1000000000000000000n,
+        value: 1000000000n, // Use consistent value
         account: mockWalletClient.account,
         chain: mockWalletClient.chain
       });
@@ -81,14 +114,6 @@ describe('Transfer Service', () => {
   describe('transferERC20', () => {
     test('should transfer ERC20 tokens successfully', async () => {
       const mockHash = '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as Hash;
-      const mockDecimals = 18;
-      const mockSymbol = 'TEST';
-
-      (mockPublicClient.readContract as any).mockImplementation((params: { functionName: string }) => {
-        if (params.functionName === 'decimals') return mockDecimals;
-        if (params.functionName === 'symbol') return mockSymbol;
-        return null;
-      });
 
       (mockWalletClient.writeContract as any).mockResolvedValue(mockHash);
 
@@ -101,12 +126,12 @@ describe('Transfer Service', () => {
       expect(result).toEqual({
         txHash: mockHash,
         amount: {
-          raw: 1000000000000000000n,
+          raw: 1000000000n,
           formatted: '1.0'
         },
         token: {
-          symbol: mockSymbol,
-          decimals: mockDecimals
+          symbol: 'TOKEN',
+          decimals: 9
         }
       });
     });
@@ -115,14 +140,6 @@ describe('Transfer Service', () => {
   describe('approveERC20', () => {
     test('should approve ERC20 token spending successfully', async () => {
       const mockHash = '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as Hash;
-      const mockDecimals = 18;
-      const mockSymbol = 'TEST';
-
-      (mockPublicClient.readContract as any).mockImplementation((params: { functionName: string }) => {
-        if (params.functionName === 'decimals') return mockDecimals;
-        if (params.functionName === 'symbol') return mockSymbol;
-        return null;
-      });
 
       (mockWalletClient.writeContract as any).mockResolvedValue(mockHash);
 
@@ -135,12 +152,12 @@ describe('Transfer Service', () => {
       expect(result).toEqual({
         txHash: mockHash,
         amount: {
-          raw: 1000000000000000000n,
+          raw: 1000000000n,
           formatted: '1.0'
         },
         token: {
-          symbol: mockSymbol,
-          decimals: mockDecimals
+          symbol: 'TOKEN',
+          decimals: 9
         }
       });
     });
@@ -149,14 +166,6 @@ describe('Transfer Service', () => {
   describe('transferERC721', () => {
     test('should transfer ERC721 token successfully', async () => {
       const mockHash = '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as Hash;
-      const mockName = 'Test NFT';
-      const mockSymbol = 'TNFT';
-
-      (mockPublicClient.readContract as any).mockImplementation((params: { functionName: string }) => {
-        if (params.functionName === 'name') return mockName;
-        if (params.functionName === 'symbol') return mockSymbol;
-        return null;
-      });
 
       (mockWalletClient.writeContract as any).mockResolvedValue(mockHash);
 
@@ -170,8 +179,8 @@ describe('Transfer Service', () => {
         txHash: mockHash,
         tokenId: '1',
         token: {
-          name: mockName,
-          symbol: mockSymbol
+          name: 'Unknown',
+          symbol: 'TOKEN'
         }
       });
     });

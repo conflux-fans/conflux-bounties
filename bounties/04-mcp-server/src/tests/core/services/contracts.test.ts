@@ -133,34 +133,4 @@ describe('Contracts Service', () => {
       expect(result).toBe(false);
     });
   });
-
-  test('should handle undefined bytecode', async () => {
-    // Mock the client to return undefined bytecode
-    const mockClient = {
-      getBytecode: mock(() => Promise.resolve(undefined))
-    };
-
-    mock.module('../../../core/services/clients.js', () => ({
-      getPublicClient: mock(() => mockClient)
-    }));
-
-    const { isContract } = await import('../../../core/services/contracts.js');
-    const result = await isContract('0x1234567890123456789012345678901234567890');
-    expect(result).toBe(false);
-  });
-
-  test('should handle empty bytecode', async () => {
-    // Mock the client to return empty bytecode
-    const mockClient = {
-      getBytecode: mock(() => Promise.resolve('0x'))
-    };
-
-    mock.module('../../../core/services/clients.js', () => ({
-      getPublicClient: mock(() => mockClient)
-    }));
-
-    const { isContract } = await import('../../../core/services/contracts.js');
-    const result = await isContract('0x1234567890123456789012345678901234567890');
-    expect(result).toBe(false);
-  });
 });

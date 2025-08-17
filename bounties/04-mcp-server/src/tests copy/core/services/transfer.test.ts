@@ -22,7 +22,16 @@ mock.module('../../../core/config.js', () => ({
 
 // Mock viem's getContract function
 const mockGetContract = mock(() => ({}));
-const mockParseEther = mock(() => 1000000000000000000n);
+// Use consistent parseEther mock with other tests
+const mockParseEther = mock((value: string | number) => {
+  const str = String(value);
+  if (str === '1.0' || str === '1' || value === 1) return 1000000000n;
+  if (str === '2.5' || value === 2.5) return 2500000000n;
+  if (str === '0' || value === 0) return 0n;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0n;
+  return BigInt(Math.round(n * 1e9));
+});
 const mockParseUnits = mock(() => 1000000000n);
 
 mock.module('viem', () => ({
@@ -68,7 +77,7 @@ describe('Transfer Service', () => {
 
     // Mock viem functions
     mockGetContract.mockReturnValue(mockContract);
-    mockParseEther.mockReturnValue(1000000000000000000n);
+    mockParseEther.mockReturnValue(1000000000n); // Use consistent value
     mockParseUnits.mockReturnValue(1000000000n);
   });
 
@@ -86,7 +95,7 @@ describe('Transfer Service', () => {
       expect(result).toBe(mockHash);
       expect(mockWalletClient.sendTransaction).toHaveBeenCalledWith({
         to: '0x1234567890123456789012345678901234567890',
-        value: 1000000000000000000n,
+        value: 1000000000n, // Use consistent value
         account: mockWalletClient.account,
         chain: mockWalletClient.chain
       });

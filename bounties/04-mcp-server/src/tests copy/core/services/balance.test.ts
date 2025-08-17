@@ -223,4 +223,19 @@ describe('Balance Service', () => {
       expect(result).toBe(10n);
     });
   });
+
+  test('should handle validation errors gracefully', async () => {
+    // Mock the services index module to throw an error
+    mock.module('../../../core/services/index.js', () => ({
+      helpers: {
+        validateAddress: () => {
+          throw new Error('Invalid address');
+        }
+      }
+    }));
+
+    const { getBalance } = await import('../../../core/services/balance.js');
+    
+    await expect(getBalance('invalid-address')).rejects.toThrow('Invalid address');
+  });
 });
