@@ -18,8 +18,8 @@ export function LoadingSpinner({
   };
 
   return (
-    <div className="flex items-center justify-center p-4">
-      <Loader2 className={cn("animate-spin", sizeClass[size], className)} />
+    <div className="flex items-center justify-center p-4" data-testid="loading-container">
+      <Loader2 className={cn("animate-spin", sizeClass[size], className)} data-testid="loading-spinner" />
     </div>
   );
 }

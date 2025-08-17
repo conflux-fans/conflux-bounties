@@ -137,4 +137,12 @@ global.matchMedia = jest.fn().mockImplementation((query) => ({
   addEventListener: jest.fn(),
   removeEventListener: jest.fn(),
   dispatchEvent: jest.fn(),
-})) 
+}))
+
+// Polyfill TextEncoder and TextDecoder for viem compatibility
+if (typeof global.TextEncoder === 'undefined') {
+  global.TextEncoder = require('util').TextEncoder;
+}
+if (typeof global.TextDecoder === 'undefined') {
+  global.TextDecoder = require('util').TextDecoder;
+} 

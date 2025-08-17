@@ -90,7 +90,11 @@ export const getExplorerTxUrl = (chainId: number, txHash: string): string => {
 };
 
 export const getChainName = (chainId: number): string => {
-  return CHAIN_INFO[chainId]?.name || "Unknown Chain";
+  const chainInfo = CHAIN_INFO[chainId];
+  if (!chainInfo) {
+    throw new Error("Chain not supported");
+  }
+  return chainInfo.name;
 };
 
 // Default chain

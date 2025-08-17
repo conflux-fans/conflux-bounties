@@ -49,10 +49,13 @@ export function formatTokenAmount(
  * Check if a value is in Wei format (very large number)
  */
 export function isWeiFormat(value: string | number | bigint): boolean {
-  if (typeof value === "bigint") return value > 1000000000000000000n; // > 1 ETH in Wei
+  // Use 1e17 as the threshold (0.1 ETH in Wei) - more reliable detection
+  const threshold = 1e17;
+  
+  if (typeof value === "bigint") return value >= BigInt(threshold);
   if (typeof value === "string") {
     const num = parseFloat(value);
-    return num > 1000000000000000000n; // > 1 ETH in Wei
+    return num >= threshold;
   }
-  return value > 1000000000000000000n;
+  return value >= threshold;
 }

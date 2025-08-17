@@ -46,6 +46,12 @@ export function getAddress(address: string): string {
     throw new Error("Invalid address format");
   }
 
+  // Check if address contains only valid hex characters
+  const hexRegex = /^0x[0-9a-fA-F]+$/;
+  if (!hexRegex.test(address)) {
+    throw new Error("Invalid address");
+  }
+
   // Return as-is (wagmi handles checksumming)
   return address.toLowerCase();
 }
