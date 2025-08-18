@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/drizzle/client";
 import { users, deployedTokens, vestingSchedules } from "@/lib/drizzle/schema";
-import { eq } from "drizzle-orm";
+
 import { z } from "zod";
 
 const saveDeploymentSchema = z.object({

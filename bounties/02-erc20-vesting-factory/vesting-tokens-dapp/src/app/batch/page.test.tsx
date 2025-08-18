@@ -19,7 +19,9 @@ jest.mock('@/components/batch/batch-deployment-wizard', () => ({
   BatchDeploymentWizard: () => <div data-testid="batch-deployment-wizard">Batch Deployment Wizard</div>
 }));
 
-const mockUseAccount = require('wagmi').useAccount;
+import { useAccount } from 'wagmi';
+
+const mockUseAccount = jest.mocked(useAccount);
 
 describe('BatchDeployPage', () => {
   beforeEach(() => {

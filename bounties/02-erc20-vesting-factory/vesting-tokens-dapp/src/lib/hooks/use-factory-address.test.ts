@@ -14,7 +14,9 @@ jest.mock('@/lib/web3/config', () => ({
   getFactoryAddress: jest.fn()
 }));
 
-const mockUseChainId = require('wagmi').useChainId;
+import { useChainId } from 'wagmi';
+
+const mockUseChainId = jest.mocked(useChainId);
 const mockGetExplorerAddressUrl = getExplorerAddressUrl as jest.MockedFunction<typeof getExplorerAddressUrl>;
 const mockGetExplorerTxUrl = getExplorerTxUrl as jest.MockedFunction<typeof getExplorerTxUrl>;
 const mockGetFactoryAddress = getFactoryAddress as jest.MockedFunction<typeof getFactoryAddress>;
@@ -42,7 +44,7 @@ describe('use-factory-address', () => {
       const mockChainId = 999; // Non-existent chain
       
       mockUseChainId.mockReturnValue(mockChainId);
-      mockGetFactoryAddress.mockReturnValue(null);
+      mockGetFactoryAddress.mockReturnValue(null as any);
 
       const { result } = renderHook(() => useFactoryAddress());
 
@@ -71,8 +73,8 @@ describe('use-factory-address', () => {
     });
 
     it('should handle undefined chain ID', () => {
-      mockUseChainId.mockReturnValue(undefined);
-      mockGetFactoryAddress.mockReturnValue(null);
+      mockUseChainId.mockReturnValue(undefined as any);
+      mockGetFactoryAddress.mockReturnValue(null as any);
 
       const { result } = renderHook(() => useFactoryAddress());
 
@@ -83,7 +85,7 @@ describe('use-factory-address', () => {
     it('should handle zero chain ID', () => {
       const mockChainId = 0;
       mockUseChainId.mockReturnValue(mockChainId);
-      mockGetFactoryAddress.mockReturnValue(null);
+      mockGetFactoryAddress.mockReturnValue(null as any);
 
       const { result } = renderHook(() => useFactoryAddress());
 
@@ -119,7 +121,7 @@ describe('use-factory-address', () => {
     });
 
     it('should handle undefined chain ID', () => {
-      mockUseChainId.mockReturnValue(undefined);
+      mockUseChainId.mockReturnValue(undefined as any);
       mockGetExplorerAddressUrl.mockReturnValue('');
       mockGetExplorerTxUrl.mockReturnValue('');
 

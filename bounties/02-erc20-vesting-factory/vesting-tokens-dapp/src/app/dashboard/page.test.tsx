@@ -19,7 +19,9 @@ jest.mock('@/components/dashboard/AdminTokenManagement', () => ({
   AdminTokenManagement: () => <div data-testid="admin-token-management">Admin Token Management</div>
 }));
 
-const mockUseAccount = require('wagmi').useAccount;
+import { useAccount } from 'wagmi';
+
+const mockUseAccount = jest.mocked(useAccount);
 
 describe('DashboardPage', () => {
   beforeEach(() => {

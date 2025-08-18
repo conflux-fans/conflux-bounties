@@ -11,7 +11,13 @@ jest.mock('wagmi', () => ({
 // Mock fetch
 global.fetch = jest.fn();
 
-const mockUseAccount = require('wagmi').useAccount;
+import { useAccount } from 'wagmi';
+
+const mockUseAccount = jest.mocked(useAccount);
+
+// Helper function to create properly typed mocks
+const createMockUseAccount = (overrides: { isConnected?: boolean; address?: string; status?: string }) => 
+  ({ isConnected: false, address: undefined, status: 'disconnected', ...overrides } as any);
 const mockFetch = fetch as jest.MockedFunction<typeof fetch>;
 
 // Create a wrapper component for testing
@@ -24,8 +30,11 @@ const createWrapper = () => {
     },
   });
   
-  return ({ children }: { children: React.ReactNode }) => 
+  const Wrapper = ({ children }: { children: React.ReactNode }) => 
     React.createElement(QueryClientProvider, { client: queryClient }, children);
+  
+  Wrapper.displayName = 'TestWrapper';
+  return Wrapper;
 };
 
 describe('useUserAuth', () => {
@@ -44,10 +53,10 @@ describe('useUserAuth', () => {
         isNewUser: false
       };
 
-      mockUseAccount.mockReturnValue({
+      mockUseAccount.mockReturnValue(createMockUseAccount({
         address: '0x1234567890123456789012345678901234567890',
         isConnected: true
-      });
+      }));
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -72,10 +81,10 @@ describe('useUserAuth', () => {
     });
 
     it('should not fetch when not connected', () => {
-      mockUseAccount.mockReturnValue({
+      mockUseAccount.mockReturnValue(createMockUseAccount({
         address: '0x1234567890123456789012345678901234567890',
         isConnected: false
-      });
+      }));
 
       const { result } = renderHook(() => useUserAuth(), {
         wrapper: createWrapper(),
@@ -90,7 +99,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: undefined,
         isConnected: true
-      });
+      } as any);
 
       const { result } = renderHook(() => useUserAuth(), {
         wrapper: createWrapper(),
@@ -105,7 +114,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: '0x1234567890123456789012345678901234567890',
         isConnected: true
-      });
+      } as any);
 
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -127,7 +136,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: '0x1234567890123456789012345678901234567890',
         isConnected: true
-      });
+      } as any);
 
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
@@ -155,7 +164,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: '0x1234567890123456789012345678901234567890',
         isConnected: true
-      });
+      } as any);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -190,7 +199,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: '0x1234567890123456789012345678901234567890',
         isConnected: true
-      });
+      } as any);
 
       mockFetch
         .mockResolvedValueOnce({
@@ -241,7 +250,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: '0x1234567890123456789012345678901234567890',
         isConnected: true
-      });
+      } as any);
 
       mockFetch
         .mockResolvedValueOnce({
@@ -292,7 +301,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: '0x1234567890123456789012345678901234567890',
         isConnected: true
-      });
+      } as any);
 
       mockFetch
         .mockResolvedValueOnce({
@@ -333,7 +342,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: '0x1234567890123456789012345678901234567890',
         isConnected: true
-      });
+      } as any);
 
       mockFetch
         .mockResolvedValueOnce({
@@ -378,7 +387,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: null,
         isConnected: true
-      });
+      } as any);
 
       const { result } = renderHook(() => useUserAuth(), {
         wrapper: createWrapper(),
@@ -393,7 +402,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({
         address: '',
         isConnected: true
-      });
+      } as any);
 
       const { result } = renderHook(() => useUserAuth(), {
         wrapper: createWrapper(),
@@ -408,7 +417,7 @@ describe('useUserAuth', () => {
       mockUseAccount.mockReturnValue({ 
         address: '0x1234567890123456789012345678901234567890',
         isConnected: undefined 
-      });
+      } as any);
 
       const { result } = renderHook(() => useUserAuth(), {
         wrapper: createWrapper(),
@@ -433,9 +442,9 @@ describe('useUserAuth', () => {
       };
 
       mockUseAccount.mockReturnValue({
-        address: '0x1234567890123456789012345678901234567890',
+        address: '0x1234567890123456789012345678901234567890' as any,
         isConnected: true
-      });
+      } as any);
 
       mockFetch
         .mockResolvedValueOnce({

@@ -6,7 +6,6 @@ import {
   useAccount,
 } from "wagmi";
 import {
-  CONTRACT_ADDRESSES,
   TOKEN_VESTING_FACTORY_ABI,
 } from "@/lib/web3/config";
 import { useState, useEffect, useRef } from "react";
@@ -53,7 +52,7 @@ export function useBatchDeployTokens() {
   const rejectDeploymentRef = useRef<((error: Error) => void) | null>(null);
 
   const publicClient = usePublicClient();
-  const { address } = useAccount();
+  // const { address } = useAccount();
   const { toast } = useToast();
 
   const {

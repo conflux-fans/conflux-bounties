@@ -32,12 +32,16 @@ jest.mock('@/lib/hooks/use-factory-address', () => ({
 // Mock fetch
 global.fetch = jest.fn();
 
-const mockUseWriteContract = require('wagmi').useWriteContract;
-const mockUseWaitForTransactionReceipt = require('wagmi').useWaitForTransactionReceipt;
-const mockUsePublicClient = require('wagmi').usePublicClient;
-const mockUseAccount = require('wagmi').useAccount;
-const mockUseToast = require('@/lib/hooks/use-toast').useToast;
-const mockUseFactoryAddress = require('@/lib/hooks/use-factory-address').useFactoryAddress;
+import { useWriteContract, useWaitForTransactionReceipt, usePublicClient, useAccount } from 'wagmi';
+import { useToast } from '@/lib/hooks/use-toast';
+import { useFactoryAddress } from '@/lib/hooks/use-factory-address';
+
+const mockUseWriteContract = jest.mocked(useWriteContract);
+const mockUseWaitForTransactionReceipt = jest.mocked(useWaitForTransactionReceipt);
+const mockUsePublicClient = jest.mocked(usePublicClient);
+const mockUseAccount = jest.mocked(useAccount);
+const mockUseToast = jest.mocked(useToast);
+const mockUseFactoryAddress = jest.mocked(useFactoryAddress);
 
 // Create a wrapper component for testing
 const createWrapper = () => {
@@ -49,8 +53,10 @@ const createWrapper = () => {
     },
   });
   
-  return ({ children }: { children: React.ReactNode }) => 
+  const Wrapper = ({ children }: { children: React.ReactNode }) => 
     React.createElement(QueryClientProvider, { client: queryClient }, children);
+  Wrapper.displayName = 'UseBatchTokenVestingTestWrapper';
+  return Wrapper;
 };
 
 describe('useBatchTokenVesting', () => {

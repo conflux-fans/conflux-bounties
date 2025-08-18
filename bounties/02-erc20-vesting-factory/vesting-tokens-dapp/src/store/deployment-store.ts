@@ -71,7 +71,7 @@ interface DeploymentState {
 
 export const useDeploymentStore = create<DeploymentState>()(
   persist(
-    (set, get) => ({
+    (set, _get) => ({ // eslint-disable-line @typescript-eslint/no-unused-vars
       // Initial state
       tokenConfig: null,
       vestingSchedules: [],

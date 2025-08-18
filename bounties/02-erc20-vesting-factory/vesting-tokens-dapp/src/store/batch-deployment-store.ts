@@ -51,8 +51,8 @@ interface BatchDeploymentState {
   setInputMethod: (method: BatchInputMethod) => void;
 
   // CSV data
-  csvData: any[];
-  setCsvData: (data: any[]) => void;
+  csvData: Record<string, unknown>[];
+  setCsvData: (data: Record<string, unknown>[]) => void;
 
   // Token configurations
   tokenConfigs: BatchTokenConfig[];

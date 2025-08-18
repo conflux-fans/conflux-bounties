@@ -16,8 +16,8 @@ describe('tokenUtils', () => {
     it('should handle edge cases', () => {
       expect(weiToTokens('0')).toBe(0);
       expect(weiToTokens('')).toBe(0);
-      expect(weiToTokens(null as any)).toBe(0);
-      expect(weiToTokens(undefined as any)).toBe(0);
+      expect(weiToTokens(null as unknown as string)).toBe(0);
+      expect(weiToTokens(undefined as unknown as string)).toBe(0);
     });
 
     it('should handle very large amounts', () => {
@@ -41,8 +41,8 @@ describe('tokenUtils', () => {
     it('should handle edge cases', () => {
       expect(tokensToWei(0)).toBe(BigInt(0));
       expect(tokensToWei('')).toBe(BigInt(0));
-      expect(tokensToWei(null as any)).toBe(BigInt(0));
-      expect(tokensToWei(undefined as any)).toBe(BigInt(0));
+      expect(tokensToWei(null as unknown as number | string)).toBe(BigInt(0));
+      expect(tokensToWei(undefined as unknown as number | string)).toBe(BigInt(0));
     });
 
     it('should handle very large amounts', () => {
@@ -83,8 +83,8 @@ describe('tokenUtils', () => {
     it('should handle edge cases', () => {
       expect(formatTokenAmount(0)).toBe('0');
       expect(formatTokenAmount('')).toBe('0');
-      expect(formatTokenAmount(null as any)).toBe('0');
-      expect(formatTokenAmount(undefined as any)).toBe('0');
+      expect(formatTokenAmount(null as unknown as number | string | bigint)).toBe('0');
+      expect(formatTokenAmount(undefined as unknown as number | string | bigint)).toBe('0');
     });
   });
 
@@ -114,8 +114,8 @@ describe('tokenUtils', () => {
     it('should handle edge cases', () => {
       expect(isWeiFormat(0)).toBe(false);
       expect(isWeiFormat('')).toBe(false);
-      expect(isWeiFormat(null as any)).toBe(false);
-      expect(isWeiFormat(undefined as any)).toBe(false);
+      expect(isWeiFormat(null as unknown as string | number | bigint)).toBe(false);
+      expect(isWeiFormat(undefined as unknown as string | number | bigint)).toBe(false);
     });
   });
 

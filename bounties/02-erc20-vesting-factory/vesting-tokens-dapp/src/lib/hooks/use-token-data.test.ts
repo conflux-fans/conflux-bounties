@@ -8,7 +8,13 @@ jest.mock('wagmi', () => ({
   useAccount: jest.fn()
 }));
 
-const mockUseAccount = require('wagmi').useAccount;
+import { useAccount } from 'wagmi';
+
+const mockUseAccount = jest.mocked(useAccount);
+
+// Helper function to create properly typed mocks
+const createMockUseAccount = (overrides: { address?: string; isConnected?: boolean }) => 
+  ({ isConnected: false, address: undefined, status: 'disconnected', ...overrides } as unknown as ReturnType<typeof useAccount>);
 
 // Create a wrapper component for testing
 const createWrapper = () => {
@@ -22,8 +28,10 @@ const createWrapper = () => {
     },
   });
   
-  return ({ children }: { children: React.ReactNode }) => 
+  const Wrapper = ({ children }: { children: React.ReactNode }) => 
     React.createElement(QueryClientProvider, { client: queryClient }, children);
+  Wrapper.displayName = 'UseTokenDataTestWrapper';
+  return Wrapper;
 };
 
 describe('use-token-data', () => {
@@ -31,7 +39,7 @@ describe('use-token-data', () => {
     jest.clearAllMocks();
     
     // Setup default mocks
-    mockUseAccount.mockReturnValue({ address: '0x1234567890123456789012345678901234567890' });
+    mockUseAccount.mockReturnValue({ address: '0x1234567890123456789012345678901234567890' } as any);
   });
 
   describe('useTokenData', () => {
@@ -131,7 +139,7 @@ describe('use-token-data', () => {
 
     it('should handle hooks with different addresses', () => {
       // Test with different addresses
-      mockUseAccount.mockReturnValue({ address: '0x1111111111111111111111111111111111111111' });
+      mockUseAccount.mockReturnValue({ address: '0x1111111111111111111111111111111111111111' } as any);
       
       const { result: tokenResult } = renderHook(() => useTokenData(), {
         wrapper: createWrapper(),
@@ -144,7 +152,7 @@ describe('use-token-data', () => {
 
     it('should handle hooks with no address', () => {
       // Test with no address
-      mockUseAccount.mockReturnValue({ address: undefined });
+      mockUseAccount.mockReturnValue({ address: undefined } as any);
       
       const { result: userResult } = renderHook(() => useUserData(), {
         wrapper: createWrapper(),

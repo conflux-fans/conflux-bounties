@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 import { NextRequest } from 'next/server';
 import { POST, PATCH } from './route';
 
@@ -48,7 +49,7 @@ describe('Auth User API Route', () => {
 
       expect(mockFindUserByAddress).toHaveBeenCalledTimes(2);
       expect(mockUpsertUser).toHaveBeenCalledWith('0x1234567890123456789012345678901234567890');
-      expect(response.data).toEqual({
+      expect((response as any).data).toEqual({
         ...mockUser,
         stats: {
           tokensDeployed: 0,
@@ -90,7 +91,7 @@ describe('Auth User API Route', () => {
 
       expect(mockFindUserByAddress).toHaveBeenCalledTimes(1);
       expect(mockUpsertUser).not.toHaveBeenCalled();
-      expect(response.data).toEqual({
+      expect((response as any).data).toEqual({
         ...mockUser,
         stats: {
           tokensDeployed: 1,
@@ -112,8 +113,8 @@ describe('Auth User API Route', () => {
 
       const response = await POST(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to authenticate user' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to authenticate user' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -124,8 +125,8 @@ describe('Auth User API Route', () => {
 
       const response = await POST(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to authenticate user' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to authenticate user' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -140,8 +141,8 @@ describe('Auth User API Route', () => {
 
       const response = await POST(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to authenticate user' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to authenticate user' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -159,8 +160,8 @@ describe('Auth User API Route', () => {
 
       const response = await POST(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to authenticate user' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to authenticate user' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -197,7 +198,7 @@ describe('Auth User API Route', () => {
 
       const response = await POST(request as NextRequest);
 
-      expect(response.data.stats).toEqual({
+      expect((response as any).data.stats).toEqual({
         tokensDeployed: 2,
         totalBeneficiaries: 3,
         tokensReceiving: 2,
@@ -232,7 +233,7 @@ describe('Auth User API Route', () => {
         '0x1234567890123456789012345678901234567890',
         { name: 'John Doe', email: 'john@example.com' }
       );
-      expect(response.data).toEqual(mockUpdatedUser);
+      expect((response as any).data).toEqual(mockUpdatedUser);
     });
 
     it('should handle partial profile updates', async () => {
@@ -257,7 +258,7 @@ describe('Auth User API Route', () => {
         '0x1234567890123456789012345678901234567890',
         { name: 'John Doe' }
       );
-      expect(response.data).toEqual(mockUpdatedUser);
+      expect((response as any).data).toEqual(mockUpdatedUser);
     });
 
     it('should handle invalid email format', async () => {
@@ -270,8 +271,8 @@ describe('Auth User API Route', () => {
 
       const response = await PATCH(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to update profile' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to update profile' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -285,8 +286,8 @@ describe('Auth User API Route', () => {
 
       const response = await PATCH(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to update profile' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to update profile' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -301,8 +302,8 @@ describe('Auth User API Route', () => {
 
       const response = await PATCH(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to update profile' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to update profile' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -315,8 +316,8 @@ describe('Auth User API Route', () => {
 
       const response = await PATCH(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to update profile' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to update profile' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -332,8 +333,8 @@ describe('Auth User API Route', () => {
 
       const response = await PATCH(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to update profile' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to update profile' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
 
@@ -344,8 +345,8 @@ describe('Auth User API Route', () => {
 
       const response = await PATCH(request as NextRequest);
 
-      expect(response.data).toEqual({ error: 'Failed to update profile' });
-      expect(response.options).toEqual({ status: 500 });
+      expect((response as any).data).toEqual({ error: 'Failed to update profile' });
+      expect((response as any).options).toEqual({ status: 500 });
       expect(console.error).toHaveBeenCalled();
     });
   });
@@ -370,7 +371,7 @@ describe('Auth User API Route', () => {
 
       const response = await PATCH(request as NextRequest);
 
-      expect(response.data).toEqual(mockUpdatedUser);
+      expect((response as any).data).toEqual(mockUpdatedUser);
     });
 
     it('should handle special characters in names', async () => {
@@ -392,7 +393,7 @@ describe('Auth User API Route', () => {
 
       const response = await PATCH(request as NextRequest);
 
-      expect(response.data).toEqual(mockUpdatedUser);
+      expect((response as any).data).toEqual(mockUpdatedUser);
     });
 
     it('should handle complex email addresses', async () => {
@@ -414,7 +415,7 @@ describe('Auth User API Route', () => {
 
       const response = await PATCH(request as NextRequest);
 
-      expect(response.data).toEqual(mockUpdatedUser);
+      expect((response as any).data).toEqual(mockUpdatedUser);
     });
   });
 });

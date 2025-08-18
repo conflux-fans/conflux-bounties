@@ -1,5 +1,5 @@
 // src/lib/web3/config.ts
-import { http, createConfig } from "wagmi";
+import { } from "wagmi";
 import { sepolia, mainnet, confluxESpace, confluxESpaceTestnet } from "wagmi/chains";
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 

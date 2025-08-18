@@ -1,4 +1,6 @@
 // src/app/api/batch-deployment/route.ts
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/drizzle/client";
 import {

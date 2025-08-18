@@ -2,6 +2,16 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import AnalyticsPage from './page';
 
+// Helper function to create properly typed mocks
+const createMockUseAccount = (overrides: { isConnected?: boolean | null; address?: string; status?: string }) => 
+  ({ isConnected: false, address: undefined, status: 'disconnected', ...overrides } as unknown as ReturnType<typeof useAccount>);
+
+// Helper function to safely check DOM hierarchy
+const safeToContainElement = (parent: Element | null, child: Element | null) => {
+  if (!parent || !child) return false;
+  return (parent as unknown as { toContainElement: (el: Element) => boolean }).toContainElement(child);
+};
+
 // Mock the dependencies
 jest.mock('wagmi', () => ({
   useAccount: jest.fn()
@@ -23,7 +33,9 @@ jest.mock('@/components/analytics/tokens-list', () => ({
   TokensList: () => <div data-testid="tokens-list">Tokens List</div>
 }));
 
-const mockUseAccount = require('wagmi').useAccount;
+import { useAccount } from 'wagmi';
+
+const mockUseAccount = jest.mocked(useAccount);
 
 describe('AnalyticsPage', () => {
   beforeEach(() => {
@@ -31,7 +43,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should render connect wallet prompt when not connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: false });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: false }));
 
     render(<AnalyticsPage />);
 
@@ -42,7 +54,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should render analytics content when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
 
     render(<AnalyticsPage />);
 
@@ -53,7 +65,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should render analytics page title and description when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
 
     render(<AnalyticsPage />);
 
@@ -62,7 +74,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should have correct CSS classes when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
 
     const { container } = render(<AnalyticsPage />);
 
@@ -83,7 +95,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should handle undefined isConnected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: undefined });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: undefined }));
 
     render(<AnalyticsPage />);
 
@@ -94,7 +106,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should handle null isConnected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: null });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: null }));
 
     render(<AnalyticsPage />);
 
@@ -105,7 +117,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should render consistently across multiple renders', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
 
     const { rerender } = render(<AnalyticsPage />);
 
@@ -124,7 +136,7 @@ describe('AnalyticsPage', () => {
     const { rerender } = render(<AnalyticsPage />);
 
     // Initially not connected
-    mockUseAccount.mockReturnValue({ isConnected: false });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: false }));
     rerender(<AnalyticsPage />);
 
     expect(screen.getByTestId('connect-wallet-prompt')).toBeInTheDocument();
@@ -132,7 +144,7 @@ describe('AnalyticsPage', () => {
     expect(screen.queryByTestId('tokens-list')).not.toBeInTheDocument();
 
     // Then connected
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
     rerender(<AnalyticsPage />);
 
     expect(screen.getByTestId('analytics-overview')).toBeInTheDocument();
@@ -141,7 +153,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should maintain proper component hierarchy when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
 
     const { container } = render(<AnalyticsPage />);
 
@@ -158,15 +170,15 @@ describe('AnalyticsPage', () => {
     expect(tokensList).toBeInTheDocument();
 
     // Check hierarchy
-    expect(container.children[0]).toContainElement(navbar);
-    expect(container.children[1]).toContainElement(mainContainer);
-    expect(mainContainer).toContainElement(contentContainer);
-    expect(contentContainer).toContainElement(analyticsOverview);
-    expect(contentContainer).toContainElement(tokensList);
+    expect(safeToContainElement(container.querySelector('[data-testid="navbar"]'), navbar)).toBe(true);
+    expect(safeToContainElement(container.querySelector('.container'), mainContainer)).toBe(true);
+    expect(safeToContainElement(mainContainer, contentContainer)).toBe(true);
+    expect(safeToContainElement(contentContainer, analyticsOverview)).toBe(true);
+    expect(safeToContainElement(contentContainer, tokensList)).toBe(true);
   });
 
   it('should maintain proper component hierarchy when not connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: false });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: false }));
 
     const { container } = render(<AnalyticsPage />);
 
@@ -177,18 +189,18 @@ describe('AnalyticsPage', () => {
     expect(connectPrompt).toBeInTheDocument();
 
     // Check hierarchy
-    expect(container.children[0]).toContainElement(navbar);
-    expect(container.children[1]).toContainElement(connectPrompt);
+    expect(safeToContainElement(container.children[0], navbar)).toBe(true);
+    expect(safeToContainElement(container.children[1], connectPrompt)).toBe(true);
   });
 
   it('should render without errors', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
 
     expect(() => render(<AnalyticsPage />)).not.toThrow();
   });
 
   it('should handle missing useAccount hook gracefully', () => {
-    mockUseAccount.mockReturnValue({});
+    mockUseAccount.mockReturnValue(createMockUseAccount({}));
 
     render(<AnalyticsPage />);
 
@@ -197,7 +209,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should have proper semantic structure', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
 
     const { container } = render(<AnalyticsPage />);
 
@@ -211,7 +223,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should handle empty isConnected object', () => {
-    mockUseAccount.mockReturnValue({});
+    mockUseAccount.mockReturnValue(createMockUseAccount({}));
 
     render(<AnalyticsPage />);
 
@@ -222,7 +234,7 @@ describe('AnalyticsPage', () => {
   });
 
   it('should render analytics components in correct order', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
 
     const { container } = render(<AnalyticsPage />);
 
@@ -235,12 +247,12 @@ describe('AnalyticsPage', () => {
     expect(tokensList).toBeInTheDocument();
 
     // Check that analytics overview comes before tokens list
-    expect(contentContainer?.children[0]).toContainElement(analyticsOverview);
-    expect(contentContainer?.children[1]).toContainElement(tokensList);
+    expect(safeToContainElement(contentContainer?.children[0] || null, analyticsOverview)).toBe(true);
+    expect(safeToContainElement(contentContainer?.children[1] || null, tokensList)).toBe(true);
   });
 
   it('should have proper spacing between components', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: true }));
 
     const { container } = render(<AnalyticsPage />);
 

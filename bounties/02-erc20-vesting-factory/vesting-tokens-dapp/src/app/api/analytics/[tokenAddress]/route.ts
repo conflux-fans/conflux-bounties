@@ -5,10 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/drizzle/client";
 import {
   deployedTokens,
-  vestingSchedules,
-  vestingClaims,
 } from "@/lib/drizzle/schema";
-import { eq, sum, count } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export async function GET(
   request: NextRequest,
@@ -63,7 +61,7 @@ export async function GET(
       acc[category].claimedAmount += parseFloat(schedule.releasedAmount || "0");
       acc[category].beneficiaries += 1;
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, { totalAmount: number; claimedAmount: number; beneficiaries: number }>);
 
     return NextResponse.json({
       token: {

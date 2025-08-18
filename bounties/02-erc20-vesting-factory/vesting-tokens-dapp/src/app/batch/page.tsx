@@ -1,7 +1,7 @@
 // src/app/batch/page.tsx
 "use client";
 
-import { useState } from "react";
+
 import { useAccount } from "wagmi";
 import { BatchDeploymentWizard } from "@/components/batch/batch-deployment-wizard";
 import { Navbar } from "@/components/layout/navbar";

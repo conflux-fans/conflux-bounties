@@ -1,13 +1,12 @@
 // =================================================================
 // 1. app/src/app/api/tokens/route.ts - GET TOKENS
 // =================================================================
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/drizzle/client";
 import {
   deployedTokens,
-  vestingSchedules,
-  vestingClaims,
-  users,
 } from "@/lib/drizzle/schema";
 import { eq, desc, count } from "drizzle-orm";
 

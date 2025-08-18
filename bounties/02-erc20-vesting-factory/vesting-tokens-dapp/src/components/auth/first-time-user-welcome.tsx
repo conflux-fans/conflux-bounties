@@ -5,16 +5,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
@@ -86,7 +78,7 @@ export function FirstTimeUserWelcome({
                 Welcome to VestingDApp!
               </DialogTitle>
               <DialogDescription className="text-base">
-                We're excited to have you here. Let's get you set up to start
+                We&apos;re excited to have you here. Let&apos;s get you set up to start
                 managing token vesting schedules.
               </DialogDescription>
             </DialogHeader>

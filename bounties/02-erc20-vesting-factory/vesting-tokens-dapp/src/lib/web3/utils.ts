@@ -8,7 +8,7 @@ import {
 
 export function formatTokenAmount(
   amount: bigint,
-  decimals: number = 18
+  _decimals: number = 18 // eslint-disable-line @typescript-eslint/no-unused-vars
 ): string {
   return formatEther(amount);
 }
@@ -74,15 +74,20 @@ export function calculateVestingProgress(
   };
 }
 
-export function getContractErrorMessage(error: any): string {
-  if (error?.message?.includes("user rejected")) {
+export function getContractErrorMessage(error: unknown): string {
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message || "")
+      : "";
+
+  if (message.includes("user rejected")) {
     return "Transaction was rejected by user";
   }
-  if (error?.message?.includes("insufficient funds")) {
+  if (message.includes("insufficient funds")) {
     return "Insufficient funds for transaction";
   }
-  if (error?.message?.includes("execution reverted")) {
+  if (message.includes("execution reverted")) {
     return "Transaction failed: Contract execution reverted";
   }
-  return error?.message || "An unknown error occurred";
+  return message || "An unknown error occurred";
 }

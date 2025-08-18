@@ -4,7 +4,6 @@
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -30,21 +29,21 @@ export function AnalyticsOverview() {
     return null;
   }
 
-  const { stats, deployedTokens, vestingSchedules } = userData;
+  const { stats, deployedTokens } = userData;
 
   // Calculate additional metrics
-  const totalValue = deployedTokens.reduce(
-    (sum: number, token: any) => sum + parseFloat(token.totalSupply),
-    0
-  );
+  // const totalValue = deployedTokens.reduce(
+  //   (sum: number, token: { totalSupply: string }) => sum + parseFloat(token.totalSupply),
+  //   0
+  // );
 
   const claimRate =
     stats.totalTokensVested > 0
       ? (stats.totalTokensClaimed / stats.totalTokensVested) * 100
       : 0;
 
-  const activeTokens = deployedTokens.filter((token: any) =>
-    token.vestingSchedules.some((schedule: any) => !schedule.revoked)
+  const activeTokens = deployedTokens.filter((token: { vestingSchedules: Array<{ revoked: boolean }> }) =>
+    token.vestingSchedules.some((schedule: { revoked: boolean }) => !schedule.revoked)
   ).length;
 
   const overviewStats = [

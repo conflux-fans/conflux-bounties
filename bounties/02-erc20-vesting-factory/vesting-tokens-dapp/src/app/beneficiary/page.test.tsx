@@ -1,7 +1,16 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import BeneficiaryPage from './page';
+
+// Helper function to create properly typed mocks
+const createMockUseAccount = (overrides: { isConnected?: boolean | null; address?: string; status?: string }) => 
+  ({ isConnected: false, address: undefined, status: 'disconnected', ...overrides } as unknown as ReturnType<typeof useAccount>);
+
+// Helper function to safely check DOM hierarchy
+const safeToContainElement = (parent: Element | null, child: Element | null) => {
+  if (!parent || !child) return false;
+  return (parent as unknown as { toContainElement: (el: Element) => boolean }).toContainElement(child);
+};
 
 // Mock the dependencies
 jest.mock('wagmi', () => ({
@@ -29,25 +38,27 @@ jest.mock('@/components/beneficiary/claim-history', () => ({
 }));
 
 jest.mock('@/components/ui/tabs', () => ({
-  Tabs: ({ children, defaultValue, className }: any) => (
+  Tabs: ({ children, defaultValue, className }: { children: React.ReactNode; defaultValue?: string; className?: string }) => (
     <div data-testid="tabs" data-default-value={defaultValue} className={className}>
       {children}
     </div>
   ),
-  TabsList: ({ children }: any) => <div data-testid="tabs-list">{children}</div>,
-  TabsTrigger: ({ children, value }: any) => (
+  TabsList: ({ children }: { children: React.ReactNode }) => <div data-testid="tabs-list">{children}</div>,
+  TabsTrigger: ({ children, value }: { children: React.ReactNode; value: string }) => (
     <button data-testid={`tab-trigger-${value}`} data-value={value}>
       {children}
     </button>
   ),
-  TabsContent: ({ children, value }: any) => (
+  TabsContent: ({ children, value }: { children: React.ReactNode; value: string }) => (
     <div data-testid={`tab-content-${value}`} data-value={value}>
       {children}
     </div>
   )
 }));
 
-const mockUseAccount = require('wagmi').useAccount;
+import { useAccount } from 'wagmi';
+
+const mockUseAccount = jest.mocked(useAccount);
 
 describe('BeneficiaryPage', () => {
   beforeEach(() => {
@@ -55,7 +66,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should render connect wallet prompt when not connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: false });
+    mockUseAccount.mockReturnValue(createMockUseAccount({ isConnected: false }));
 
     render(<BeneficiaryPage />);
 
@@ -65,7 +76,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should render beneficiary content when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     render(<BeneficiaryPage />);
 
@@ -75,7 +86,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should render beneficiary page title and description when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     render(<BeneficiaryPage />);
 
@@ -84,7 +95,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should render all tab triggers when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     render(<BeneficiaryPage />);
 
@@ -98,7 +109,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should render all tab content when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     render(<BeneficiaryPage />);
 
@@ -112,7 +123,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should have correct CSS classes when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     const { container } = render(<BeneficiaryPage />);
 
@@ -133,7 +144,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should have correct tab default value', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     const { container } = render(<BeneficiaryPage />);
 
@@ -142,7 +153,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should handle undefined isConnected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: undefined });
+    mockUseAccount.mockReturnValue({ isConnected: undefined } as any);
 
     render(<BeneficiaryPage />);
 
@@ -152,7 +163,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should handle null isConnected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: null });
+    mockUseAccount.mockReturnValue({ isConnected: null } as any);
 
     render(<BeneficiaryPage />);
 
@@ -162,7 +173,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should render consistently across multiple renders', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     const { rerender } = render(<BeneficiaryPage />);
 
@@ -179,14 +190,14 @@ describe('BeneficiaryPage', () => {
     const { rerender } = render(<BeneficiaryPage />);
 
     // Initially not connected
-    mockUseAccount.mockReturnValue({ isConnected: false });
+    mockUseAccount.mockReturnValue({ isConnected: false } as any);
     rerender(<BeneficiaryPage />);
 
     expect(screen.getByTestId('connect-wallet-prompt')).toBeInTheDocument();
     expect(screen.queryByTestId('tabs')).not.toBeInTheDocument();
 
     // Then connected
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
     rerender(<BeneficiaryPage />);
 
     expect(screen.getByTestId('tabs')).toBeInTheDocument();
@@ -194,7 +205,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should maintain proper component hierarchy when connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     const { container } = render(<BeneficiaryPage />);
 
@@ -209,14 +220,14 @@ describe('BeneficiaryPage', () => {
     expect(tabsList).toBeInTheDocument();
 
     // Check hierarchy
-    expect(container.children[0]).toContainElement(navbar);
-    expect(container.children[1]).toContainElement(mainContainer);
-    expect(mainContainer).toContainElement(tabs);
-    expect(tabs).toContainElement(tabsList);
+    expect(safeToContainElement(container.children[0], navbar)).toBe(true);
+    expect(safeToContainElement(container.children[1], mainContainer)).toBe(true);
+    expect(safeToContainElement(mainContainer, tabs)).toBe(true);
+    expect(safeToContainElement(tabs, tabsList)).toBe(true);
   });
 
   it('should maintain proper component hierarchy when not connected', () => {
-    mockUseAccount.mockReturnValue({ isConnected: false });
+    mockUseAccount.mockReturnValue({ isConnected: false } as any);
 
     const { container } = render(<BeneficiaryPage />);
 
@@ -227,18 +238,18 @@ describe('BeneficiaryPage', () => {
     expect(connectPrompt).toBeInTheDocument();
 
     // Check hierarchy
-    expect(container.children[0]).toContainElement(navbar);
-    expect(container.children[1]).toContainElement(connectPrompt);
+    expect(safeToContainElement(container.children[0], navbar)).toBe(true);
+    expect(safeToContainElement(container.children[1], connectPrompt)).toBe(true);
   });
 
   it('should render without errors', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     expect(() => render(<BeneficiaryPage />)).not.toThrow();
   });
 
   it('should handle missing useAccount hook gracefully', () => {
-    mockUseAccount.mockReturnValue({});
+    mockUseAccount.mockReturnValue({} as any);
 
     render(<BeneficiaryPage />);
 
@@ -247,7 +258,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should have proper semantic structure', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     const { container } = render(<BeneficiaryPage />);
 
@@ -261,7 +272,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should handle empty isConnected object', () => {
-    mockUseAccount.mockReturnValue({});
+    mockUseAccount.mockReturnValue({} as any);
 
     render(<BeneficiaryPage />);
 
@@ -271,7 +282,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should have tab triggers with correct values', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     const { container } = render(<BeneficiaryPage />);
 
@@ -285,7 +296,7 @@ describe('BeneficiaryPage', () => {
   });
 
   it('should have tab content with correct values', () => {
-    mockUseAccount.mockReturnValue({ isConnected: true });
+    mockUseAccount.mockReturnValue({ isConnected: true } as any);
 
     const { container } = render(<BeneficiaryPage />);
 

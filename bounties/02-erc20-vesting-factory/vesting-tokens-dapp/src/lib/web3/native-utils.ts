@@ -67,4 +67,4 @@ export function shortenAddress(address: string, chars = 4): string {
 // Type definitions (without viem)
 export type Address = `0x${string}`;
 export type Hash = `0x${string}`;
-export type PublicClient = any; // We'll use wagmi's usePublicClient type
+export type PublicClient = unknown; // We'll use wagmi's usePublicClient type

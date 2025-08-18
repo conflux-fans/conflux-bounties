@@ -19,10 +19,12 @@ jest.mock('@/lib/web3/config', () => ({
 // Mock fetch
 global.fetch = jest.fn();
 
-const mockUseReadContract = require('wagmi').useReadContract;
-const mockUseWriteContract = require('wagmi').useWriteContract;
-const mockUseWaitForTransactionReceipt = require('wagmi').useWaitForTransactionReceipt;
-const mockUseAccount = require('wagmi').useAccount;
+import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi';
+
+const mockUseReadContract = jest.mocked(useReadContract);
+const mockUseWriteContract = jest.mocked(useWriteContract);
+const mockUseWaitForTransactionReceipt = jest.mocked(useWaitForTransactionReceipt);
+const mockUseAccount = jest.mocked(useAccount);
 const mockFetch = fetch as jest.MockedFunction<typeof fetch>;
 
 // Create a wrapper component for testing
@@ -35,8 +37,10 @@ const createWrapper = () => {
     },
   });
   
-  return ({ children }: { children: React.ReactNode }) => 
+  const Wrapper = ({ children }: { children: React.ReactNode }) => 
     React.createElement(QueryClientProvider, { client: queryClient }, children);
+  Wrapper.displayName = 'UseTokenVestingTestWrapper';
+  return Wrapper;
 };
 
 describe('useTokenVesting', () => {
