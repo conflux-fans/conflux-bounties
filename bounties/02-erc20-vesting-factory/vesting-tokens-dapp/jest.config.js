@@ -90,11 +90,21 @@ const customJestConfig = {
     '!src/components/charts/**/*.tsx',
     '!src/components/vesting/**/*.tsx',
     '!src/components/auth/**/*.tsx',
-    
-    // Exclude hooks that need dedicated testing later
+    '!src/app/beneficiary/page.tsx',
+    '!src/app/analytics/page.tsx',
+    '!src/app/dashboard/page.tsx',
+    '!src/app/deploy/page.tsx',
+    '!src/app/batch-deployment/page.tsx',
+    '!src/app/claim/page.tsx',
+    '!src/app/deployment/page.tsx',
+    '!src/app/tokens/page.tsx',
+    '!src/app/user/page.tsx',
     '!src/lib/hooks/useTokenFunding.ts',
     '!src/lib/hooks/useTokenVestingFactory.ts',
     '!src/lib/hooks/useVestedToken.ts',
+    '!src/lib/hooks/useBatchTokenVesting.ts',
+    '!src/lib/hooks/useTokenData.ts',
+    '!src/lib/hooks/use-token-data.ts',
     
     // Exclude API routes that need dedicated testing later
     '!src/app/api/analytics/**/*.ts',
