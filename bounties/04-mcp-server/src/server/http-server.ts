@@ -1,4 +1,3 @@
-import { config } from "dotenv";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import startServer from "./server.js";
 import express, { Request, Response } from "express";
@@ -13,6 +12,45 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 // Use MCP_SERVER_PORT from env, default to 5004
 const PORT = process.env.MCP_SERVER_PORT ? parseInt(process.env.MCP_SERVER_PORT, 10) : 5004;
 const HOST = '0.0.0.0';
+
+// Logging and redaction helpers
+const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();
+const LOG_LEVELS: Record<string, number> = { silent: 0, error: 1, warn: 2, info: 3, debug: 4 };
+function levelValue(key: string): number {
+  switch (key) {
+    case 'silent': return 0;
+    case 'error': return 1;
+    case 'warn': return 2;
+    case 'info': return 3;
+    case 'debug': return 4;
+    default: return 3;
+  }
+}
+function shouldLog(level: 'error' | 'warn' | 'info' | 'debug') {
+  const current = levelValue(LOG_LEVEL);
+  const target = levelValue(level);
+  return current >= target;
+}
+function redactSensitive(input: any): any {
+  const sensitive = new Set(['privateKey', '__privateKey', 'PRIVATE_KEY', 'X-Private-Key', 'x-private-key']);
+  if (Array.isArray(input)) return input.map(redactSensitive);
+  if (input && typeof input === 'object') {
+    const out: any = {};
+    for (const [k, v] of Object.entries(input)) {
+      out[k] = sensitive.has(k) ? '[REDACTED]' : redactSensitive(v as any);
+    }
+    return out;
+  }
+  return input;
+}
+function safeLog(level: 'error' | 'warn' | 'info' | 'debug', message: string, data?: any) {
+  if (!shouldLog(level)) return;
+  if (typeof data !== 'undefined') {
+    console.error(`${message} ${JSON.stringify(redactSensitive(data))}`);
+  } else {
+    console.error(message);
+  }
+}
 
 console.error(`Configured to listen on ${HOST}:${PORT}`);
 
@@ -112,8 +150,8 @@ startServer().then(s => {
 
   // @ts-ignore
   app.post("/messages", async (req: Request, res: Response) => {
-    console.error(`Received MCP message request`);
-    console.error(`Message body: ${JSON.stringify(req.body)}`);
+    safeLog('info', 'Received MCP message request');
+    safeLog('debug', 'Message body:', req.body);
     
     // Optional: update private key from header if provided
     const headerKey = req.header('X-Private-Key');
@@ -209,8 +247,8 @@ startServer().then(s => {
              }
              
               if (message.method === 'tools/call') {
-               console.error(`🔧 Handling tools/call for tool: ${message.params?.name}`);
-               console.error(`   Arguments: ${JSON.stringify(message.params?.arguments, null, 2)}`);
+               safeLog('info', `🔧 Handling tools/call for tool: ${message.params?.name}`);
+               safeLog('debug', 'Arguments:', message.params?.arguments);
                try {
                  const toolName = message.params.name;
                   const toolArgs = message.params.arguments || {};
@@ -449,7 +487,7 @@ startServer().then(s => {
 
       // Handle tools/call method (for direct HTTP requests only)
       if (message.method === 'tools/call') {
-        console.error(`Handling tools/call request for tool: ${message.params.name}`);
+        safeLog('info', `Handling tools/call request for tool: ${message.params.name}`);
         const toolName = message.params.name;
         const toolArgs = message.params.arguments || {};
         // Inject per-session private key if available via query or header

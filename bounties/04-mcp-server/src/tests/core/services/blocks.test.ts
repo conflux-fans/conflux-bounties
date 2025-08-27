@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, mock, beforeEach, afterAll } from 'bun:test';
 import {
   getBlockNumber,
   getBlockByNumber,
@@ -24,14 +24,11 @@ describe('Blocks Service', () => {
   };
 
   beforeEach(() => {
-    // Reset all mocks before each test
-    mock.restore();
-
     // Setup default mock implementations
     (getPublicClient as any).mockReturnValue(mockClient);
   });
 
-  afterEach(() => {
+  afterAll(() => {
     mock.restore();
   });
 

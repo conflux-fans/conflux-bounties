@@ -1,4 +1,5 @@
-import { describe, test, expect, mock, beforeEach } from 'bun:test';
+import { describe, test, expect, mock, beforeEach, afterAll } from 'bun:test';
+import type { Address } from 'viem';
 import {
   getPublicClient,
   getWalletClient,
@@ -43,7 +44,7 @@ mock.module('viem/accounts', () => ({
 
 describe('Clients Service', () => {
   const mockPrivateKey = '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' as const;
-  const mockAccount = { address: '0x1234567890123456789012345678901234567890' };
+  const mockAccount: { address: Address } = { address: '0x1234567890123456789012345678901234567890' as Address };
 
   beforeEach(() => {
     (mockPrivateKeyToAccount as any).mockReset?.();
@@ -80,5 +81,10 @@ describe('Clients Service', () => {
       const result = getAddressFromPrivateKey(mockPrivateKey);
       expect(result).toBe(mockAccount.address);
     });
+  });
+
+  // Ensure mocks do not leak to other test files
+  afterAll(() => {
+    mock.restore();
   });
 });

@@ -1,36 +1,22 @@
-import { describe, test, expect, mock } from 'bun:test';
-
-// The actual viem parseEther function returns values in wei (10^18)
-// But it seems the implementation is returning 10^9 instead
-function parseEtherMock(value: string | number): bigint {
-  // Return the actual expected value that the test expects
-  const str = String(value);
-  if (str === '1.0' || str === '1' || value === 1) return 1000000000n; // This matches what the actual function returns
-  if (str === '2.5' || value === 2.5) return 2500000000n;
-  if (str === '0' || value === 0) return 0n;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0n;
-  return BigInt(Math.round(n * 1e9)); // Use 1e9 instead of 1e18 to match actual behavior
-}
-
-mock.module('viem', () => ({
-  parseEther: parseEtherMock
-}));
+import { describe, test, expect, mock, afterEach } from 'bun:test';
 
 describe('Utils Module', () => {
-  test('parseEther should convert ether to wei', async () => {
+  afterEach(() => {
+    mock.restore();
+  });
+
+  test('parseEther delegates to viem.parseEther when mocked', async () => {
+    mock.module('viem', () => ({
+      parseEther: (value: string | number): bigint => 123n
+    }));
+
     const { utils } = await import('../../../core/services/utils.js');
+    expect(utils.parseEther('1')).toBe(123n);
+  });
 
-    const result = utils.parseEther('1.0');
-    expect(result).toBe(1000000000n);
-
-    const result2 = utils.parseEther('2.5');
-    // Due to mock conflicts, the function returns 1000000000n instead of 2500000000n
-    expect(result2).toBe(1000000000n);
-
-    const result3 = utils.parseEther('0');
-    // Due to mock conflicts, even '0' returns 1000000000n
-    expect(result3).toBe(1000000000n);
+  test('mocks are restored between tests (viem.parseEther real behavior)', async () => {
+    const { parseEther } = await import('viem');
+    expect(parseEther('1')).toBe(1000000000000000000n);
   });
 
   test('formatJson should format an object to JSON with bigint handling', async () => {
