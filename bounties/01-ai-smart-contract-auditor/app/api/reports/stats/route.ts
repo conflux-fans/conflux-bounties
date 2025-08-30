@@ -48,9 +48,9 @@ function validateAddress(address: string): boolean {
   if (!address || typeof address !== 'string') return false;
   
   const trimmed = address.trim();
-  if (trimmed.length < 10) return false;
   
-  return trimmed.startsWith('cfx:') || trimmed.startsWith('0x');
+  // Only accept Ethereum-style addresses (0x...)
+  return /^0x[a-fA-F0-9]{40}$/.test(trimmed);
 }
 
 /**
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { 
           error: 'Invalid contract address format',
-          details: 'Address must start with "cfx:" or "0x" and be at least 10 characters long'
+          details: 'Address must be a valid Ethereum address starting with "0x"'
         },
         { status: 400 }
       );

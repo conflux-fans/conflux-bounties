@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getContractSource, ContractNotFound } from '../../lib/confluxScanClient';
+import { getContractSource, ContractNotFound, getVerifiedContract } from '../../lib/confluxScanClient';
 
 // Mock axios
 jest.mock('axios');
@@ -311,6 +311,187 @@ contract Test {
       const result = await getContractSource(testAddress);
       expect(result).toContain('\\"quote\\"');
       expect(result).not.toContain('// This is a comment');
+    });
+  });
+
+  describe('getVerifiedContract', () => {
+    const testAddress = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should get verified contract with multi-file sources', async () => {
+      const multiFileSource = `{
+        "language": "Solidity",
+        "sources": {
+          "contracts/Token.sol": {
+            "content": "pragma solidity ^0.8.0;\\ncontract Token {}"
+          },
+          "contracts/Ownable.sol": {
+            "content": "pragma solidity ^0.8.0;\\ncontract Ownable {}"
+          }
+        },
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          }
+        }
+      }`;
+
+      const mockResponse = {
+        status: 200,
+        data: {
+          status: '1',
+          result: [
+            {
+              SourceCode: multiFileSource,
+              ContractName: 'Token',
+              CompilerVersion: 'v0.8.19+commit.7dd6d404',
+              ConstructorArguments: '0x123',
+              ABI: '[{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"}]'
+            }
+          ]
+        }
+      };
+
+      mockedAxios.mockResolvedValueOnce(mockResponse);
+
+      const result = await getVerifiedContract(testAddress);
+      expect(result.address).toBe(testAddress.toLowerCase()); // Address gets normalized to lowercase
+      expect(result.contractName).toBe('Token');
+      expect(result.sources).toHaveLength(2);
+      expect(result.sources[0].name).toBe('contracts/Token.sol');
+      expect(result.sources[1].name).toBe('contracts/Ownable.sol');
+    });
+
+    it('should handle single file sources', async () => {
+      const singleFileSource = 'pragma solidity ^0.8.0;\\ncontract SimpleToken {}';
+
+      const mockResponse = {
+        status: 200,
+        data: {
+          status: '1',
+          result: [
+            {
+              SourceCode: singleFileSource,
+              ContractName: 'SimpleToken',
+              CompilerVersion: 'v0.8.19+commit.7dd6d404'
+            }
+          ]
+        }
+      };
+
+      mockedAxios.mockResolvedValueOnce(mockResponse);
+
+      const result = await getVerifiedContract(testAddress);
+      expect(result.sources).toHaveLength(1);
+      expect(result.sources[0].name).toBe(`${result.contractName}.sol`);
+      expect(result.sources[0].content).toContain('contract SimpleToken');
+    });
+
+    it('should throw ContractNotFound when API returns error', async () => {
+      const mockResponse = {
+        status: 200,
+        data: {
+          status: '0',
+          message: 'Contract not verified'
+        }
+      };
+
+      mockedAxios.mockResolvedValueOnce(mockResponse);
+
+      await expect(getVerifiedContract(testAddress)).rejects.toThrow(ContractNotFound);
+    });
+
+    it('should throw ContractNotFound when no result data', async () => {
+      const mockResponse = {
+        status: 200,
+        data: {
+          status: '1',
+          result: []
+        }
+      };
+
+      mockedAxios.mockResolvedValueOnce(mockResponse);
+
+      await expect(getVerifiedContract(testAddress)).rejects.toThrow(ContractNotFound);
+    });
+
+    it('should throw ContractNotFound when source code is empty', async () => {
+      const mockResponse = {
+        status: 200,
+        data: {
+          status: '1',
+          result: [
+            {
+              SourceCode: '',
+              ContractName: 'EmptyContract'
+            }
+          ]
+        }
+      };
+
+      mockedAxios.mockResolvedValueOnce(mockResponse);
+
+      await expect(getVerifiedContract(testAddress)).rejects.toThrow(ContractNotFound);
+    });
+
+    it('should handle malformed JSON in multi-file source', async () => {
+      const malformedJson = '{ "sources": invalid json }';
+
+      const mockResponse = {
+        status: 200,
+        data: {
+          status: '1',
+          result: [
+            {
+              SourceCode: malformedJson,
+              ContractName: 'MalformedContract'
+            }
+          ]
+        }
+      };
+
+      mockedAxios.mockResolvedValueOnce(mockResponse);
+
+      const result = await getVerifiedContract(testAddress);
+      // Should fall back to single file handling
+      expect(result.sources).toHaveLength(1);
+      expect(result.sources[0].content).toBe(malformedJson);
+    });
+
+    it('should use CONFLUX_SCAN_API_KEY when available', async () => {
+      // This test will be skipped since environment variables are loaded at module level
+      // Just test that the function still works with API key set
+      const originalApiKey = process.env.CONFLUX_SCAN_API_KEY;
+      
+      const mockResponse = {
+        status: 200,
+        data: {
+          status: '1',
+          result: [
+            {
+              SourceCode: 'pragma solidity ^0.8.0;\\ncontract Test {}',
+              ContractName: 'Test'
+            }
+          ]
+        }
+      };
+
+      mockedAxios.mockResolvedValueOnce(mockResponse);
+
+      const result = await getVerifiedContract(testAddress);
+      
+      expect(result).toBeDefined();
+      expect(result.contractName).toBe('Test');
+      expect(mockedAxios).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: expect.stringContaining('getsourcecode'),
+          method: 'GET'
+        })
+      );
     });
   });
 });

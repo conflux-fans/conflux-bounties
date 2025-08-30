@@ -90,8 +90,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<ReportParams> }
 ) {
+  let reportId: string = '';
   try {
     const { id } = await params;
+    reportId = id;
     const { searchParams } = new URL(request.url);
 
     if (!validateReportId(id)) {
@@ -135,10 +137,13 @@ export async function GET(
     }
 
     if (format === 'markdown' && report.audit_status === 'completed' && report.report_markdown) {
+      const dateStr = report.created_at ? new Date(report.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+      const addressSuffix = report.contract_address ? report.contract_address.slice(-8) : 'unknown';
+      
       return new NextResponse(report.report_markdown, {
         headers: {
           'Content-Type': 'text/markdown',
-          'Content-Disposition': `attachment; filename="audit-report-${report.contract_address.slice(-8)}-${new Date(report.created_at).toISOString().split('T')[0]}.md"`,
+          'Content-Disposition': `attachment; filename="audit-report-${addressSuffix}-${dateStr}.md"`,
           'Cache-Control': 'public, max-age=3600' // 1 hour cache for completed reports
         }
       });
@@ -156,12 +161,13 @@ export async function GET(
 
   } catch (error) {
     console.error('[Reports] Error fetching report:', error);
+    console.error('[Reports] Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
     
     return NextResponse.json(
       { 
         error: 'Internal server error occurred while fetching report',
         type: 'report_fetch_error',
-        reportId: (await params).id,
+        reportId: reportId,
         timestamp: new Date().toISOString()
       },
       { status: 500 }

@@ -32,9 +32,10 @@ interface Finding {
 }
 
 interface CodeViewerProps {
-  sourceCode: string;
-  findings: Finding[];
-  contractAddress: string;
+  sourceCode?: string;
+  findings?: Finding[];
+  contractAddress?: string;
+  code?: string; // Alternative prop name for compatibility
   language?: string;
   theme?: 'light' | 'dark';
 }
@@ -48,8 +49,9 @@ const iconsBySeverity = {
 
 export function CodeViewer({
   sourceCode,
-  findings,
-  contractAddress,
+  code,
+  findings = [],
+  contractAddress = '',
   language = 'solidity',
   theme = 'light',
 }: CodeViewerProps) {
@@ -112,7 +114,8 @@ export function CodeViewer({
     };
   };
 
-  const lines = sourceCode.split('\n');
+  const actualSourceCode = sourceCode || code || '';
+  const lines = actualSourceCode.split('\n');
   const seen = new Set<string>();
   const rows = lines.map((txt, i) => {
     const ln = i + 1;
@@ -140,7 +143,7 @@ export function CodeViewer({
   ).length;
 
   return (
-    <div className="code-viewer">
+    <div className="code-viewer" data-testid="code-viewer">
       {/* Controls */}
       <div className="code-viewer__controls">
         <div className="code-viewer__info">
@@ -201,7 +204,7 @@ export function CodeViewer({
           <span>Source Code</span>
           <span>{filtered.length} annotations</span>
         </div>
-        <pre className="code-viewer__lines">
+        <pre className="code-viewer__lines" data-testid="syntax-highlighter" data-language={language}>
           {rows.map(({ ln, txt, vis, toShow }) => (
             <div
               key={ln}

@@ -123,11 +123,10 @@ export function IconButton({
   return (
     <Button
       {...props}
+      icon={icon}
       iconOnly
       className={className}
-    >
-      {icon}
-    </Button>
+    />
   );
 }
 

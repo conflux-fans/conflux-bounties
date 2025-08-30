@@ -79,15 +79,14 @@ export default function SimplifiedAuditPage() {
       return;
     }
 
-    // Conflux address validation
-    const confluxRegex = /^cfx:[a-z0-9]{42}$/i;
+    // Only accept Ethereum-style addresses (0x...)
     const ethRegex = /^0x[a-fA-F0-9]{40}$/;
     
-    if (confluxRegex.test(addr) || ethRegex.test(addr)) {
+    if (ethRegex.test(addr)) {
       setAddressError('');
       setIsValidAddress(true);
     } else {
-      setAddressError('Please enter a valid Conflux (cfx:...) or Ethereum (0x...) address');
+      setAddressError('Please enter a valid Ethereum address (0x...)');
       setIsValidAddress(false);
     }
   };

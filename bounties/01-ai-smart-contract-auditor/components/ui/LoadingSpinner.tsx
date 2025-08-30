@@ -69,7 +69,7 @@ export function PulsingDots({ className = '' }: PulsingDotsProps) {
     .join(' ');
 
   return (
-    <div className={containerClasses}>
+    <div className={containerClasses} data-testid="pulsing-dots-container">
       {[0, 1, 2].map(i => (
         <motion.div
           key={i}
@@ -85,9 +85,14 @@ export function PulsingDots({ className = '' }: PulsingDotsProps) {
 interface SkeletonProps {
   className?: string;
   animated?: boolean;
+  'data-testid'?: string;
 }
 
-export function Skeleton({ className = '', animated = true }: SkeletonProps) {
+export function Skeleton({ 
+  className = '', 
+  animated = true, 
+  'data-testid': testId 
+}: SkeletonProps) {
   const classes = [
     'skeleton',
     animated && 'skeleton-animated',
@@ -96,5 +101,5 @@ export function Skeleton({ className = '', animated = true }: SkeletonProps) {
     .filter(Boolean)
     .join(' ');
 
-  return <div className={classes} />;
+  return <div className={classes} data-testid={testId} />;
 }

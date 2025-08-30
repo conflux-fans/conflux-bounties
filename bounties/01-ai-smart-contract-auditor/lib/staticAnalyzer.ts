@@ -90,7 +90,7 @@ const SLITHER_TO_SWC_CWE: Record<string, { swc?: string; cwe?: string }> = {
   'constant-function-state': { swc: 'SWC-108', cwe: 'CWE-665' }
 };
 
-function mapSlitherSeverity(impact: string, confidence: string): 'low' | 'medium' | 'high' | 'critical' {
+export function mapSlitherSeverity(impact: string, confidence: string): 'low' | 'medium' | 'high' | 'critical' {
   const impactLevel = impact.toLowerCase();
   const confidenceLevel = confidence.toLowerCase();
 
@@ -115,7 +115,7 @@ function mapSlitherSeverity(impact: string, confidence: string): 'low' | 'medium
   return 'low';
 }
 
-function mapMythrilSeverity(severity: string): 'low' | 'medium' | 'high' | 'critical' {
+export function mapMythrilSeverity(severity: string): 'low' | 'medium' | 'high' | 'critical' {
   const severityLevel = severity.toLowerCase();
   switch (severityLevel) {
     case 'high':
@@ -129,7 +129,7 @@ function mapMythrilSeverity(severity: string): 'low' | 'medium' | 'high' | 'crit
   }
 }
 
-async function writeSourceFilesToWorkspace(sourceFiles: SourceFile[], workspaceId: string): Promise<string> {
+export async function writeSourceFilesToWorkspace(sourceFiles: SourceFile[], workspaceId: string): Promise<string> {
   const workspacePath = `/tmp/analysis-${workspaceId}`;
   
   try {
@@ -381,7 +381,7 @@ export async function runStaticAnalysis(sourceFiles: SourceFile[]): Promise<Stat
 /**
  * Detect Solidity version from contract and set it in Slither container
  */
-async function setCorrectSolidityVersion(contractPath: string): Promise<void> {
+export async function setCorrectSolidityVersion(contractPath: string): Promise<void> {
   try {
     // Read the contract to detect pragma version
     const { stdout: contractContent } = await execAsync(`docker exec ai-auditor-slither cat ${contractPath}`);

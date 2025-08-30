@@ -20,7 +20,7 @@ interface Finding {
 
 interface CodeViewerProps {
   code: string;
-  findings: Finding[];
+  findings?: Finding[];
   language?: string;
   theme?: 'light' | 'dark';
   showLineNumbers?: boolean;
@@ -36,7 +36,7 @@ interface LineAnnotation {
 
 export default function CodeViewer({
   code,
-  findings,
+  findings = [],
   language = 'solidity',
   theme = 'light',
   showLineNumbers = true,
@@ -94,7 +94,7 @@ export default function CodeViewer({
   };
 
   return (
-    <div className={['cv', className].filter(Boolean).join(' ')}>
+    <div className={['cv', className].filter(Boolean).join(' ')} data-testid="code-viewer">
       <div className="cv__panels">
         {/* Code panel */}
         <div className="cv__code-panel">
@@ -104,6 +104,13 @@ export default function CodeViewer({
             <div className="cv__code-stats">
               {findings.length} issue{findings.length !== 1 && 's'}
             </div>
+            <button 
+              data-testid="copy-button" 
+              onClick={() => navigator.clipboard.writeText(code)}
+              className="cv__copy-button"
+            >
+              Copy
+            </button>
           </div>
           <div className="cv__code-content" style={{ maxHeight }}>
             <SyntaxHighlighter
