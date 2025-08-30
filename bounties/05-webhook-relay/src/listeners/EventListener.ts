@@ -25,11 +25,9 @@ export class EventListener extends EventEmitter implements IEventListener {
   private contractListeners = new Map<string, any>();
   private isRunning = false;
 
-  // Simplified monitoring capabilities - focused on direct webhook delivery
+  // Simplified monitoring capabilities - focused on event detection only
   private startTime = Date.now();
   private eventCount = 0;
-  private webhooksSent = 0;
-  private webhooksFailed = 0;
   private eventsByContract = new Map<string, number>();
   private eventsByType = new Map<string, number>();
   private lastEventTime: Date | null = null;
@@ -61,11 +59,9 @@ export class EventListener extends EventEmitter implements IEventListener {
       // Start monitoring all subscriptions (including those from config.json)
       await this.startAllSubscriptions();
 
-      // Load and start monitoring wallet addresses from config.json
-      await this.startWalletMonitoring();
+
 
       this.emit('started');
-      console.log('📤 Events will be sent directly to webhook URLs');
       console.log('⏰ Waiting for events...\n');
     } catch (error) {
       this.emit('error', error);
@@ -102,6 +98,11 @@ export class EventListener extends EventEmitter implements IEventListener {
       ? subscription.contractAddress
       : [subscription.contractAddress];
 
+    // Handle both single and multiple event signatures
+    const eventSignatures = Array.isArray(subscription.eventSignature)
+      ? subscription.eventSignature
+      : [subscription.eventSignature];
+
     // Add contracts to blockchain connection monitoring
     contractAddresses.forEach(address => {
       this.connection.addContractToMonitor(address);
@@ -114,7 +115,7 @@ export class EventListener extends EventEmitter implements IEventListener {
     console.log(`📋 Added subscription: ${subscription.id}`);
     console.log(`   📍 Contracts: ${contractAddresses.join(', ')}`);
 
-    // Handle both single and multiple event signatures
+    // Log event signatures
     if (eventSignatures.length === 1 && eventSignatures[0]) {
       console.log(`   🎯 Event: ${this.parseEventName(eventSignatures[0])}`);
     } else {
@@ -164,28 +165,20 @@ export class EventListener extends EventEmitter implements IEventListener {
     return this.isRunning && this.connection.isConnected();
   }
 
-  // Simplified monitoring methods focused on direct webhook delivery
+  // Simplified monitoring methods focused on event detection only
   getEventStatistics(): {
     uptime: number;
     totalEvents: number;
-    webhooksSent: number;
-    webhooksFailed: number;
-    successRate: number;
     eventsByContract: Record<string, number>;
     eventsByType: Record<string, number>;
     lastEventTime: Date | null;
     subscriptionCount: number;
   } {
     const uptime = Math.floor((Date.now() - this.startTime) / 1000);
-    const totalWebhooks = this.webhooksSent + this.webhooksFailed;
-    const successRate = totalWebhooks > 0 ? Math.round((this.webhooksSent / totalWebhooks) * 100) : 0;
 
     return {
       uptime,
       totalEvents: this.eventCount,
-      webhooksSent: this.webhooksSent,
-      webhooksFailed: this.webhooksFailed,
-      successRate,
       eventsByContract: Object.fromEntries(this.eventsByContract),
       eventsByType: Object.fromEntries(this.eventsByType),
       lastEventTime: this.lastEventTime,
@@ -201,9 +194,6 @@ export class EventListener extends EventEmitter implements IEventListener {
     console.log(`\n📊 Event Listener Status:`);
     console.log(`   ⏰ Uptime: ${minutes}m ${seconds}s`);
     console.log(`   🎯 Events detected: ${stats.totalEvents}`);
-    console.log(`   📤 Webhooks sent: ${stats.webhooksSent}`);
-    console.log(`   ❌ Webhooks failed: ${stats.webhooksFailed}`);
-    console.log(`   📊 Success rate: ${stats.successRate}%`);
     console.log(`   📋 Active subscriptions: ${stats.subscriptionCount}`);
 
     // Get connection status
@@ -267,7 +257,7 @@ export class EventListener extends EventEmitter implements IEventListener {
     // Listen for new blocks - basic information only
     this.connection.on('newBlock', (_blockData: any) => {
       // Block information is already logged by BlockchainConnection
-      // EventListener focuses on contract events and webhook delivery
+      // EventListener focuses on contract events detection only
     });
   }
 
@@ -299,14 +289,14 @@ export class EventListener extends EventEmitter implements IEventListener {
       console.log(`📋 Loading configuration from: ${this.configPath}`);
       const configData = fs.readFileSync(this.configPath, 'utf8');
       const config = JSON.parse(configData);
-      
+
       if (!config.subscriptions || !Array.isArray(config.subscriptions)) {
         console.warn('⚠️ No subscriptions found in config.json');
         return;
       }
 
       console.log(`📋 Found ${config.subscriptions.length} subscription(s) in config`);
-      
+
       for (const subscription of config.subscriptions) {
         if (!subscription.contractAddress || !subscription.webhooks) {
           console.warn(`⚠️ Invalid subscription configuration:`, subscription);
@@ -325,13 +315,14 @@ export class EventListener extends EventEmitter implements IEventListener {
         // Add to subscriptions map (avoid duplicates)
         if (!this.subscriptions.has(eventSubscription.id)) {
           this.subscriptions.set(eventSubscription.id, eventSubscription);
-          
+
           const contractAddresses = Array.isArray(eventSubscription.contractAddress)
             ? eventSubscription.contractAddress
             : [eventSubscription.contractAddress];
-          
+
           console.log(`📋 Loaded subscription from config: ${eventSubscription.id}`);
           console.log(`   📍 Contracts: ${contractAddresses.join(', ')}`);
+          console.log(`   🎯 Event signatures: ${Array.isArray(eventSubscription.eventSignature) ? eventSubscription.eventSignature.join(', ') : eventSubscription.eventSignature}`);
           console.log(`   📤 Webhooks: ${eventSubscription.webhooks.length} configured`);
         } else {
           console.log(`⚠️ Subscription ${eventSubscription.id} already exists, skipping config version`);
@@ -427,6 +418,8 @@ export class EventListener extends EventEmitter implements IEventListener {
       const eventLog = event.log || event;
 
       const eventName = event.fragment?.name;
+      
+
 
       // Handle multiple event signatures - filter eventName for backward compatibility
       const eventSignaturesArr = Array.isArray(subscription.eventSignature)
@@ -443,8 +436,9 @@ export class EventListener extends EventEmitter implements IEventListener {
         return false;
       });
 
-      if (!eventSignature) {
-        console.error('❌ Event signature is required');
+      if (!eventSignature || eventSignature.length === 0) {
+        console.error(`❌ No matching event signature found for event: ${eventName}`);
+        console.error(`   Available signatures: ${eventSignaturesArr.map(sig => typeof sig === 'string' ? sig : JSON.stringify(sig)).join(', ')}`);
         return;
       }
 
@@ -479,25 +473,6 @@ export class EventListener extends EventEmitter implements IEventListener {
         }
       }
 
-      // Create webhook payload (same format as realtime-event-listener.js)
-      const webhookPayload = {
-        type: subscription.id,
-        contractAddress,
-        eventSignature: eventSignature[0] || '',
-        blockNumber: eventLog.blockNumber,
-        transactionHash: eventLog.transactionHash,
-        logIndex: eventLog.index,
-        args: parsedArgs,
-        timestamp: this.lastEventTime.toISOString(),
-      };
-
-      // Display webhook payload
-      console.log(`\n📤 Webhook Payload:`);
-      console.log(JSON.stringify(webhookPayload, null, 2));
-
-      // Send to all configured webhooks directly
-      await this.sendToWebhooks(subscription, webhookPayload);
-
       // Still emit the event for compatibility with existing system
       const blockchainEvent: BlockchainEvent = {
         contractAddress,
@@ -511,7 +486,7 @@ export class EventListener extends EventEmitter implements IEventListener {
 
       this.emit('event', subscription, blockchainEvent);
 
-      console.log(`\n${'='.repeat(80)}\n`);
+
     } catch (error) {
       console.error('❌ Error handling contract event:', error);
       this.emit('eventError', subscription.id, error);
@@ -584,41 +559,6 @@ export class EventListener extends EventEmitter implements IEventListener {
     }
   }
 
-  // Direct webhook sending method inspired by realtime-event-listener.js
-  private async sendToWebhooks(subscription: EventSubscription, payload: any): Promise<void> {
-    const webhookPromises = subscription.webhooks.map(webhook =>
-      this.sendWebhook(webhook.url, payload, webhook.id)
-    );
-
-    try {
-      await Promise.allSettled(webhookPromises);
-    } catch (error) {
-      console.error(`Error sending webhooks for subscription ${subscription.id}:`, error);
-    }
-  }
-
-  private async sendWebhook(url: string, payload: any, _webhookId: string): Promise<void> {
-    try {
-      console.log(`\n📤 Sending webhook to: ${url}`);
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Conflux-Webhook-Listener/1.0'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      this.webhooksSent++;
-      console.log(`   ✅ Webhook #${this.webhooksSent} sent successfully!`);
-      console.log(`   📊 Status: ${response.status} ${response.statusText}`);
-
-    } catch (error) {
-      this.webhooksFailed++;
-      console.error(`❌ Webhook delivery error:`, (error as Error).message);
-    }
-  }
 
 
 
@@ -632,209 +572,6 @@ export class EventListener extends EventEmitter implements IEventListener {
 
 
 
-  /**
-   * Load wallet monitoring configuration from config.json and start monitoring wallet transfers
-   */
-  private async startWalletMonitoring(): Promise<void> {
-    try {
-      console.log(`📋 Loading wallet monitoring configuration from: ${this.configPath}`);
 
-      // Read and parse config.json
-      const configData = fs.readFileSync(this.configPath, 'utf8');
-      const config = JSON.parse(configData);
 
-      if (!config.walletMonitoring || !Array.isArray(config.walletMonitoring)) {
-        console.log('ℹ️ No wallet monitoring configuration found in config.json');
-        return;
-      }
-
-      console.log(`📋 Found ${config.walletMonitoring.length} wallet monitoring configuration(s)`);
-
-      // Process each wallet monitoring configuration
-      for (const walletConfig of config.walletMonitoring) {
-        if (!walletConfig.walletAddresses || !Array.isArray(walletConfig.walletAddresses) || !walletConfig.webhooks) {
-          console.warn(`⚠️ Invalid wallet monitoring configuration:`, walletConfig);
-          continue;
-        }
-
-        console.log(`🎯 Setting up wallet monitoring for ${walletConfig.walletAddresses.length} addresses`);
-        console.log(`📤 Webhooks configured: ${walletConfig.webhooks.length}`);
-
-        // Start monitoring transfers for these wallet addresses
-        await this.startWalletTransferMonitoring(walletConfig);
-      }
-
-    } catch (error) {
-      console.error('❌ Error loading wallet monitoring configuration:', error);
-      // Don't throw error here, just log it so contract monitoring can continue
-    }
-  }
-
-  /**
-   * Monitor transfer transactions for specific wallet addresses
-   */
-  private async startWalletTransferMonitoring(walletConfig: any): Promise<void> {
-    try {
-      const provider = this.connection.getProvider();
-      if (!provider) {
-        throw new Error('Provider not available');
-      }
-
-      const walletAddresses = walletConfig.walletAddresses.map((addr: string) => addr.toLowerCase());
-
-      console.log(`🎯 Starting wallet transfer monitoring for ${walletAddresses.length} addresses:`);
-      walletAddresses.forEach((addr: string) => {
-        console.log(`   📍 ${addr}`);
-      });
-
-      provider.on('block', async (blockNumber: number) => {
-        try {
-
-          const block = await provider.getBlock(blockNumber, false); // 不解码交易，返回哈希数组
-
-          if (!block || !block.transactions) return;
-          for (const txRaw of block.transactions) {
-            let tx: any = txRaw;
-            if (typeof txRaw === 'string') {
-              try {
-                tx = await provider.getTransaction(txRaw);
-                if (!tx) {
-                  console.log(`\n🔍 Failed to fetch tx for hash: ${txRaw}`);
-                  continue;
-                }
-              } catch (err) {
-                console.log(`\n🔍 Error fetching tx for hash: ${txRaw}`, err);
-                continue;
-              }
-            }
-            const fromAddress: string = tx.from?.toLowerCase();
-            const toAddress: string = tx.to?.toLowerCase();
-
-            const isFromMonitored = walletAddresses.includes(fromAddress);
-            const isToMonitored = walletAddresses.includes(toAddress);
-            let value = tx.value;
-            if (typeof value === 'string') {
-              try { value = BigInt(value); } catch { value = 0n; }
-            }
-            if ((isFromMonitored || isToMonitored) && value && value > 0n) {
-              await this.handleWalletTransfer(walletConfig, { ...tx, value }, isFromMonitored, isToMonitored, blockNumber);
-            }
-          }
-        } catch (error) {
-          console.error(`Error processing block ${blockNumber} for wallet monitoring:`, error);
-        }
-      });
-
-      // Store wallet monitoring info for cleanup
-      const monitoringId = `wallet-monitoring-${walletConfig.id || 'default'}`;
-      this.contractListeners.set(monitoringId, {
-        removeAllListeners: () => {
-          // block监听的清理由 provider.disconnect 统一处理
-        },
-        walletAddresses,
-        config: walletConfig
-      } as any);
-
-      console.log(`✅ Started wallet transfer monitoring for ${walletAddresses.length} addresses`);
-    } catch (error) {
-      console.error(`❌ Failed to start wallet transfer monitoring:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Handle wallet transfer transactions
-   */
-  private async handleWalletTransfer(
-    walletConfig: any,
-    transaction: any,
-    isFromMonitored: boolean,
-    isToMonitored: boolean,
-    confirmedBlockNumber?: number
-  ): Promise<void> {
-
-    try {
-      this.eventCount++;
-      this.lastEventTime = new Date();
-
-      const fromAddress = transaction.from?.toLowerCase() || '';
-      const toAddress = transaction.to?.toLowerCase() || '';
-      const value = transaction.value || 0n;
-      const txHash = transaction.hash;
-
-      // Update statistics
-      const eventType = 'WalletTransfer';
-      this.eventsByType.set(eventType, (this.eventsByType.get(eventType) || 0) + 1);
-
-      // Determine transfer direction
-      let transferDirection = '';
-      let monitoredAddress = '';
-
-      if (isFromMonitored && isToMonitored) {
-        transferDirection = 'internal'; // Between monitored addresses
-        monitoredAddress = fromAddress;
-      } else if (isFromMonitored) {
-        transferDirection = 'outgoing';
-        monitoredAddress = fromAddress;
-      } else if (isToMonitored) {
-        transferDirection = 'incoming';
-        monitoredAddress = toAddress;
-      }
-
-      console.log(`\n🚨 WALLET TRANSFER #${this.eventCount} DETECTED!`);
-      console.log(`👤 Wallet Address: ${monitoredAddress}`);
-      console.log(`📍 From: ${fromAddress}`);
-      console.log(`📍 To: ${toAddress || 'Contract Creation'}`);
-      console.log(`💰 Value: ${this.formatEther(value)} CFX`);
-      console.log(`🔄 Direction: ${transferDirection}`);
-      console.log(`📤 Transaction: ${txHash}`);
-      console.log(`📦 Block: ${confirmedBlockNumber}`);
-      console.log(`⏰ Time: ${this.lastEventTime.toISOString()}`);
-
-      // Create webhook payload for wallet transfer
-      const webhookPayload = {
-        type: walletConfig.id,
-        walletAddress: monitoredAddress,
-        fromAddress,
-        toAddress: toAddress || null,
-        value: value.toString(),
-        valueInCFX: this.formatEther(value),
-        transferDirection,
-        transactionHash: txHash,
-        blockNumber: confirmedBlockNumber,
-        gasLimit: transaction.gasLimit?.toString() || null,
-        gasPrice: transaction.gasPrice?.toString() || null,
-        nonce: transaction.nonce || null,
-        timestamp: this.lastEventTime.toISOString(),
-      };
-
-      // Display webhook payload
-      console.log(`\n📤 Wallet Transfer Webhook Payload:`);
-      console.log(JSON.stringify(webhookPayload, null, 2));
-
-      // Send to all configured webhooks directly
-      if (walletConfig.webhooks && Array.isArray(walletConfig.webhooks)) {
-        const webhookPromises = walletConfig.webhooks.map((webhook: any) =>
-          this.sendWebhook(webhook.url, webhookPayload, webhook.id)
-        );
-        await Promise.allSettled(webhookPromises);
-      }
-
-      console.log(`\n${'='.repeat(80)}\n`);
-
-    } catch (error) {
-      console.error('❌ Error handling wallet transfer:', error);
-    }
-  }
-
-  /**
-   * Format ether value for display
-   */
-  private formatEther(value: bigint): string {
-    try {
-      return ethers.formatEther(value);
-    } catch {
-      return value.toString();
-    }
-  }
 }

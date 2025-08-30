@@ -1,6 +1,6 @@
 import type { IDeliveryQueue, IRetryScheduler } from './queue/interfaces';
-import type { IWebhookSender } from './interfaces';
-import type { WebhookDelivery, WebhookConfig } from '../types';
+import type { IWebhookSender, IWebhookConfigProvider } from './interfaces';
+import type { WebhookDelivery } from '../types';
 import { Logger } from '../monitoring/Logger';
 import { DeadLetterQueue } from './queue/DeadLetterQueue';
 import { RetryScheduler } from './queue/RetryScheduler';
@@ -28,7 +28,7 @@ export interface QueueProcessorStats {
 export interface ProcessorOptions {
   maxConcurrentDeliveries?: number;
   processingInterval?: number;
-  webhookConfigProvider?: (webhookId: string) => Promise<WebhookConfig | null>;
+  webhookConfigProvider: IWebhookConfigProvider;
   deadLetterQueue?: DeadLetterQueue;
   retryScheduler?: IRetryScheduler;
   retryBaseDelay?: number;
@@ -41,12 +41,12 @@ export class QueueProcessor implements IQueueProcessor {
   private deliveryQueue: IDeliveryQueue;
   private webhookSender: IWebhookSender;
   private logger: Logger;
+  private webhookConfigProvider: IWebhookConfigProvider;
   private deadLetterQueue: DeadLetterQueue | undefined;
   private retryScheduler: IRetryScheduler;
   private isProcessing: boolean = false;
   private stats: QueueProcessorStats;
-  private options: Omit<Required<ProcessorOptions>, 'deadLetterQueue' | 'retryScheduler' | 'metricsCollector'>;
-  private webhookConfigs: Map<string, WebhookConfig> = new Map();
+  private options: Omit<Required<ProcessorOptions>, 'deadLetterQueue' | 'retryScheduler' | 'metricsCollector' | 'webhookConfigProvider'>;
   private metricsCollector: MetricsCollector | undefined;
   private activeDeliveries: Set<string> = new Set();
   private lastBacklogWarning: number = 0;
@@ -56,11 +56,12 @@ export class QueueProcessor implements IQueueProcessor {
     deliveryQueue: IDeliveryQueue,
     webhookSender: IWebhookSender,
     logger: Logger,
-    options: ProcessorOptions = {}
+    options: ProcessorOptions
   ) {
     this.deliveryQueue = deliveryQueue;
     this.webhookSender = webhookSender;
     this.logger = logger;
+    this.webhookConfigProvider = options.webhookConfigProvider;
     this.deadLetterQueue = options.deadLetterQueue;
     this.metricsCollector = options.metricsCollector;
 
@@ -73,7 +74,6 @@ export class QueueProcessor implements IQueueProcessor {
     this.options = {
       maxConcurrentDeliveries: options.maxConcurrentDeliveries || 10,
       processingInterval: options.processingInterval || 1000,
-      webhookConfigProvider: options.webhookConfigProvider || this.defaultWebhookConfigProvider.bind(this),
       retryBaseDelay: options.retryBaseDelay || 1000,
       retryMaxDelay: options.retryMaxDelay || 300000,
       queueBacklogThreshold: options.queueBacklogThreshold || 100
@@ -103,6 +103,15 @@ export class QueueProcessor implements IQueueProcessor {
       processingInterval: this.options.processingInterval,
       queueBacklogThreshold: this.options.queueBacklogThreshold
     });
+
+    try {
+      // Load webhook configurations before starting processing
+      await this.webhookConfigProvider.loadWebhookConfigs();
+      this.logger.info('Webhook configurations loaded successfully');
+    } catch (error) {
+      this.logger.error('Failed to load webhook configurations during startup', error instanceof Error ? error : new Error(String(error)));
+      throw new Error('Cannot start queue processor without webhook configurations');
+    }
 
     this.isProcessing = true;
     this.stats.isRunning = true;
@@ -202,10 +211,30 @@ export class QueueProcessor implements IQueueProcessor {
 
     try {
       // Get webhook configuration
-      const webhookConfig = await this.options.webhookConfigProvider(delivery.webhookId);
+      const webhookConfig = await this.webhookConfigProvider.getWebhookConfig(delivery.webhookId);
 
       if (!webhookConfig) {
-        throw new Error(`Webhook configuration not found for ID: ${delivery.webhookId}`);
+        const error = new Error(`Webhook configuration not found for ID: ${delivery.webhookId}`);
+        
+        // Move to dead letter queue immediately for missing config - this is not retryable
+        if (this.deadLetterQueue) {
+          await this.deadLetterQueue.addFailedDelivery(
+            delivery,
+            'Webhook configuration not found',
+            error.message
+          );
+          
+          this.logger.warn('Delivery moved to dead letter queue - webhook config not found', {
+            deliveryId: delivery.id,
+            webhookId: delivery.webhookId,
+            error: error.message
+          });
+          
+          // Don't throw error to avoid retry - this is a permanent failure
+          return;
+        }
+        
+        throw error;
       }
 
       // Validate webhook configuration
@@ -255,38 +284,23 @@ export class QueueProcessor implements IQueueProcessor {
   }
 
   /**
-   * Default webhook config provider - looks up from internal map
+   * Get webhook configuration provider (for testing and monitoring)
    */
-  private async defaultWebhookConfigProvider(webhookId: string): Promise<WebhookConfig | null> {
-    return this.webhookConfigs.get(webhookId) || null;
+  getWebhookConfigProvider(): IWebhookConfigProvider {
+    return this.webhookConfigProvider;
   }
 
   /**
-   * Set webhook configuration (for testing or manual configuration)
+   * Refresh webhook configurations from the provider
    */
-  setWebhookConfig(webhookId: string, config: WebhookConfig): void {
-    this.webhookConfigs.set(webhookId, config);
-  }
-
-  /**
-   * Remove webhook configuration
-   */
-  removeWebhookConfig(webhookId: string): void {
-    this.webhookConfigs.delete(webhookId);
-  }
-
-  /**
-   * Get webhook configuration
-   */
-  getWebhookConfig(webhookId: string): WebhookConfig | null {
-    return this.webhookConfigs.get(webhookId) || null;
-  }
-
-  /**
-   * Set custom webhook config provider
-   */
-  setWebhookConfigProvider(provider: (webhookId: string) => Promise<WebhookConfig | null>): void {
-    this.options.webhookConfigProvider = provider;
+  async refreshWebhookConfigs(): Promise<void> {
+    try {
+      await this.webhookConfigProvider.refreshConfigs();
+      this.logger.info('Webhook configurations refreshed successfully');
+    } catch (error) {
+      this.logger.error('Failed to refresh webhook configurations', error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
   }
 
 

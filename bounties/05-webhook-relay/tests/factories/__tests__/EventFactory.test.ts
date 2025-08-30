@@ -131,6 +131,77 @@ describe('EventFactory', () => {
 
       expect(event.args['value']).toBe(largeValue);
     });
+
+    it('should handle custom contract address', () => {
+      const customAddress = '0xcccccccccccccccccccccccccccccccccccccccc';
+      const event = EventFactory.createTransferEvent({
+        contractAddress: customAddress,
+        from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        value: '1000000000000000000'
+      });
+
+      expect(event.contractAddress).toBe(customAddress);
+    });
+
+    it('should handle custom block number', () => {
+      const customBlockNumber = 99999;
+      const event = EventFactory.createTransferEvent({
+        blockNumber: customBlockNumber,
+        from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        value: '1000000000000000000'
+      });
+
+      expect(event.blockNumber).toBe(customBlockNumber);
+    });
+
+    it('should handle custom transaction hash', () => {
+      const customTxHash = '0x1111111111111111111111111111111111111111111111111111111111111111';
+      const event = EventFactory.createTransferEvent({
+        transactionHash: customTxHash,
+        from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        value: '1000000000000000000'
+      });
+
+      expect(event.transactionHash).toBe(customTxHash);
+    });
+
+    it('should handle custom log index', () => {
+      const customLogIndex = 42;
+      const event = EventFactory.createTransferEvent({
+        logIndex: customLogIndex,
+        from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        value: '1000000000000000000'
+      });
+
+      expect(event.logIndex).toBe(customLogIndex);
+    });
+
+    it('should handle undefined parameters gracefully', () => {
+      const event = EventFactory.createTransferEvent({});
+
+      // Should use defaults when parameters are not provided
+      expect(event.contractAddress).toBe('0x1234567890123456789012345678901234567890');
+      expect(event.blockNumber).toBe(12345);
+      expect(event.transactionHash).toBe('0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890');
+      expect(event.logIndex).toBe(0);
+    });
+
+    it('should support legacy createTransferEventLegacy method', () => {
+      const from = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      const to = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+      const value = '2500000000000000000';
+
+      const event = (EventFactory as any).createTransferEventLegacy(from, to, value);
+
+      expect(event.eventName).toBe('Transfer');
+      expect(event.args['from']).toBe(from);
+      expect(event.args['to']).toBe(to);
+      expect(event.args['value']).toBe(value);
+    });
   });
 
   describe('createBatchEvents', () => {

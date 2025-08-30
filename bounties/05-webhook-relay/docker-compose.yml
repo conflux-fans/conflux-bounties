@@ -24,8 +24,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+      # redis:
+      #   condition: service_healthy
     networks:
       - webhook-network
     healthcheck:
@@ -71,6 +71,8 @@ services:
       - redis-data:/data
     networks:
       - webhook-network
+    profiles:
+      - tools
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 10s

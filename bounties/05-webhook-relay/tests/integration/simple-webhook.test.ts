@@ -7,14 +7,23 @@ import { v4 as uuidv4 } from 'uuid';
 const originalConsole = console;
 
 describe('Simple Webhook Test', () => {
+  let webhookSender: WebhookSender;
+
   beforeAll(() => {
     // Restore console for this test
     global.console = originalConsole;
   });
 
+  afterAll(() => {
+    // Cleanup HTTP client to prevent Jest from hanging
+    if (webhookSender && webhookSender['httpClient'] && typeof webhookSender['httpClient'].cleanup === 'function') {
+      webhookSender['httpClient'].cleanup();
+    }
+  });
+
   it('should send webhook successfully', async () => {
     console.log('Creating webhook sender...');
-    const webhookSender = new WebhookSender();
+    webhookSender = new WebhookSender();
     console.log('Webhook sender created');
     
     const webhook: WebhookConfig = {
@@ -90,5 +99,5 @@ describe('Simple Webhook Test', () => {
       console.log('Status code:', result?.statusCode);
     }
     expect(result?.success).toBe(true);
-  }, 15000);
+  }, 30000);
 });

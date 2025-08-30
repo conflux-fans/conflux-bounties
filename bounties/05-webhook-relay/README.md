@@ -2,6 +2,8 @@
 
 A production-ready webhook relay system that monitors Conflux eSpace blockchain events and delivers real-time notifications to external automation platforms like Zapier, Make.com, and n8n.
 
+[中文文档](README.zh-CN.md)
+
 ## Features
 
 - **Real-time Event Monitoring**: Monitor smart contract events on Conflux eSpace with sub-30 second detection
@@ -279,37 +281,117 @@ Returns system health status:
 
 ### Metrics
 
-```
+```http
 GET /metrics
 ```
 
-Returns system metrics in Prometheus format.
+Returns system metrics in Prometheus format. The system collects comprehensive metrics including:
+
+#### Available Metrics
+
+- `webhook_events_processed_total` - Total number of blockchain events processed
+- `webhook_deliveries_total` - Total webhook delivery attempts  
+- `webhook_delivery_success_total` - Successful webhook deliveries
+- `webhook_delivery_failure_total` - Failed webhook deliveries
+- `webhook_response_time_ms` - Webhook delivery response time histogram
+- `queue_size` - Current queue size
+- `database_connections_active` - Active database connections
+- `memory_heap_used_bytes` - Memory heap usage
+- `process_uptime_seconds` - Process uptime
+
+#### Example Response
+
+```prometheus
+# HELP webhook_events_processed_total Total number of blockchain events processed
+# TYPE webhook_events_processed_total counter
+webhook_events_processed_total 1234
+
+# HELP webhook_deliveries_total Total webhook delivery attempts
+# TYPE webhook_deliveries_total counter
+webhook_deliveries_total{webhook_id="hookdeck-webhook"} 1150
+
+# HELP webhook_response_time_ms Webhook delivery response time
+# TYPE webhook_response_time_ms histogram
+webhook_response_time_ms{webhook_id="hookdeck-webhook"} 245.5
+
+# HELP queue_size Current queue size
+# TYPE queue_size gauge
+queue_size 15
+```
+
+## Monitoring and Observability
+
+The system includes comprehensive monitoring capabilities with structured logging, metrics collection, health checks, and alerting. For detailed monitoring setup, see [MONITORING.md](MONITORING.md).
+
+### Quick Monitoring Setup
+
+1. **Check System Health**:
+```bash
+curl http://localhost:3000/health
+```
+
+2. **View Metrics**:
+```bash
+curl http://localhost:3000/metrics
+```
+
+3. **Enable Debug Logging**:
+```bash
+LOG_LEVEL=debug npm start
+```
 
 ## Monitoring and Logging
 
 ### Structured Logging
 
-The system uses structured JSON logging:
+The system uses structured JSON logging with correlation ID tracking:
 
 ```json
 {
+  "timestamp": "2025-08-02T05:13:28.635Z",
   "level": "info",
   "message": "Event processed successfully",
-  "contractAddress": "0x123...",
+  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
+  "contractAddress": "0x1207bd45c1002dC88bf592Ced9b35ec914bCeb4e",
   "eventName": "Transfer",
   "blockNumber": 12345,
-  "timestamp": "2024-01-01T12:00:00.000Z"
+  "transactionHash": "0xabc123...",
+  "processingTime": 150
 }
 ```
 
-### Metrics
+#### Log Levels
 
-Key metrics tracked:
-- Events processed per second
-- Webhook delivery success rate
-- Queue depth
-- Response times
-- Error rates
+- `error`: Error conditions
+- `warn`: Warning conditions  
+- `info`: Informational messages (default)
+- `debug`: Debug-level messages
+
+Set log level via environment variable:
+```bash
+LOG_LEVEL=debug npm start
+```
+
+### Key Performance Indicators
+
+The system tracks comprehensive metrics for monitoring:
+
+#### Performance Metrics
+- **Events processed per second**: Real-time event processing rate
+- **Webhook delivery success rate**: Percentage of successful deliveries
+- **Average response time**: Mean webhook endpoint response time
+- **Queue processing rate**: Items processed from queue per second
+
+#### Reliability Metrics  
+- **Error rate by component**: Failed operations by system component
+- **Circuit breaker activations**: Automatic failure protection triggers
+- **Retry attempt patterns**: Analysis of delivery retry behavior
+
+#### Resource Metrics
+- **Memory usage**: Heap and RSS memory consumption
+- **CPU utilization**: Process CPU time in user/system mode
+- **Database connections**: Active/idle connection pool status
+- **Queue depth**: Current backlog size and processing capacity
 
 ### Alerting
 

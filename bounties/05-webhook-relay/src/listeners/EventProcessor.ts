@@ -79,9 +79,6 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
         startTimeout
       ]);
 
-      // Start delivery queue processing
-      this.deliveryQueue.startProcessing(this.processWebhookDelivery.bind(this));
-
       this.isRunning = true;
       this.startTime = Date.now();
 
@@ -123,9 +120,6 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
         clearInterval(this.statusInterval);
         this.statusInterval = null;
       }
-
-      // Stop delivery queue processing
-      this.deliveryQueue.stopProcessing();
 
       // Stop event listener
       await this.eventListener.stop();
@@ -194,14 +188,14 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
    */
   private async persistSubscription(subscription: EventSubscription): Promise<void> {
     try {
-      // Convert arrays to JSON strings for database storage
-      const contractAddress = Array.isArray(subscription.contractAddress)
-        ? subscription.contractAddress[0] // Store first address for now
-        : subscription.contractAddress;
+      // Normalize to arrays for consistent storage
+      const contractAddresses = Array.isArray(subscription.contractAddress)
+        ? subscription.contractAddress
+        : [subscription.contractAddress];
 
-      const eventSignature = Array.isArray(subscription.eventSignature)
-        ? subscription.eventSignature[0] // Store first signature for now
-        : subscription.eventSignature;
+      const eventSignatures = Array.isArray(subscription.eventSignature)
+        ? subscription.eventSignature
+        : [subscription.eventSignature];
 
       // Check if subscription already exists
       const existingResult = await this.database.query(
@@ -214,20 +208,20 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
         return;
       }
 
-      // Insert subscription into database
+      // Insert subscription into database with arrays stored as JSONB
       await this.database.query(`
         INSERT INTO subscriptions (id, name, contract_address, event_signature, filters, active)
         VALUES ($1, $2, $3, $4, $5, $6)
       `, [
         subscription.id,
         subscription.id, // Use ID as name for now
-        contractAddress,
-        eventSignature,
+        JSON.stringify(contractAddresses),
+        JSON.stringify(eventSignatures),
         JSON.stringify(subscription.filters || {}),
         true
       ]);
 
-      console.log(`✅ Persisted subscription ${subscription.id} to database`);
+      console.log(`✅ Persisted subscription ${subscription.id} to database with ${contractAddresses.length} contract(s) and ${eventSignatures.length} event(s)`);
 
     } catch (error) {
       console.error(`❌ Failed to persist subscription ${subscription.id}:`, error);
@@ -277,6 +271,73 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
     return Array.from(this.subscriptions.values());
   }
 
+  /**
+   * Load subscriptions from database
+   */
+  async loadSubscriptionsFromDatabase(): Promise<void> {
+    if (!this.database) {
+      console.warn('Database not available, skipping subscription loading');
+      return;
+    }
+
+    try {
+      const result = await this.database.query(`
+        SELECT id, name, contract_address, event_signature, filters, active
+        FROM subscriptions
+        WHERE active = true
+      `);
+
+      console.log(`Loading ${result.rows.length} subscription(s) from database`);
+
+      for (const row of result.rows) {
+        try {
+          // Parse JSON arrays from database
+          const contractAddresses = JSON.parse(row.contract_address);
+          const eventSignatures = JSON.parse(row.event_signature);
+          const filters = JSON.parse(row.filters || '{}');
+
+          // Create subscription object
+          const subscription: EventSubscription = {
+            id: row.id,
+            contractAddress: contractAddresses,
+            eventSignature: eventSignatures,
+            filters,
+            webhooks: [] // Webhooks will be loaded separately
+          };
+
+          // Load webhooks for this subscription
+          const webhookResult = await this.database.query(`
+            SELECT id, url, format, headers, timeout, retry_attempts
+            FROM webhooks
+            WHERE subscription_id = $1 AND active = true
+          `, [subscription.id]);
+
+          subscription.webhooks = webhookResult.rows.map((webhookRow: any) => ({
+            id: webhookRow.id,
+            url: webhookRow.url,
+            format: webhookRow.format,
+            headers: JSON.parse(webhookRow.headers || '{}'),
+            timeout: webhookRow.timeout,
+            retryAttempts: webhookRow.retry_attempts
+          }));
+
+          // Add subscription to EventListener
+          this.eventListener.addSubscription(subscription);
+          this.subscriptions.set(subscription.id, subscription);
+
+          console.log(`✅ Loaded subscription ${subscription.id} with ${contractAddresses.length} contract(s), ${eventSignatures.length} event(s), and ${subscription.webhooks.length} webhook(s)`);
+
+        } catch (parseError) {
+          console.error(`Failed to parse subscription ${row.id}:`, parseError);
+        }
+      }
+
+    } catch (error) {
+      console.error('Failed to load subscriptions from database:', error);
+      throw error;
+    }
+  }
+
   isProcessing(): boolean {
     return this.isRunning && this.eventListener.isListening();
   }
@@ -296,9 +357,7 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
       processedEvents: this.processedEvents,
       filteredEvents: this.filteredEvents,
       eventStats,
-      queueStats,
-      webhooksSent: eventStats.webhooksSent || 0,
-      webhooksFailed: eventStats.webhooksFailed || 0
+      queueStats
     };
   }
 
@@ -314,7 +373,7 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
     console.log(`   ⏰ Uptime: ${minutes}m ${seconds}s`);
     console.log(`   📋 Active subscriptions: ${this.subscriptions.size}`);
     console.log(`   🎯 Events processed: ${this.processedEvents}`);
-    console.log(`   🔍 Events filtered: ${this.filteredEvents}`);
+    console.log(`   📊 Events filtered: ${this.filteredEvents}`);
 
     // Display event listener status
     this.eventListener.displayEventStatus();
@@ -351,7 +410,7 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
 
       if (!matchesFilter) {
         this.filteredEvents++;
-        console.log(`🔍 Event filtered out for subscription ${subscription.id}`);
+        console.log(`📊 Event filtered out for subscription ${subscription.id}`);
         this.emit('eventFiltered', subscription.id, event);
         return;
       }
@@ -437,22 +496,7 @@ export class EventProcessor extends EventEmitter implements IEventProcessor {
     }
   }
 
-  /**
-   * Process webhook delivery from the queue
-   */
-  private async processWebhookDelivery(delivery: WebhookDelivery): Promise<void> {
-    console.log(`🔄 Processing webhook delivery ${delivery.id} for webhook ${delivery.webhookId}`);
 
-    try {
-      // Here you would typically send the webhook using WebhookSender
-      // For now, we'll just simulate successful processing
-      console.log(`✅ Completed webhook delivery ${delivery.id}`);
-      this.emit('deliveryProcessed', delivery);
-    } catch (error) {
-      console.error(`❌ Failed to process webhook delivery ${delivery.id}:`, error);
-      throw error;
-    }
-  }
 
 
 

@@ -1,4 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import * as http from 'http';
+import * as https from 'https';
 import type { IHttpClient } from './interfaces';
 import type { DeliveryResult } from '../types';
 
@@ -8,7 +10,24 @@ export class HttpClient implements IHttpClient {
   constructor() {
     this.client = axios.create({
       validateStatus: () => true, // Don't throw on any status code
+      // Disable keep-alive to prevent hanging connections in tests
+      httpAgent: new http.Agent({ keepAlive: false }),
+      httpsAgent: new https.Agent({ keepAlive: false }),
     });
+  }
+
+  /**
+   * Cleanup method to close any open connections
+   * This helps prevent Jest from hanging due to open handles
+   */
+  cleanup(): void {
+    // Force close any open connections by destroying the axios instance
+    if (this.client && this.client.defaults && this.client.defaults.adapter) {
+      // Reset the client to ensure no lingering connections
+      this.client = axios.create({
+        validateStatus: () => true,
+      });
+    }
   }
 
   async post(

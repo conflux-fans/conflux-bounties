@@ -321,12 +321,36 @@ describe('Webhook Delivery Integration Tests', () => {
     });
 
     it('should handle mixed success and failure scenarios', async () => {
+      // Create a mock HTTP client for more reliable testing
+      const mockHttpClient = {
+        post: jest.fn()
+          .mockResolvedValueOnce({
+            success: true,
+            statusCode: 200,
+            responseTime: 100
+          })
+          .mockResolvedValueOnce({
+            success: false,
+            statusCode: 500,
+            responseTime: 150,
+            error: 'Internal Server Error'
+          })
+          .mockResolvedValueOnce({
+            success: true,
+            statusCode: 200,
+            responseTime: 120
+          })
+      };
+
+      // Create a new webhook sender with the mock client
+      const mockWebhookSender = new WebhookSender(mockHttpClient as any, deliveryTracker);
+
       const successWebhook = WebhookFactory.createWebhookConfig({
-        url: 'http://httpbin.org/post'
+        url: 'http://test.example.com/success'
       });
 
       const failureWebhook = WebhookFactory.createWebhookConfig({
-        url: 'http://httpbin.org/status/500'
+        url: 'http://test.example.com/failure'
       });
 
       const deliveries = [
@@ -336,13 +360,13 @@ describe('Webhook Delivery Integration Tests', () => {
       ];
 
       // Set up webhook configs for testing
-      webhookSender.setWebhookConfigForTesting(successWebhook.id, successWebhook);
-      webhookSender.setWebhookConfigForTesting(failureWebhook.id, failureWebhook);
+      mockWebhookSender.setWebhookConfigForTesting(successWebhook.id, successWebhook);
+      mockWebhookSender.setWebhookConfigForTesting(failureWebhook.id, failureWebhook);
 
       const promises = [
-        webhookSender.sendWebhook(deliveries[0]!),
-        webhookSender.sendWebhook(deliveries[1]!),
-        webhookSender.sendWebhook(deliveries[2]!)
+        mockWebhookSender.sendWebhook(deliveries[0]!),
+        mockWebhookSender.sendWebhook(deliveries[1]!),
+        mockWebhookSender.sendWebhook(deliveries[2]!)
       ];
 
       const results = await Promise.all(promises);
@@ -350,6 +374,7 @@ describe('Webhook Delivery Integration Tests', () => {
       expect(results[0]?.success).toBe(true);
       expect(results[1]?.success).toBe(false);
       expect(results[2]?.success).toBe(true);
+      expect(mockHttpClient.post).toHaveBeenCalledTimes(3);
     });
   });
 

@@ -202,6 +202,33 @@ describe('ConfigFactory', () => {
     });
   });
 
+  describe('createTestConfig', () => {
+    it('should create test configuration with overrides', () => {
+      const overrides: Partial<SystemConfig> = {
+        monitoring: {
+          logLevel: 'debug',
+          metricsEnabled: false,
+          healthCheckPort: 9999
+        }
+      };
+
+      const config = ConfigFactory.createTestConfig(overrides);
+
+      expect(config.monitoring).toEqual(overrides.monitoring);
+      expect(config.network.chainId).toBe(71); // Should remain default
+    });
+
+    it('should create test configuration without overrides', () => {
+      const config = ConfigFactory.createTestConfig();
+
+      // Should have the same structure as default config
+      expect(config.network.chainId).toBe(71);
+      expect(config.database?.url).toBe('postgresql://webhook_user:webhook_pass@postgres:5432/webhook_relay_test');
+      expect(config.monitoring.logLevel).toBe('info');
+      expect(config.subscriptions).toHaveLength(1);
+    });
+  });
+
   describe('createTestnetConfig', () => {
     it('should create testnet configuration', () => {
       const config = ConfigFactory.createTestnetConfig();

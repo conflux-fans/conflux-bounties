@@ -5,7 +5,7 @@ import { DeadLetterQueue } from '../queue/DeadLetterQueue';
 import { Logger } from '../../monitoring/Logger';
 import { DatabaseConnection } from '../../database/connection';
 import type { WebhookDelivery, WebhookConfig } from '../../types';
-import type { IWebhookSender } from '../interfaces';
+import type { IWebhookSender, IWebhookConfigProvider } from '../interfaces';
 
 // Mock dependencies
 jest.mock('../../monitoring/Logger');
@@ -18,6 +18,7 @@ describe('Retry Logic Integration Tests', () => {
   let mockWebhookSender: jest.Mocked<IWebhookSender>;
   let mockLogger: jest.Mocked<Logger>;
   let mockDb: jest.Mocked<DatabaseConnection>;
+  let mockWebhookConfigProvider: jest.Mocked<IWebhookConfigProvider>;
   let mockDeadLetterQueue: jest.Mocked<DeadLetterQueue>;
 
   const sampleWebhookConfig: WebhookConfig = {
@@ -89,6 +90,13 @@ describe('Retry Logic Integration Tests', () => {
       })
     } as unknown as jest.Mocked<DeadLetterQueue>;
 
+    // Create mock webhook config provider
+    mockWebhookConfigProvider = {
+      getWebhookConfig: jest.fn().mockResolvedValue(sampleWebhookConfig),
+      loadWebhookConfigs: jest.fn().mockResolvedValue(undefined),
+      refreshConfigs: jest.fn().mockResolvedValue(undefined)
+    } as unknown as jest.Mocked<IWebhookConfigProvider>;
+
     // Create delivery queue with retry configuration
     deliveryQueue = new DeliveryQueue(
       mockDb,
@@ -107,14 +115,12 @@ describe('Retry Logic Integration Tests', () => {
       mockWebhookSender,
       mockLogger,
       {
+        webhookConfigProvider: mockWebhookConfigProvider,
         deadLetterQueue: mockDeadLetterQueue,
         retryBaseDelay: 1000,
         retryMaxDelay: 8000
       }
     );
-
-    // Set webhook config
-    queueProcessor.setWebhookConfig('webhook-1', sampleWebhookConfig);
   });
 
   afterEach(async () => {
@@ -272,6 +278,7 @@ describe('Retry Logic Integration Tests', () => {
         mockWebhookSender,
         mockLogger,
         {
+          webhookConfigProvider: mockWebhookConfigProvider,
           retryBaseDelay: 2000,  // 2 second base
           retryMaxDelay: 16000   // 16 second max
         }
@@ -288,7 +295,10 @@ describe('Retry Logic Integration Tests', () => {
       const defaultProcessor = new QueueProcessor(
         deliveryQueue,
         mockWebhookSender,
-        mockLogger
+        mockLogger,
+        {
+          webhookConfigProvider: mockWebhookConfigProvider
+        }
       );
 
       const retryScheduler = defaultProcessor.getRetryScheduler();

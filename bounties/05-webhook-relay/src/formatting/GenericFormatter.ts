@@ -10,6 +10,19 @@ export class GenericFormatter extends TemplateFormatter {
 
   formatPayload(event: BlockchainEvent): GenericPayload {
     // Generic format maintains the original structure with minimal transformation
+    
+    // Ensure timestamp is a Date object
+    let timestamp: Date;
+    if (event.timestamp instanceof Date) {
+      timestamp = event.timestamp;
+    } else if (typeof event.timestamp === 'string') {
+      timestamp = new Date(event.timestamp);
+    } else if (typeof event.timestamp === 'number') {
+      timestamp = new Date(event.timestamp);
+    } else {
+      timestamp = new Date(); // Fallback to current time
+    }
+    
     return {
       contractAddress: event.contractAddress,
       eventName: event.eventName,
@@ -19,7 +32,7 @@ export class GenericFormatter extends TemplateFormatter {
       args: {
         ...event.args
       },
-      timestamp: this.formatTimestamp(event.timestamp)
+      timestamp: this.formatTimestamp(timestamp)
     };
   }
 }

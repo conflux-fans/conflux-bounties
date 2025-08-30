@@ -27,6 +27,8 @@ describe('HttpClient', () => {
     it('should create axios instance with validateStatus function', () => {
       expect(mockedAxios.create).toHaveBeenCalledWith({
         validateStatus: expect.any(Function),
+        httpAgent: expect.any(Object),
+        httpsAgent: expect.any(Object),
       });
 
       // Test that validateStatus always returns true

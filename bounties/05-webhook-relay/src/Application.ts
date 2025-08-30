@@ -18,6 +18,7 @@ import { DeliveryQueue } from './webhooks/queue/DeliveryQueue';
 
 import { WebhookSender } from './webhooks/WebhookSender';
 import { HttpClient } from './webhooks/HttpClient';
+import { DatabaseWebhookConfigProvider } from './webhooks/WebhookConfigProvider';
 
 // Monitoring
 import { HealthChecker } from './monitoring/HealthChecker';
@@ -66,6 +67,7 @@ export class Application extends EventEmitter {
   private filterEngine: FilterEngine | null = null;
   private deliveryQueue: DeliveryQueue | null = null;
   private webhookSender: WebhookSender | null = null;
+  private webhookConfigProvider: DatabaseWebhookConfigProvider | null = null;
   private eventProcessor: EventProcessor | null = null;
   private queueProcessor: QueueProcessor | null = null;
 
@@ -147,10 +149,7 @@ export class Application extends EventEmitter {
       // Start collecting system metrics
       this.startSystemMetricsCollection();
 
-      // Add some test metrics immediately
-      this.metricsCollector.incrementCounter('test_counter', { test: 'value' });
-      this.metricsCollector.recordGauge('test_gauge', 42, { test: 'gauge' });
-      this.logger.info('Test metrics added for debugging');
+
 
       this.logger.info('Webhook Relay System started successfully', {
         uptime: this.getUptime(),
@@ -231,6 +230,8 @@ export class Application extends EventEmitter {
     };
   }
 
+
+
   /**
    * Get application uptime in seconds
    */
@@ -259,6 +260,22 @@ export class Application extends EventEmitter {
 
     try {
       this.config = await this.configManager.loadConfig();
+
+      // Ensure subscriptions is always an array
+      if (!this.config.subscriptions) {
+        this.config.subscriptions = [];
+      }
+
+      // Ensure options is always defined with defaults
+      if (!this.config.options) {
+        this.config.options = {
+          maxConcurrentWebhooks: 10,
+          defaultRetryAttempts: 3,
+          defaultRetryDelay: 1000,
+          webhookTimeout: 30000,
+          queueProcessingInterval: 1000
+        };
+      }
 
       // Update logger level based on configuration
       this.logger.setLevel(this.config.monitoring.logLevel);
@@ -343,6 +360,12 @@ export class Application extends EventEmitter {
       const deliveryTracker = new DeliveryTracker();
       this.webhookSender = new WebhookSender(httpClient, deliveryTracker);
 
+      // Initialize webhook config provider
+      this.webhookConfigProvider = new DatabaseWebhookConfigProvider(
+        this.databaseConnection,
+        this.logger
+      );
+
       // Initialize event listener
       this.eventListener = new EventListener(this.config.network);
 
@@ -354,11 +377,23 @@ export class Application extends EventEmitter {
         this.deliveryQueue
       );
 
+      // Ensure required components are available
+      if (!this.webhookConfigProvider) {
+        throw new Error('WebhookConfigProvider not initialized');
+      }
+      if (!this.webhookSender) {
+        throw new Error('WebhookSender not initialized');
+      }
+      if (!this.deliveryQueue) {
+        throw new Error('DeliveryQueue not initialized');
+      }
+
       this.queueProcessor = new QueueProcessor(
         this.deliveryQueue,
         this.webhookSender,
         this.logger,
         {
+          webhookConfigProvider: this.webhookConfigProvider,
           maxConcurrentDeliveries: this.config.options.maxConcurrentWebhooks,
           processingInterval: this.config.options.queueProcessingInterval,
           metricsCollector: this.metricsCollector
@@ -448,10 +483,22 @@ export class Application extends EventEmitter {
         await this.eventProcessor.addSubscription(subscription);
       }
 
+      // Load additional subscriptions from database if available
+      if (this.databaseConnection) {
+        try {
+          await this.eventProcessor.loadSubscriptionsFromDatabase();
+          this.logger.info('Loaded subscriptions from database');
+        } catch (error) {
+          this.logger.warn('Failed to load subscriptions from database:', error);
+        }
+      }
+
       await this.eventProcessor.start();
 
+      const totalSubscriptions = this.eventProcessor.getSubscriptions().length;
       this.logger.info('Event processing started', {
-        subscriptions: this.config.subscriptions.length
+        configSubscriptions: this.config.subscriptions.length,
+        totalSubscriptions
       });
 
     } catch (error) {
@@ -722,6 +769,11 @@ export class Application extends EventEmitter {
           const currentSubscriptions = this.eventProcessor.getSubscriptions();
           for (const subscription of currentSubscriptions) {
             this.eventProcessor.removeSubscription(subscription.id);
+          }
+
+          // Ensure subscriptions is always an array
+          if (!newConfig.subscriptions) {
+            newConfig.subscriptions = [];
           }
 
           // Add new subscriptions

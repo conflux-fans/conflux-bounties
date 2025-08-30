@@ -11,15 +11,71 @@ jest.mock('../config/ConfigManager');
 jest.mock('../database/connection');
 jest.mock('../listeners/BlockchainConnection');
 jest.mock('../listeners/EventListener');
-jest.mock('../listeners/EventProcessor');
+jest.mock('../listeners/EventProcessor', () => {
+  return {
+    EventProcessor: jest.fn().mockImplementation(() => ({
+      addSubscription: jest.fn(),
+      removeSubscription: jest.fn(),
+      getSubscriptions: jest.fn().mockReturnValue([]),
+      loadSubscriptionsFromDatabase: jest.fn(),
+      start: jest.fn(),
+      stop: jest.fn(),
+      isProcessing: jest.fn().mockReturnValue(false)
+    }))
+  };
+});
 jest.mock('../filtering/FilterEngine');
 jest.mock('../webhooks/queue/DeliveryQueue');
 jest.mock('../webhooks/queue/QueuePersistence');
 jest.mock('../webhooks/queue/RetryScheduler');
-jest.mock('../webhooks/WebhookSender');
-jest.mock('../webhooks/HttpClient');
-jest.mock('../webhooks/DeliveryTracker');
-jest.mock('../webhooks/QueueProcessor');
+jest.mock('../webhooks/WebhookSender', () => {
+  return {
+    WebhookSender: jest.fn().mockImplementation(() => ({
+      sendWebhook: jest.fn(),
+      validateConfig: jest.fn(),
+      getWebhookConfig: jest.fn()
+    }))
+  };
+});
+jest.mock('../webhooks/HttpClient', () => {
+  return {
+    HttpClient: jest.fn().mockImplementation(() => ({
+      post: jest.fn(),
+      cleanup: jest.fn()
+    }))
+  };
+});
+jest.mock('../webhooks/DeliveryTracker', () => {
+  return {
+    DeliveryTracker: jest.fn().mockImplementation(() => ({
+      trackDelivery: jest.fn(),
+      getDeliveryStats: jest.fn(),
+      getRecentDeliveries: jest.fn(),
+      clearHistory: jest.fn()
+    }))
+  };
+});
+jest.mock('../webhooks/QueueProcessor', () => {
+  return {
+    QueueProcessor: jest.fn().mockImplementation(() => ({
+      start: jest.fn(),
+      stop: jest.fn(),
+      isRunning: jest.fn().mockReturnValue(false),
+      getStats: jest.fn().mockResolvedValue({
+        isRunning: false,
+        totalProcessed: 0,
+        successfulDeliveries: 0,
+        failedDeliveries: 0,
+        currentQueueSize: 0,
+        processingCount: 0,
+        maxConcurrentDeliveries: 10,
+        rateLimitedCount: 0,
+        queueBacklogWarnings: 0
+      })
+    }))
+  };
+});
+jest.mock('../webhooks/WebhookConfigProvider');
 jest.mock('express');
 
 const MockedConfigManager = ConfigManager as jest.MockedClass<typeof ConfigManager>;
@@ -95,6 +151,40 @@ describe('Application', () => {
 
     MockedDatabaseConnection.prototype.healthCheck = jest.fn().mockResolvedValue(true);
     MockedDatabaseConnection.prototype.close = jest.fn().mockResolvedValue(undefined);
+
+    // Ensure all mocked classes have proper constructors that don't throw
+    jest.clearAllMocks();
+
+    // Ensure EventProcessor mock is properly set up for each test
+    const MockedEventProcessor = require('../listeners/EventProcessor').EventProcessor;
+    MockedEventProcessor.mockImplementation(() => ({
+      addSubscription: jest.fn(),
+      removeSubscription: jest.fn(),
+      getSubscriptions: jest.fn().mockReturnValue([]),
+      loadSubscriptionsFromDatabase: jest.fn(),
+      start: jest.fn(),
+      stop: jest.fn(),
+      isProcessing: jest.fn().mockReturnValue(false)
+    }));
+
+    // Ensure QueueProcessor mock is properly set up for each test
+    const MockedQueueProcessor = require('../webhooks/QueueProcessor').QueueProcessor;
+    MockedQueueProcessor.mockImplementation(() => ({
+      start: jest.fn(),
+      stop: jest.fn(),
+      isRunning: jest.fn().mockReturnValue(false),
+      getStats: jest.fn().mockResolvedValue({
+        isRunning: false,
+        totalProcessed: 0,
+        successfulDeliveries: 0,
+        failedDeliveries: 0,
+        currentQueueSize: 0,
+        processingCount: 0,
+        maxConcurrentDeliveries: 10,
+        rateLimitedCount: 0,
+        queueBacklogWarnings: 0
+      })
+    }));
 
     // Setup express mock
     const mockServer = {
@@ -268,7 +358,10 @@ describe('Application', () => {
         ]),
         removeSubscription: jest.fn(),
         addSubscription: jest.fn(),
-        stop: jest.fn()
+        loadSubscriptionsFromDatabase: jest.fn(),
+        start: jest.fn(),
+        stop: jest.fn(),
+        isProcessing: jest.fn().mockReturnValue(false)
       };
       (app as any).eventProcessor = mockEventProcessor;
 
@@ -296,7 +389,11 @@ describe('Application', () => {
         removeSubscription: jest.fn(),
         addSubscription: jest.fn().mockImplementation(() => {
           throw new Error('Subscription error');
-        })
+        }),
+        loadSubscriptionsFromDatabase: jest.fn(),
+        start: jest.fn(),
+        stop: jest.fn(),
+        isProcessing: jest.fn().mockReturnValue(false)
       };
 
       (app as any).eventProcessor = mockEventProcessor;
@@ -1044,7 +1141,10 @@ describe('Application', () => {
         addSubscription: jest.fn().mockImplementation(() => {
           throw new Error('Subscription validation failed');
         }),
-        stop: jest.fn()
+        loadSubscriptionsFromDatabase: jest.fn(),
+        start: jest.fn(),
+        stop: jest.fn(),
+        isProcessing: jest.fn().mockReturnValue(false)
       };
       (app as any).eventProcessor = mockEventProcessor;
 
@@ -1071,7 +1171,10 @@ describe('Application', () => {
           throw new Error('Remove subscription failed');
         }),
         addSubscription: jest.fn(),
-        stop: jest.fn()
+        loadSubscriptionsFromDatabase: jest.fn(),
+        start: jest.fn(),
+        stop: jest.fn(),
+        isProcessing: jest.fn().mockReturnValue(false)
       };
       (app as any).eventProcessor = mockEventProcessor;
 

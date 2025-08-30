@@ -82,7 +82,7 @@ describe('Database Integration Tests', () => {
     // Create test subscription
     const subscriptionResult = await dbConnection.query(`
       INSERT INTO subscriptions (id, name, contract_address, event_signature, filters, active)
-      VALUES (uuid_generate_v4(), 'Test Subscription', '0x1234567890123456789012345678901234567890', 'Transfer(address,address,uint256)', '{}', true)
+      VALUES (uuid_generate_v4(), 'Test Subscription', '["0x1234567890123456789012345678901234567890"]', '["Transfer(address,address,uint256)"]', '{}', true)
       RETURNING id
     `);
     const subscriptionId = subscriptionResult.rows[0].id;

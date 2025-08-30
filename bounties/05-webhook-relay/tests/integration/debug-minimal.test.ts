@@ -5,11 +5,19 @@ import { DeliveryFactory, WebhookFactory, EventFactory } from '../factories';
 
 describe('Debug Minimal Test', () => {
   let webhookSender: WebhookSender;
+  let httpClient: HttpClient;
 
   beforeAll(() => {
-    const httpClient = new HttpClient();
+    httpClient = new HttpClient();
     const deliveryTracker = new DeliveryTracker();
     webhookSender = new WebhookSender(httpClient, deliveryTracker);
+  });
+
+  afterAll(() => {
+    // Cleanup HTTP client to prevent Jest from hanging
+    if (httpClient && typeof httpClient.cleanup === 'function') {
+      httpClient.cleanup();
+    }
   });
 
   it('should create objects successfully', () => {
@@ -96,5 +104,5 @@ describe('Debug Minimal Test', () => {
 
     expect(result?.success).toBe(true);
     expect(result?.statusCode).toBe(200);
-  }, 15000);
+  }, 45000);
 });

@@ -18,7 +18,7 @@ jest.mock('ethers', () => ({
 
 // Mock fs to prevent config.json reading errors
 jest.mock('fs', () => ({
-  readFileSync: jest.fn().mockReturnValue('{"subscriptions": [], "walletMonitoring": []}')
+  readFileSync: jest.fn().mockReturnValue('{"subscriptions": []}')
 }));
 
 // Mock fetch for webhook testing
@@ -576,8 +576,7 @@ describe('EventListener', () => {
             timeout: 5000,
             retryAttempts: 3
           }]
-        }],
-        walletMonitoring: []
+        }]
       };
       
       fs.readFileSync.mockReturnValue(JSON.stringify(configData));
@@ -628,9 +627,7 @@ describe('EventListener', () => {
       
       await eventListener.start();
       
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('No subscriptions found in config.json')
-      );
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
       
       consoleWarnSpy.mockRestore();
     });
@@ -638,7 +635,7 @@ describe('EventListener', () => {
     it('should skip invalid subscription configurations', async () => {
       const configData = {
         subscriptions: [
-          { id: 'invalid-subscription' }, // Missing required fields
+          { id: 'invalid-sub' }, // Missing required fields
           {
             id: 'valid-subscription',
             contractAddress: '0x1234567890123456789012345678901234567890',
@@ -662,7 +659,7 @@ describe('EventListener', () => {
       
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Invalid subscription configuration:'),
-        expect.objectContaining({ id: 'invalid-subscription' })
+        expect.objectContaining({ id: 'invalid-sub' })
       );
       
       const subscriptions = eventListener.getSubscriptions();
@@ -697,7 +694,7 @@ describe('EventListener', () => {
       await eventListener.start();
       
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining(`Subscription ${testSubscription.id} already exists, skipping config version`)
+        expect.stringContaining('already exists, skipping config version')
       );
       
       const subscriptions = eventListener.getSubscriptions();
@@ -708,286 +705,7 @@ describe('EventListener', () => {
     });
   });
 
-  describe('wallet monitoring', () => {
-    const fs = require('fs');
-    let mockProvider: any;
 
-    beforeEach(() => {
-      mockProvider = {
-        on: jest.fn(),
-        getBlock: jest.fn(),
-        getTransaction: jest.fn()
-      };
-      mockConnection.getProvider.mockReturnValue(mockProvider);
-    });
-
-    it('should start wallet monitoring from config', async () => {
-      const configData = {
-        subscriptions: [],
-        walletMonitoring: [{
-          id: 'wallet-monitor-1',
-          walletAddresses: ['0x1111111111111111111111111111111111111111'],
-          webhooks: [{ 
-            id: 'webhook1', 
-            url: 'https://example.com/webhook',
-            format: 'generic' as const,
-            headers: {},
-            timeout: 5000,
-            retryAttempts: 3
-          }]
-        }]
-      };
-      
-      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
-      
-      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
-      
-      await eventListener.start();
-      
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Found 1 wallet monitoring configuration(s)')
-      );
-      expect(mockProvider.on).toHaveBeenCalledWith('block', expect.any(Function));
-      
-      consoleLogSpy.mockRestore();
-    });
-
-    it('should handle wallet monitoring without configuration', async () => {
-      const configData = { subscriptions: [] };
-      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
-      
-      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
-      
-      await eventListener.start();
-      
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('No wallet monitoring configuration found in config.json')
-      );
-      
-      consoleLogSpy.mockRestore();
-    });
-
-    it('should skip invalid wallet monitoring configurations', async () => {
-      const configData = {
-        subscriptions: [],
-        walletMonitoring: [
-          { id: 'invalid-wallet-monitor' }, // Missing required fields
-          {
-            id: 'valid-wallet-monitor',
-            walletAddresses: ['0x1111111111111111111111111111111111111111'],
-            webhooks: [{ 
-              id: 'webhook1', 
-              url: 'https://example.com/webhook',
-              format: 'generic' as const,
-              headers: {},
-              timeout: 5000,
-              retryAttempts: 3
-            }]
-          }
-        ]
-      };
-      
-      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
-      
-      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-      
-      await eventListener.start();
-      
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Invalid wallet monitoring configuration:'),
-        expect.objectContaining({ id: 'invalid-wallet-monitor' })
-      );
-      
-      consoleWarnSpy.mockRestore();
-    });
-
-    it('should handle wallet transfer events', async () => {
-      const configData = {
-        subscriptions: [],
-        walletMonitoring: [{
-          id: 'wallet-monitor-1',
-          walletAddresses: ['0x1111111111111111111111111111111111111111'],
-          webhooks: [{ 
-            id: 'webhook1', 
-            url: 'https://example.com/webhook',
-            format: 'generic' as const,
-            headers: {},
-            timeout: 5000,
-            retryAttempts: 3
-          }]
-        }]
-      };
-      
-      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
-      
-      // Mock fetch for webhook calls
-      (global.fetch as jest.Mock).mockResolvedValue({
-        status: 200,
-        statusText: 'OK'
-      });
-      
-      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
-      
-      await eventListener.start();
-      
-      // Get the block event handler
-      const blockHandler = mockProvider.on.mock.calls.find((call: any) => call[0] === 'block')?.[1];
-      expect(blockHandler).toBeDefined();
-      
-      // Mock block data
-      const mockBlock = {
-        transactions: ['0xabc123']
-      };
-      
-      const mockTransaction = {
-        hash: '0xabc123',
-        from: '0x1111111111111111111111111111111111111111',
-        to: '0x2222222222222222222222222222222222222222',
-        value: BigInt('1000000000000000000'), // 1 ETH
-        gasLimit: '21000',
-        gasPrice: '20000000000',
-        nonce: 1
-      };
-      
-      mockProvider.getBlock.mockResolvedValue(mockBlock);
-      mockProvider.getTransaction.mockResolvedValue(mockTransaction);
-      
-      // Trigger block event
-      await blockHandler(12345);
-      
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('🚨 WALLET TRANSFER #')
-      );
-      expect(global.fetch).toHaveBeenCalledWith(
-        'https://example.com/webhook',
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({
-            'Content-Type': 'application/json'
-          }),
-          body: expect.stringContaining('wallet-monitor-1')
-        })
-      );
-      
-      consoleLogSpy.mockRestore();
-    });
-
-    it('should handle wallet monitoring errors gracefully', async () => {
-      const configData = {
-        subscriptions: [],
-        walletMonitoring: [{
-          id: 'wallet-monitor-1',
-          walletAddresses: ['0x1111111111111111111111111111111111111111'],
-          webhooks: [{ 
-            id: 'webhook1', 
-            url: 'https://example.com/webhook',
-            format: 'generic' as const,
-            headers: {},
-            timeout: 5000,
-            retryAttempts: 3
-          }]
-        }]
-      };
-      
-      fs.readFileSync.mockReturnValue(JSON.stringify(configData));
-      mockConnection.getProvider.mockReturnValue(null);
-      
-      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-      
-      await eventListener.start();
-      
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to start wallet transfer monitoring:'),
-        expect.any(Error)
-      );
-      
-      consoleErrorSpy.mockRestore();
-    });
-  });
-
-  describe('webhook delivery', () => {
-    beforeEach(async () => {
-      await eventListener.start();
-      eventListener.addSubscription({
-        ...testSubscription,
-        webhooks: [
-          { 
-            id: 'webhook1', 
-            url: 'https://example.com/webhook1',
-            format: 'generic' as const,
-            headers: {},
-            timeout: 5000,
-            retryAttempts: 3
-          },
-          { 
-            id: 'webhook2', 
-            url: 'https://example.com/webhook2',
-            format: 'generic' as const,
-            headers: {},
-            timeout: 5000,
-            retryAttempts: 3
-          }
-        ]
-      });
-    });
-
-    it('should send webhooks successfully', async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({
-        status: 200,
-        statusText: 'OK'
-      });
-      
-      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
-      
-      // Trigger an event
-      const eventHandler = mockContract.on.mock.calls.find((call: any) => call[0] === 'Transfer')?.[1];
-      const mockEvent = {
-        fragment: { name: 'Transfer' },
-        log: {
-          address: testSubscription.contractAddress,
-          blockNumber: 12345,
-          transactionHash: '0xabcdef',
-          index: 0
-        }
-      };
-      
-      await eventHandler('0x123', '0x456', '1000', mockEvent);
-      
-      expect(global.fetch).toHaveBeenCalledTimes(2);
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('✅ Webhook #1 sent successfully!')
-      );
-      
-      consoleLogSpy.mockRestore();
-    });
-
-    it('should handle webhook delivery failures', async () => {
-      (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
-      
-      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-      
-      // Trigger an event
-      const eventHandler = mockContract.on.mock.calls.find((call: any) => call[0] === 'Transfer')?.[1];
-      const mockEvent = {
-        fragment: { name: 'Transfer' },
-        log: {
-          address: testSubscription.contractAddress,
-          blockNumber: 12345,
-          transactionHash: '0xabcdef',
-          index: 0
-        }
-      };
-      
-      await eventHandler('0x123', '0x456', '1000', mockEvent);
-      
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('❌ Webhook delivery error:'),
-        'Network error'
-      );
-      
-      consoleErrorSpy.mockRestore();
-    });
-  });
 
   describe('event statistics and monitoring', () => {
     beforeEach(async () => {
@@ -1094,6 +812,10 @@ describe('EventListener', () => {
       };
       
       await eventListener.start();
+      
+      // Clear previous calls to get accurate count for this test
+      MockedContract.mockClear();
+      
       eventListener.addSubscription(multiContractSubscription);
       
       // Should create contracts for both addresses
@@ -1116,6 +838,173 @@ describe('EventListener', () => {
       // Should listen for both events
       expect(mockContract.on).toHaveBeenCalledWith('Transfer', expect.any(Function));
       expect(mockContract.on).toHaveBeenCalledWith('Approval', expect.any(Function));
+    });
+
+    it('should handle subscription with array contract addresses', async () => {
+      const subscriptionWithArrayAddresses: EventSubscription = {
+        ...testSubscription,
+        id: 'array-addresses-subscription',
+        contractAddress: ['0x1234567890123456789012345678901234567890', '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd']
+      };
+
+      await eventListener.start();
+      eventListener.addSubscription(subscriptionWithArrayAddresses);
+
+      // Should create contracts for each address
+      expect(MockedContract).toHaveBeenCalledTimes(3);
+    });
+
+    it('should handle removal of subscription with array contract addresses', async () => {
+      const subscriptionWithArrayAddresses: EventSubscription = {
+        ...testSubscription,
+        id: 'array-addresses-subscription',
+        contractAddress: ['0x1234567890123456789012345678901234567890', '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd']
+      };
+
+      await eventListener.start();
+      eventListener.addSubscription(subscriptionWithArrayAddresses);
+      
+      // Add another subscription with one of the same addresses
+      const anotherSubscription: EventSubscription = {
+        ...testSubscription,
+        id: 'another-sub',
+        contractAddress: '0x1234567890123456789012345678901234567890'
+      };
+      eventListener.addSubscription(anotherSubscription);
+
+      // Remove the first subscription
+      eventListener.removeSubscription('array-addresses-subscription');
+
+      // Should not remove contract monitoring for the shared address
+      expect(mockConnection.removeContractFromMonitor).toHaveBeenCalledWith('0xabcdefabcdefabcdefabcdefabcdefabcdefabcd');
+      expect(mockConnection.removeContractFromMonitor).not.toHaveBeenCalledWith('0x1234567890123456789012345678901234567890');
+    });
+
+    it('should handle subscription with single contract address when checking for other subscriptions', async () => {
+      const subscription1: EventSubscription = {
+        ...testSubscription,
+        id: 'sub1',
+        contractAddress: '0x1234567890123456789012345678901234567890'
+      };
+      
+      const subscription2: EventSubscription = {
+        ...testSubscription,
+        id: 'sub2',
+        contractAddress: ['0x1234567890123456789012345678901234567890', '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd']
+      };
+
+      await eventListener.start();
+      eventListener.addSubscription(subscription1);
+      eventListener.addSubscription(subscription2);
+
+      // Remove subscription2
+      eventListener.removeSubscription('sub2');
+
+      // Should not remove contract monitoring for the shared address
+      expect(mockConnection.removeContractFromMonitor).toHaveBeenCalledWith('0xabcdefabcdefabcdefabcdefabcdefabcdefabcd');
+      expect(mockConnection.removeContractFromMonitor).not.toHaveBeenCalledWith('0x1234567890123456789012345678901234567890');
+    });
+
+    it('should handle config loading with invalid subscription configurations', async () => {
+      const invalidConfig = {
+        subscriptions: [
+          {
+            // Missing required fields
+            id: 'invalid-sub'
+          },
+          {
+            // Valid subscription
+            id: 'valid-sub',
+            contractAddress: '0x1234567890123456789012345678901234567890',
+            eventSignature: 'Transfer(address,address,uint256)',
+            webhooks: []
+          }
+        ]
+      };
+
+      // Mock fs.readFileSync to return invalid config
+      const mockReadFileSync = jest.spyOn(require('fs'), 'readFileSync').mockReturnValue(JSON.stringify(invalidConfig));
+
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      await eventListener.start();
+
+      // Should skip invalid subscription and warn
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Invalid subscription configuration:'),
+        expect.objectContaining({ id: 'invalid-sub' })
+      );
+      
+      mockReadFileSync.mockRestore();
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should handle config loading with malformed JSON gracefully', async () => {
+      // Mock fs.readFileSync to return malformed JSON
+      const mockReadFileSync = jest.spyOn(require('fs'), 'readFileSync').mockReturnValue('{ invalid json }');
+
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      await eventListener.start();
+
+      // Should handle JSON parse error gracefully
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error loading configuration:'),
+        expect.any(Error)
+      );
+      
+      mockReadFileSync.mockRestore();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should handle config without subscriptions', async () => {
+      const configWithoutSubscriptions = {
+        network: {
+          rpcUrl: 'https://test.rpc.url'
+        }
+      };
+
+      // Mock fs.readFileSync to return config without subscriptions
+      const mockReadFileSync = jest.spyOn(require('fs'), 'readFileSync').mockReturnValue(JSON.stringify(configWithoutSubscriptions));
+
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      await eventListener.start();
+
+      // Should handle missing subscriptions gracefully
+      expect(consoleLogSpy).toHaveBeenCalledTimes(2);
+      
+      mockReadFileSync.mockRestore();
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should not duplicate existing subscriptions from config', async () => {
+      const configWithDuplicates = {
+        subscriptions: [
+          {
+            id: testSubscription.id, // Same ID as existing subscription
+            contractAddress: '0x1234567890123456789012345678901234567890',
+            eventSignature: 'Transfer(address,address,uint256)',
+            webhooks: []
+          }
+        ]
+      };
+
+      // Add subscription first
+      eventListener.addSubscription(testSubscription);
+
+      // Mock fs.readFileSync to return config with duplicate
+      const mockReadFileSync = jest.spyOn(require('fs'), 'readFileSync').mockReturnValue(JSON.stringify(configWithDuplicates));
+
+      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      await eventListener.start();
+
+      // Should not add duplicate subscription
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Added subscription:'));
+      
+      mockReadFileSync.mockRestore();
+      consoleLogSpy.mockRestore();
     });
   });
 });

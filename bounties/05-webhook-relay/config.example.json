@@ -10,7 +10,7 @@
       "id": "contract-event-monitoring",
       "contractAddress": [
         "0x1234567890123456789012345678901234567890",
-        "0x2ed3dddae5b2f321af0806181fbfa6d049be47d8"
+        "0x14b2d3bc65e74dae1030eafd8ac30c533c976a9b"
       ],
       "eventSignature": [
         "Deposit(address indexed dst, uint256 wad)",
@@ -27,27 +27,6 @@
       "webhooks": [
         {
           "id": "hookdeck-contract-webhook",
-          "url": "https://hkdk.events/m0t8gxe2jfe4j91",
-          "format": "generic",
-          "headers": {
-            "Authorization": "Bearer your-token-here",
-            "Content-Type": "application/json"
-          },
-          "timeout": 30000,
-          "retryAttempts": 3
-        }
-      ]
-    }
-  ],
-  "walletMonitoring": [
-    {
-      "id": "wallet-transfers-monitoring",
-      "walletAddresses": [
-        "0x67e2c2e6186ae9Cc17798b5bD0c3c36Ef0209aC9"
-      ],
-      "webhooks": [
-        {
-          "id": "hookdeck-wallet-webhook",
           "url": "https://hkdk.events/m0t8gxe2jfe4j91",
           "format": "generic",
           "headers": {

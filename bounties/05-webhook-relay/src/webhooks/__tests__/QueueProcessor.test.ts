@@ -3,7 +3,7 @@ import { Logger } from '../../monitoring/Logger';
 import { DeadLetterQueue } from '../queue/DeadLetterQueue';
 import type { WebhookDelivery, WebhookConfig, DeliveryResult } from '../../types';
 import type { IDeliveryQueue } from '../queue/interfaces';
-import type { IWebhookSender } from '../interfaces';
+import type { IWebhookSender, IWebhookConfigProvider } from '../interfaces';
 
 // Mock dependencies
 jest.mock('../../monitoring/Logger');
@@ -13,6 +13,7 @@ describe('QueueProcessor', () => {
   let queueProcessor: QueueProcessor;
   let mockDeliveryQueue: jest.Mocked<IDeliveryQueue>;
   let mockWebhookSender: jest.Mocked<IWebhookSender>;
+  let mockWebhookConfigProvider: jest.Mocked<IWebhookConfigProvider>;
   let mockLogger: jest.Mocked<Logger>;
 
 
@@ -77,6 +78,12 @@ describe('QueueProcessor', () => {
       })
     };
 
+    mockWebhookConfigProvider = {
+      getWebhookConfig: jest.fn().mockResolvedValue(sampleWebhookConfig),
+      loadWebhookConfigs: jest.fn().mockResolvedValue(undefined),
+      refreshConfigs: jest.fn().mockResolvedValue(undefined)
+    };
+
     mockLogger = {
       info: jest.fn(),
       warn: jest.fn(),
@@ -89,7 +96,10 @@ describe('QueueProcessor', () => {
     queueProcessor = new QueueProcessor(
       mockDeliveryQueue,
       mockWebhookSender,
-      mockLogger
+      mockLogger,
+      {
+        webhookConfigProvider: mockWebhookConfigProvider
+      }
     );
   });
 
@@ -123,6 +133,7 @@ describe('QueueProcessor', () => {
     it('should start the queue processor successfully', async () => {
       await queueProcessor.start();
 
+      expect(mockWebhookConfigProvider.loadWebhookConfigs).toHaveBeenCalled();
       expect(mockDeliveryQueue.startProcessing).toHaveBeenCalledWith(
         expect.any(Function)
       );
@@ -131,6 +142,7 @@ describe('QueueProcessor', () => {
         processingInterval: 1000,
         queueBacklogThreshold: 100
       });
+      expect(mockLogger.info).toHaveBeenCalledWith('Webhook configurations loaded successfully');
       expect(mockLogger.info).toHaveBeenCalledWith('Queue processor started successfully');
       expect(queueProcessor.isRunning()).toBe(true);
     });
@@ -141,6 +153,18 @@ describe('QueueProcessor', () => {
 
       expect(mockDeliveryQueue.startProcessing).toHaveBeenCalledTimes(1);
       expect(mockLogger.warn).toHaveBeenCalledWith('Queue processor is already running');
+    });
+
+    it('should fail to start if webhook config loading fails', async () => {
+      const configError = new Error('Database connection failed');
+      mockWebhookConfigProvider.loadWebhookConfigs.mockRejectedValue(configError);
+
+      await expect(queueProcessor.start()).rejects.toThrow('Cannot start queue processor without webhook configurations');
+
+      expect(mockWebhookConfigProvider.loadWebhookConfigs).toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith('Failed to load webhook configurations during startup', configError);
+      expect(mockDeliveryQueue.startProcessing).not.toHaveBeenCalled();
+      expect(queueProcessor.isRunning()).toBe(false);
     });
   });
 
@@ -188,9 +212,6 @@ describe('QueueProcessor', () => {
     let deliveryProcessor: (delivery: WebhookDelivery) => Promise<void>;
 
     beforeEach(async () => {
-      // Set up webhook config
-      queueProcessor.setWebhookConfig('webhook-1', sampleWebhookConfig);
-
       await queueProcessor.start();
 
       // Capture the delivery processor function
@@ -251,29 +272,57 @@ describe('QueueProcessor', () => {
       expect(stats.totalProcessed).toBe(1);
     });
 
-    it('should handle missing webhook configuration', async () => {
+    it('should handle missing webhook configuration without dead letter queue', async () => {
       const deliveryWithMissingConfig: WebhookDelivery = {
         ...sampleDelivery,
         webhookId: 'missing-webhook'
       };
 
+      mockWebhookConfigProvider.getWebhookConfig.mockResolvedValue(null);
+
       await expect(deliveryProcessor(deliveryWithMissingConfig)).rejects.toThrow(
         'Webhook configuration not found for ID: missing-webhook'
       );
 
+      expect(mockWebhookConfigProvider.getWebhookConfig).toHaveBeenCalledWith('missing-webhook');
       expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        'Webhook delivery failed',
-        expect.any(Error), // Error object for missing config
+    });
+
+    it('should move delivery to dead letter queue when webhook config not found', async () => {
+      // Create processor with dead letter queue
+      const mockDeadLetterQueue = {
+        addFailedDelivery: jest.fn().mockResolvedValue(undefined)
+      } as any;
+
+      const processorWithDLQ = new QueueProcessor(
+        mockDeliveryQueue,
+        mockWebhookSender,
+        mockLogger,
         {
-          deliveryId: 'delivery-1',
-          webhookId: 'missing-webhook',
-          attempt: 1,
-          maxAttempts: 3,
-          error: 'Webhook configuration not found for ID: missing-webhook',
-          processingTime: expect.any(Number)
+          webhookConfigProvider: mockWebhookConfigProvider,
+          deadLetterQueue: mockDeadLetterQueue
         }
       );
+
+      await processorWithDLQ.start();
+      const dlqDeliveryProcessor = (mockDeliveryQueue.startProcessing as jest.Mock).mock.calls[1][0];
+
+      const deliveryWithMissingConfig: WebhookDelivery = {
+        ...sampleDelivery,
+        webhookId: 'missing-webhook'
+      };
+
+      mockWebhookConfigProvider.getWebhookConfig.mockResolvedValue(null);
+
+      // Should not throw - should handle gracefully by moving to DLQ
+      await dlqDeliveryProcessor(deliveryWithMissingConfig);
+
+      expect(mockDeadLetterQueue.addFailedDelivery).toHaveBeenCalledWith(
+        deliveryWithMissingConfig,
+        'Webhook configuration not found',
+        'Webhook configuration not found for ID: missing-webhook'
+      );
+      expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
     });
 
     it('should handle invalid webhook configuration', async () => {
@@ -355,48 +404,31 @@ describe('QueueProcessor', () => {
     });
   });
 
-  describe('webhook configuration management', () => {
-    it('should set and get webhook configuration', () => {
-      queueProcessor.setWebhookConfig('webhook-1', sampleWebhookConfig);
-      
-      const config = queueProcessor.getWebhookConfig('webhook-1');
-      expect(config).toEqual(sampleWebhookConfig);
+  describe('webhook configuration provider integration', () => {
+    it('should get webhook configuration provider', () => {
+      const provider = queueProcessor.getWebhookConfigProvider();
+      expect(provider).toBe(mockWebhookConfigProvider);
     });
 
-    it('should remove webhook configuration', () => {
-      queueProcessor.setWebhookConfig('webhook-1', sampleWebhookConfig);
-      queueProcessor.removeWebhookConfig('webhook-1');
+    it('should refresh webhook configurations', async () => {
+      await queueProcessor.refreshWebhookConfigs();
       
-      const config = queueProcessor.getWebhookConfig('webhook-1');
-      expect(config).toBeNull();
+      expect(mockWebhookConfigProvider.refreshConfigs).toHaveBeenCalled();
+      expect(mockLogger.info).toHaveBeenCalledWith('Webhook configurations refreshed successfully');
     });
 
-    it('should return null for non-existent webhook configuration', () => {
-      const config = queueProcessor.getWebhookConfig('non-existent');
-      expect(config).toBeNull();
+    it('should handle refresh webhook configurations error', async () => {
+      const refreshError = new Error('Refresh failed');
+      mockWebhookConfigProvider.refreshConfigs.mockRejectedValue(refreshError);
+
+      await expect(queueProcessor.refreshWebhookConfigs()).rejects.toThrow('Refresh failed');
+      
+      expect(mockWebhookConfigProvider.refreshConfigs).toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith('Failed to refresh webhook configurations', refreshError);
     });
   });
 
-  describe('custom webhook config provider', () => {
-    it('should use custom webhook config provider', async () => {
-      const customProvider = jest.fn().mockResolvedValue(sampleWebhookConfig);
-      queueProcessor.setWebhookConfigProvider(customProvider);
 
-      await queueProcessor.start();
-      const deliveryProcessor = (mockDeliveryQueue.startProcessing as jest.Mock).mock.calls[0][0];
-
-      mockWebhookSender.sendWebhook.mockResolvedValue({
-        success: true,
-        statusCode: 200,
-        responseTime: 100
-      });
-
-      await deliveryProcessor(sampleDelivery);
-
-      expect(customProvider).toHaveBeenCalledWith('webhook-1');
-      expect(mockWebhookSender.sendWebhook).toHaveBeenCalled();
-    });
-  });
 
   describe('constructor options', () => {
     it('should use custom options', () => {
@@ -405,6 +437,7 @@ describe('QueueProcessor', () => {
         mockWebhookSender,
         mockLogger,
         {
+          webhookConfigProvider: mockWebhookConfigProvider,
           maxConcurrentDeliveries: 20,
           processingInterval: 2000
         }
@@ -435,12 +468,10 @@ describe('QueueProcessor', () => {
         mockWebhookSender,
         mockLogger,
         {
+          webhookConfigProvider: mockWebhookConfigProvider,
           deadLetterQueue: mockDeadLetterQueue
         }
       );
-
-      // Set up webhook config
-      queueProcessorWithDLQ.setWebhookConfig('webhook-1', sampleWebhookConfig);
 
       await queueProcessorWithDLQ.start();
 
@@ -503,7 +534,10 @@ describe('QueueProcessor', () => {
       const processorWithoutDLQ = new QueueProcessor(
         mockDeliveryQueue,
         mockWebhookSender,
-        mockLogger
+        mockLogger,
+        {
+          webhookConfigProvider: mockWebhookConfigProvider
+        }
       );
 
       const exhaustedDelivery: WebhookDelivery = {
@@ -542,7 +576,10 @@ describe('QueueProcessor', () => {
       const processorWithoutDLQ = new QueueProcessor(
         mockDeliveryQueue,
         mockWebhookSender,
-        mockLogger
+        mockLogger,
+        {
+          webhookConfigProvider: mockWebhookConfigProvider
+        }
       );
 
       const stats = await processorWithoutDLQ.getDeadLetterStats();
@@ -569,7 +606,10 @@ describe('QueueProcessor', () => {
       const processorWithoutDLQ = new QueueProcessor(
         mockDeliveryQueue,
         mockWebhookSender,
-        mockLogger
+        mockLogger,
+        {
+          webhookConfigProvider: mockWebhookConfigProvider
+        }
       );
 
       const result = await processorWithoutDLQ.retryFromDeadLetter('entry-123');
@@ -612,25 +652,23 @@ describe('QueueProcessor', () => {
     });
 
     it('should handle webhook config provider that returns null', async () => {
-      const customProvider = jest.fn().mockResolvedValue(null);
-      queueProcessor.setWebhookConfigProvider(customProvider);
+      mockWebhookConfigProvider.getWebhookConfig.mockResolvedValue(null);
 
       await expect(deliveryProcessor(sampleDelivery)).rejects.toThrow(
         'Webhook configuration not found for ID: webhook-1'
       );
 
-      expect(customProvider).toHaveBeenCalledWith('webhook-1');
+      expect(mockWebhookConfigProvider.getWebhookConfig).toHaveBeenCalledWith('webhook-1');
       expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
     });
 
     it('should handle webhook config provider that throws an error', async () => {
       const providerError = new Error('Config provider database error');
-      const customProvider = jest.fn().mockRejectedValue(providerError);
-      queueProcessor.setWebhookConfigProvider(customProvider);
+      mockWebhookConfigProvider.getWebhookConfig.mockRejectedValue(providerError);
 
       await expect(deliveryProcessor(sampleDelivery)).rejects.toThrow('Config provider database error');
 
-      expect(customProvider).toHaveBeenCalledWith('webhook-1');
+      expect(mockWebhookConfigProvider.getWebhookConfig).toHaveBeenCalledWith('webhook-1');
       expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Webhook delivery failed',
@@ -652,8 +690,7 @@ describe('QueueProcessor', () => {
         url: 'invalid-url'
       };
 
-      const customProvider = jest.fn().mockResolvedValue(invalidConfig);
-      queueProcessor.setWebhookConfigProvider(customProvider);
+      mockWebhookConfigProvider.getWebhookConfig.mockResolvedValue(invalidConfig);
 
       mockWebhookSender.validateWebhookConfig.mockReturnValue({
         isValid: false,
@@ -666,7 +703,7 @@ describe('QueueProcessor', () => {
         'Invalid webhook configuration: Invalid URL format'
       );
 
-      expect(customProvider).toHaveBeenCalledWith('webhook-1');
+      expect(mockWebhookConfigProvider.getWebhookConfig).toHaveBeenCalledWith('webhook-1');
       expect(mockWebhookSender.validateWebhookConfig).toHaveBeenCalledWith(invalidConfig);
       expect(mockWebhookSender.sendWebhook).not.toHaveBeenCalled();
     });
@@ -745,7 +782,6 @@ describe('QueueProcessor', () => {
     let deliveryProcessor: (delivery: WebhookDelivery) => Promise<void>;
 
     beforeEach(async () => {
-      queueProcessor.setWebhookConfig('webhook-1', sampleWebhookConfig);
       await queueProcessor.start();
       deliveryProcessor = (mockDeliveryQueue.startProcessing as jest.Mock).mock.calls[0][0];
     });
@@ -846,14 +882,13 @@ describe('QueueProcessor', () => {
         mockWebhookSender,
         mockLogger,
         {
+          webhookConfigProvider: mockWebhookConfigProvider,
           maxConcurrentDeliveries: 2,
           processingInterval: 1000,
           metricsCollector: mockMetricsCollector,
           queueBacklogThreshold: 5
         }
       );
-
-      queueProcessor.setWebhookConfig('webhook-1', sampleWebhookConfig);
       await queueProcessor.start();
 
       // Capture the delivery processor function

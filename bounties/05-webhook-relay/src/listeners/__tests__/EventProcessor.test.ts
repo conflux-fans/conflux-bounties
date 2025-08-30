@@ -183,7 +183,6 @@ describe('EventProcessor', () => {
       await withTimeout(eventProcessor.start());
 
       expect(mockEventListener.start).toHaveBeenCalled();
-      expect(mockDeliveryQueue.startProcessing).toHaveBeenCalled();
       expect(eventProcessor.isProcessing()).toBe(true);
       expect(consoleSpy).toHaveBeenCalledWith('🚀 EventProcessor started successfully - Real-time processing active!');
       
@@ -196,7 +195,6 @@ describe('EventProcessor', () => {
       await withTimeout(eventProcessor.start());
       await withTimeout(eventProcessor.stop());
 
-      expect(mockDeliveryQueue.stopProcessing).toHaveBeenCalled();
       expect(mockEventListener.stop).toHaveBeenCalled();
       expect(eventProcessor.isProcessing()).toBe(false);
       expect(consoleSpy).toHaveBeenCalledWith('✅ EventProcessor stopped');
@@ -211,14 +209,12 @@ describe('EventProcessor', () => {
       
       // Clear the mock calls from the first start
       mockEventListener.start.mockClear();
-      mockDeliveryQueue.startProcessing.mockClear();
       
       // Try to start again - should return early without calling dependencies
       const result = await withTimeout(eventProcessor.start());
       expect(result).toBeUndefined(); // Should return undefined from early return
 
       expect(mockEventListener.start).not.toHaveBeenCalled();
-      expect(mockDeliveryQueue.startProcessing).not.toHaveBeenCalled();
     });
 
     it('should not stop if not running', async () => {
@@ -415,9 +411,7 @@ describe('EventProcessor', () => {
           eventStats: expect.any(Object),
           filteredEvents: expect.any(Number),
           processedEvents: expect.any(Number),
-          uptime: expect.any(Number),
-          webhooksFailed: expect.any(Number),
-          webhooksSent: expect.any(Number)
+          uptime: expect.any(Number)
         })
       );
     });

@@ -6,6 +6,7 @@ import { DeliveryTracker } from '../DeliveryTracker';
 import { Logger } from '../../monitoring/Logger';
 import { DatabaseConnection } from '../../database/connection';
 import type { WebhookDelivery, WebhookConfig, DeliveryResult } from '../../types';
+import type { IWebhookConfigProvider } from '../interfaces';
 
 // Mock external dependencies
 jest.mock('../../database/connection');
@@ -18,6 +19,7 @@ describe('Queue to Delivery Integration', () => {
   let mockHttpClient: jest.Mocked<HttpClient>;
   let mockDeliveryTracker: jest.Mocked<DeliveryTracker>;
   let mockLogger: jest.Mocked<Logger>;
+  let mockWebhookConfigProvider: jest.Mocked<IWebhookConfigProvider>;
   let mockDb: jest.Mocked<DatabaseConnection>;
 
   const sampleWebhookConfig: WebhookConfig = {
@@ -73,6 +75,13 @@ describe('Queue to Delivery Integration', () => {
       clearHistory: jest.fn()
     } as unknown as jest.Mocked<DeliveryTracker>;
 
+    // Mock webhook config provider
+    mockWebhookConfigProvider = {
+      getWebhookConfig: jest.fn().mockResolvedValue(sampleWebhookConfig),
+      loadWebhookConfigs: jest.fn().mockResolvedValue(undefined),
+      refreshConfigs: jest.fn().mockResolvedValue(undefined)
+    } as unknown as jest.Mocked<IWebhookConfigProvider>;
+
     // Setup logger mocks
     mockLogger.info = jest.fn();
     mockLogger.warn = jest.fn();
@@ -96,13 +105,11 @@ describe('Queue to Delivery Integration', () => {
       webhookSender,
       mockLogger,
       {
+        webhookConfigProvider: mockWebhookConfigProvider,
         maxConcurrentDeliveries: 5,
         processingInterval: 100
       }
     );
-
-    // Set up webhook configuration
-    queueProcessor.setWebhookConfig('webhook-1', sampleWebhookConfig);
   });
 
   afterEach(async () => {
@@ -340,7 +347,9 @@ describe('Queue to Delivery Integration', () => {
         url: 'invalid-url',
         timeout: -1
       };
-      queueProcessor.setWebhookConfig('webhook-1', invalidConfig);
+      
+      // Mock the webhook config provider to return invalid config
+      mockWebhookConfigProvider.getWebhookConfig.mockResolvedValueOnce(invalidConfig);
 
       // Mock queue persistence methods
       const mockPersistence = deliveryQueue['persistence'] as any;

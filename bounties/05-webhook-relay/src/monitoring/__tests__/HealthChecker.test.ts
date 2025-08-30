@@ -526,5 +526,30 @@ describe('HealthChecker', () => {
       
       expect(result.checks['disk_space']).toBe(true);
     });
+
+    it('should handle disk space check with insufficient space', async () => {
+      // Create a health checker and register a custom disk space check that simulates insufficient space
+      const newHealthChecker = new HealthChecker();
+      
+      // Register a custom disk space check that simulates insufficient space
+      newHealthChecker.registerHealthCheck(
+        'disk_space',
+        async () => {
+          // Simulate insufficient disk space (less than required)
+          const freeSpaceGB = 0.5; // 500MB free
+          const minFreeSpaceGB = 1; // 1GB required
+          return freeSpaceGB > minFreeSpaceGB;
+        },
+        {
+          timeout: 2000,
+          critical: false,
+          description: 'Free disk space check with insufficient space'
+        }
+      );
+      
+      const result = await newHealthChecker.checkHealth();
+      
+      expect(result.checks['disk_space']).toBe(false);
+    });
   });
 });

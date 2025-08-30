@@ -182,6 +182,43 @@ describe('GenericFormatter', () => {
       expect(result.timestamp).toBe('2023-01-01T12:00:00.000Z');
       expect(typeof result.timestamp).toBe('string');
     });
+
+    it('should handle string timestamp', () => {
+      const eventWithStringTimestamp = {
+        ...mockEvent,
+        timestamp: '2023-01-01T12:00:00.000Z' as any
+      };
+
+      const result = formatter.formatPayload(eventWithStringTimestamp) as GenericPayload;
+
+      expect(result.timestamp).toBe('2023-01-01T12:00:00.000Z');
+    });
+
+    it('should handle numeric timestamp', () => {
+      const eventWithNumericTimestamp = {
+        ...mockEvent,
+        timestamp: 1672574400000 as any // 2023-01-01T12:00:00.000Z
+      };
+
+      const result = formatter.formatPayload(eventWithNumericTimestamp) as GenericPayload;
+
+      expect(result.timestamp).toBe('2023-01-01T12:00:00.000Z');
+    });
+
+    it('should fallback to current time for invalid timestamp', () => {
+      const eventWithInvalidTimestamp = {
+        ...mockEvent,
+        timestamp: null as any
+      };
+
+      const beforeTest = new Date();
+      const result = formatter.formatPayload(eventWithInvalidTimestamp) as GenericPayload;
+      const afterTest = new Date();
+
+      const resultDate = new Date(result.timestamp);
+      expect(resultDate.getTime()).toBeGreaterThanOrEqual(beforeTest.getTime());
+      expect(resultDate.getTime()).toBeLessThanOrEqual(afterTest.getTime());
+    });
   });
 
   describe('validateFormat', () => {

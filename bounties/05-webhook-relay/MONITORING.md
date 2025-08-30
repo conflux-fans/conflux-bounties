@@ -1,456 +1,421 @@
-# Webhook Relay System - Monitoring and Observability Guide
+# Monitoring Guide
+
+This document provides comprehensive monitoring setup and configuration for the Conflux Webhook Relay System.
+
+[中文文档](MONITORING.zh-CN.md)
 
 ## Overview
 
-The Webhook Relay System includes comprehensive monitoring and observability features to ensure reliable operation in production environments. This guide covers all monitoring capabilities, configuration options, and troubleshooting procedures.
+The system provides built-in monitoring capabilities including:
+- Health check endpoints
+- Metrics collection and exposure
+- Structured logging
+- Performance monitoring
+- Database metrics tracking
 
-## Features
+## Health Checks
 
-### 1. Structured Logging with Correlation IDs
+### Basic Health Check
 
-The system implements structured logging with automatic correlation ID tracking for request tracing.
-
-#### Configuration
-
-```typescript
-import { Logger } from './src/monitoring/Logger';
-import { correlationIdManager } from './src/monitoring/CorrelationId';
-
-// Create logger instance
-const logger = new Logger({
-  level: 'info',
-  format: 'json',
-  enableConsole: true,
-  enableFile: true,
-  filename: 'app.log'
-});
-
-// Use correlation context
-const correlationId = correlationIdManager.generateCorrelationId();
-correlationIdManager.run({ correlationId }, () => {
-  logger.info('Processing webhook delivery', { webhookId: 'webhook-123' });
-});
+```http
+GET /health
 ```
 
-#### Log Format
-
-```json
-{
-  "timestamp": "2025-08-02T05:13:28.635Z",
-  "level": "info",
-  "message": "Processing webhook delivery",
-  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
-  "requestId": "req-123",
-  "webhookId": "webhook-123"
-}
-```
-
-### 2. Performance Metrics Collection
-
-The system collects comprehensive performance metrics for monitoring system health and performance.
-
-#### Available Metrics
-
-- **Counters**: Event processing count, webhook delivery count, error count
-- **Gauges**: Active connections, queue size, memory usage
-- **Histograms**: Response times, processing durations
-
-#### Usage
-
-```typescript
-import { MetricsCollector } from './src/monitoring/MetricsCollector';
-
-const metrics = new MetricsCollector();
-
-// Increment counters
-metrics.incrementCounter('webhook_deliveries_total', { status: 'success' });
-
-// Record gauge values
-metrics.recordGauge('queue_size', 150);
-
-// Record histogram values
-metrics.recordHistogram('webhook_response_time', 250);
-```
-
-#### Metrics Endpoints
-
-- `GET /metrics` - Prometheus-compatible metrics endpoint
-- Metrics are automatically flushed to database every 60 seconds
-
-### 3. Health Check System
-
-Comprehensive health checking with configurable checks and detailed status reporting.
-
-#### Default Health Checks
-
-- **Process**: Basic process health
-- **Memory**: Memory usage monitoring
-- **Database**: Database connectivity
-- **Disk Space**: Available disk space
-
-#### Health Check Endpoints
-
-- `GET /health` - Basic health status
-- `GET /health/detailed` - Detailed health information with system metrics
-
-#### Health Status Response
+Returns basic system health status:
 
 ```json
 {
   "status": "healthy",
-  "checks": {
-    "process": true,
-    "memory": true,
-    "database": true,
-    "disk_space": true
-  },
-  "timestamp": "2025-08-02T05:13:28.635Z",
-  "system": {
-    "uptime": 3600,
-    "memory": {
-      "used": 134217728,
-      "total": 268435456,
-      "usage": 50.0
-    },
-    "cpu": {
-      "usage": {
-        "user": 1000000,
-        "system": 500000
-      },
-      "loadAverage": [0.5, 0.3, 0.2]
-    },
-    "platform": "linux",
-    "nodeVersion": "v18.17.0"
-  }
+  "uptime": 3600,
+  "timestamp": "2024-01-01T12:00:00.000Z"
 }
 ```
 
-#### Custom Health Checks
+### Detailed Health Check
 
-```typescript
-import { HealthChecker } from './src/monitoring/HealthChecker';
+The system monitors the health of key components:
+- Database connectivity
+- Blockchain connection
+- Queue processing status
 
-const healthChecker = new HealthChecker();
+## Metrics Collection
 
-// Register custom health check
-healthChecker.registerHealthCheck(
-  'external_api',
-  async () => {
-    // Check external API connectivity
-    const response = await fetch('https://api.example.com/health');
-    return response.ok;
-  },
-  {
-    timeout: 5000,
-    critical: true,
-    description: 'External API connectivity'
-  }
-);
+### Available Metrics
+
+The system exposes metrics at the `/metrics` endpoint in Prometheus format. Based on the actual implementation, the following metrics are available:
+
+#### Database Metrics
+- `database_connections_active` - Number of active database connections
+- `database_connections_idle` - Number of idle database connections
+- `database_query_duration_seconds` - Database query execution time
+- `database_errors_total` - Total database errors
+
+#### Webhook Processing Metrics
+- `webhook_events_processed_total` - Total number of blockchain events processed
+- `webhook_deliveries_attempted_total` - Total webhook delivery attempts
+- `webhook_deliveries_successful_total` - Successful webhook deliveries
+- `webhook_deliveries_failed_total` - Failed webhook deliveries
+- `webhook_delivery_duration_seconds` - Webhook delivery response time
+- `webhook_queue_size` - Current queue size
+- `webhook_retry_attempts_total` - Total retry attempts
+
+#### System Metrics
+- `process_cpu_user_seconds_total` - Process CPU time in user mode
+- `process_cpu_system_seconds_total` - Process CPU time in system mode
+- `process_resident_memory_bytes` - Process resident memory size
+- `nodejs_heap_size_total_bytes` - Total heap size
+- `nodejs_heap_size_used_bytes` - Used heap size
+
+### Metrics Endpoint
+
+```http
+GET /metrics
 ```
 
-### 4. Alert Management
+Example response:
+```prometheus
+# HELP webhook_events_processed_total Total number of blockchain events processed
+# TYPE webhook_events_processed_total counter
+webhook_events_processed_total 1234
 
-Automated alerting system with configurable rules and multiple notification channels.
+# HELP webhook_deliveries_attempted_total Total webhook delivery attempts
+# TYPE webhook_deliveries_attempted_total counter
+webhook_deliveries_attempted_total 1150
 
-#### Alert Rules
+# HELP webhook_delivery_duration_seconds Webhook delivery response time
+# TYPE webhook_delivery_duration_seconds histogram
+webhook_delivery_duration_seconds_bucket{le="0.1"} 850
+webhook_delivery_duration_seconds_bucket{le="0.5"} 1100
+webhook_delivery_duration_seconds_bucket{le="1"} 1140
+webhook_delivery_duration_seconds_bucket{le="+Inf"} 1150
+webhook_delivery_duration_seconds_sum 245.5
+webhook_delivery_duration_seconds_count 1150
 
-The system includes default alert rules for:
-
-- Critical system failures
-- System degradation
-- High memory usage
-- Database connectivity issues
-
-#### Alert Channels
-
-Supported notification channels:
-
-- **Console**: Log-based alerts
-- **Webhook**: HTTP webhook notifications
-- **Email**: Email notifications (requires configuration)
-- **Slack**: Slack webhook notifications
-
-#### Configuration
-
-```typescript
-import { alertManager } from './src/monitoring/AlertManager';
-
-// Add custom alert rule
-alertManager.addRule({
-  id: 'high-error-rate',
-  name: 'High Error Rate',
-  condition: (status) => {
-    // Custom condition logic
-    return status.checks.database === false;
-  },
-  severity: 'high',
-  cooldownMs: 10 * 60 * 1000, // 10 minutes
-  enabled: true
-});
-
-// Add webhook alert channel
-alertManager.addChannel({
-  name: 'ops-webhook',
-  type: 'webhook',
-  config: {
-    url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL',
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  },
-  enabled: true
-});
+# HELP database_connections_active Number of active database connections
+# TYPE database_connections_active gauge
+database_connections_active 5
 ```
 
-## Configuration
+## Prometheus Configuration
 
-### Environment Variables
+### Basic Setup
 
+The included `monitoring/prometheus.yml` provides a basic Prometheus configuration:
+
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'webhook-relay'
+    static_configs:
+      - targets: ['localhost:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+```
+
+### Docker Compose Integration
+
+Add Prometheus to your Docker Compose setup:
+
+```yaml
+version: '3.8'
+services:
+  webhook-relay:
+    # ... your webhook relay service config
+    
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+```
+
+## Grafana Dashboards
+
+### Setup
+
+1. Start Grafana:
 ```bash
-# Logging
-LOG_LEVEL=info
-LOG_FORMAT=json
-LOG_FILE=true
-
-# Monitoring
-METRICS_ENABLED=true
-HEALTH_CHECK_PORT=3001
-
-# Alerting
-ALERT_WEBHOOK_URL=https://your-alert-webhook.com/alerts
+docker run -d -p 3000:3000 --name grafana grafana/grafana
 ```
 
-### Configuration File
+2. Access Grafana at `http://localhost:3000` (admin/admin)
+
+3. Add Prometheus as a data source:
+   - URL: `http://prometheus:9090` (if using Docker Compose)
+   - URL: `http://localhost:9090` (if running locally)
+
+### Key Dashboards
+
+#### System Overview Dashboard
+
+Monitor overall system health:
+- Event processing rate
+- Webhook delivery success rate
+- Queue depth over time
+- Error rates
+- Response time percentiles
+
+#### Performance Dashboard
+
+Track performance metrics:
+- CPU and memory usage
+- Database connection pool utilization
+- Webhook delivery latency distribution
+- Throughput metrics
+
+#### Error Analysis Dashboard
+
+Monitor and analyze errors:
+- Error rate trends
+- Failed webhook deliveries by endpoint
+- Database connection errors
+- Retry attempt patterns
+
+### Sample Queries
+
+#### Event Processing Rate
+```promql
+rate(webhook_events_processed_total[5m])
+```
+
+#### Webhook Success Rate
+```promql
+rate(webhook_deliveries_successful_total[5m]) / rate(webhook_deliveries_attempted_total[5m]) * 100
+```
+
+#### 95th Percentile Response Time
+```promql
+histogram_quantile(0.95, rate(webhook_delivery_duration_seconds_bucket[5m]))
+```
+
+#### Queue Depth
+```promql
+webhook_queue_size
+```
+
+## Logging
+
+### Log Levels
+
+The system supports the following log levels:
+- `error`: Error conditions
+- `warn`: Warning conditions
+- `info`: Informational messages (default)
+- `debug`: Debug-level messages
+
+Set log level via environment variable:
+```bash
+LOG_LEVEL=debug npm start
+```
+
+### Log Format
+
+Structured JSON logging format:
 
 ```json
 {
-  "monitoring": {
-    "logLevel": "info",
-    "metricsEnabled": true,
-    "healthCheckPort": 3001,
-    "alerting": {
-      "enabled": true,
-      "channels": {
-        "webhook": {
-          "url": "https://your-alert-webhook.com/alerts"
-        }
-      }
-    }
-  }
+  "level": "info",
+  "message": "Event processed successfully",
+  "timestamp": "2024-01-01T12:00:00.000Z",
+  "correlationId": "req-123456",
+  "contractAddress": "0x1207bd45c1002dC88bf592Ced9b35ec914bCeb4e",
+  "eventName": "Transfer",
+  "blockNumber": 12345,
+  "transactionHash": "0xabc123...",
+  "processingTime": 150
 }
 ```
 
-## Monitoring Dashboards
+### Log Aggregation
 
-### Key Metrics to Monitor
+For production deployments, consider using:
+- **ELK Stack** (Elasticsearch, Logstash, Kibana)
+- **Fluentd** for log collection
+- **Grafana Loki** for log aggregation
 
-1. **System Health**
-   - Overall system status
-   - Component health status
-   - Uptime percentage
+## Alerting
 
-2. **Performance Metrics**
-   - Webhook delivery success rate
-   - Average response times
-   - Event processing rate
-   - Queue size and processing time
+### Recommended Alerts
 
-3. **Error Metrics**
-   - Error rate by component
-   - Failed webhook deliveries
-   - Circuit breaker activations
-
-4. **Resource Usage**
-   - Memory usage
-   - CPU usage
-   - Database connections
-   - Disk space
-
-### Grafana Dashboard Example
-
-```json
-{
-  "dashboard": {
-    "title": "Webhook Relay System",
-    "panels": [
-      {
-        "title": "System Health",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "webhook_system_health_status"
-          }
-        ]
-      },
-      {
-        "title": "Webhook Success Rate",
-        "type": "graph",
-        "targets": [
-          {
-            "expr": "rate(webhook_deliveries_total{status=\"success\"}[5m])"
-          }
-        ]
-      }
-    ]
-  }
-}
+#### High Error Rate
+```promql
+rate(webhook_deliveries_failed_total[5m]) / rate(webhook_deliveries_attempted_total[5m]) > 0.05
 ```
+
+#### Queue Backlog
+```promql
+webhook_queue_size > 1000
+```
+
+#### Database Connection Issues
+```promql
+database_connections_active / database_connections_total > 0.9
+```
+
+#### High Response Time
+```promql
+histogram_quantile(0.95, rate(webhook_delivery_duration_seconds_bucket[5m])) > 5
+```
+
+#### Memory Usage
+```promql
+process_resident_memory_bytes / 1024 / 1024 > 512
+```
+
+### Alert Manager Configuration
+
+Example Alertmanager rules:
+
+```yaml
+groups:
+  - name: webhook-relay
+    rules:
+      - alert: HighErrorRate
+        expr: rate(webhook_deliveries_failed_total[5m]) / rate(webhook_deliveries_attempted_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High webhook delivery error rate"
+          description: "Webhook delivery error rate is {{ $value | humanizePercentage }}"
+
+      - alert: QueueBacklog
+        expr: webhook_queue_size > 1000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Webhook queue backlog"
+          description: "Queue size is {{ $value }} items"
+```
+
+## Performance Monitoring
+
+### Key Performance Indicators (KPIs)
+
+1. **Throughput**: Events processed per second
+2. **Latency**: End-to-end processing time
+3. **Availability**: System uptime percentage
+4. **Error Rate**: Failed operations percentage
+5. **Queue Health**: Queue depth and processing rate
+
+### Monitoring Checklist
+
+- [ ] Prometheus scraping webhook relay metrics
+- [ ] Grafana dashboards configured
+- [ ] Alert rules defined and tested
+- [ ] Log aggregation setup
+- [ ] Health check monitoring
+- [ ] Database performance monitoring
+- [ ] Network connectivity monitoring
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### 1. High Memory Usage
+#### Metrics Not Available
+- Verify the `/metrics` endpoint is accessible
+- Check Prometheus configuration and connectivity
+- Ensure the application is running and healthy
 
-**Symptoms**: Memory usage alerts, slow performance
-**Diagnosis**: Check memory metrics and heap dumps
-**Solutions**:
-- Increase memory limits
-- Check for memory leaks
-- Optimize queue processing
+#### High Memory Usage
+- Monitor heap usage metrics
+- Check for memory leaks in event processing
+- Review queue size and processing rate
 
-```bash
-# Check memory usage
-curl http://localhost:3001/health | jq '.system.memory'
+#### Database Connection Issues
+- Monitor database connection pool metrics
+- Check database server health
+- Review connection timeout settings
 
-# Monitor memory over time
-watch -n 5 'curl -s http://localhost:3001/health | jq ".system.memory.usage"'
-```
-
-#### 2. Database Connection Issues
-
-**Symptoms**: Database health check failures, connection errors
-**Diagnosis**: Check database connectivity and pool status
-**Solutions**:
-- Verify database credentials
-- Check network connectivity
-- Increase connection pool size
+### Debug Commands
 
 ```bash
-# Check database health
-curl http://localhost:3001/health | jq '.checks.database'
+# Check metrics endpoint
+curl http://localhost:3000/metrics
 
-# Check detailed database metrics
-curl http://localhost:3001/metrics | grep database
+# Check health status
+curl http://localhost:3000/health
+
+# View application logs with debug level
+LOG_LEVEL=debug npm start
+
+# Monitor database connections
+# (Check database_connections_active metric)
 ```
-
-#### 3. High Error Rate
-
-**Symptoms**: Increased error metrics, failed webhook deliveries
-**Diagnosis**: Check error logs and metrics
-**Solutions**:
-- Review webhook endpoint configurations
-- Check network connectivity
-- Verify authentication credentials
-
-```bash
-# Check error rate
-curl http://localhost:3001/metrics | grep error_total
-
-# Check recent error logs
-tail -f app.log | grep '"level":"error"'
-```
-
-#### 4. Queue Backlog
-
-**Symptoms**: Increasing queue size, delayed webhook deliveries
-**Diagnosis**: Monitor queue metrics and processing rates
-**Solutions**:
-- Increase concurrent processing limits
-- Optimize webhook endpoints
-- Scale horizontally
-
-```bash
-# Check queue size
-curl http://localhost:3001/metrics | grep queue_size
-
-# Monitor processing rate
-curl http://localhost:3001/metrics | grep processing_rate
-```
-
-### Log Analysis
-
-#### Finding Correlation IDs
-
-```bash
-# Find all logs for a specific correlation ID
-grep "correlationId\":\"550e8400-e29b-41d4-a716-446655440000" app.log
-
-# Find failed webhook deliveries
-grep '"level":"error"' app.log | grep webhook
-```
-
-#### Performance Analysis
-
-```bash
-# Find slow webhook deliveries
-grep '"responseTime"' app.log | awk -F'"responseTime":' '{print $2}' | awk -F',' '{print $1}' | sort -n | tail -10
-
-# Find most common errors
-grep '"level":"error"' app.log | jq -r '.message' | sort | uniq -c | sort -nr
-```
-
-### Debugging Steps
-
-1. **Check System Health**
-   ```bash
-   curl http://localhost:3001/health
-   ```
-
-2. **Review Recent Logs**
-   ```bash
-   tail -100 app.log | jq '.'
-   ```
-
-3. **Check Metrics**
-   ```bash
-   curl http://localhost:3001/metrics
-   ```
-
-4. **Verify Configuration**
-   ```bash
-   cat config.json | jq '.monitoring'
-   ```
-
-5. **Test Webhook Endpoints**
-   ```bash
-   curl -X POST -H "Content-Type: application/json" -d '{"test": true}' https://your-webhook-endpoint.com
-   ```
 
 ## Production Deployment
 
-### Monitoring Setup Checklist
+### Monitoring Stack
 
-- [ ] Configure structured logging with appropriate log levels
-- [ ] Set up metrics collection and storage
-- [ ] Configure health check endpoints
-- [ ] Set up alerting rules and notification channels
-- [ ] Create monitoring dashboards
-- [ ] Set up log aggregation and analysis
-- [ ] Configure automated backup and recovery
-- [ ] Test alert notifications
-- [ ] Document runbook procedures
+For production deployments, deploy a complete monitoring stack:
 
-### Recommended Monitoring Stack
+```yaml
+version: '3.8'
+services:
+  webhook-relay:
+    # ... your service config
+    
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+      
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      
+  alertmanager:
+    image: prom/alertmanager:latest
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    ports:
+      - "9093:9093"
 
-- **Metrics**: Prometheus + Grafana
-- **Logs**: ELK Stack (Elasticsearch, Logstash, Kibana) or Loki
-- **Alerting**: Prometheus Alertmanager or PagerDuty
-- **APM**: Jaeger or Zipkin for distributed tracing
+volumes:
+  prometheus_data:
+  grafana_data:
+```
 
-### Performance Tuning
+### Security Considerations
 
-1. **Optimize Log Levels**: Use appropriate log levels for production
-2. **Metrics Sampling**: Configure metrics sampling for high-volume environments
-3. **Health Check Intervals**: Adjust health check frequencies based on requirements
-4. **Alert Thresholds**: Fine-tune alert thresholds to reduce noise
+- Secure metrics endpoints with authentication
+- Use HTTPS for external monitoring access
+- Implement proper firewall rules
+- Regular security updates for monitoring components
+
+## Best Practices
+
+1. **Monitor Key Business Metrics**: Focus on metrics that matter for your use case
+2. **Set Appropriate Alert Thresholds**: Avoid alert fatigue with well-tuned thresholds
+3. **Use Correlation IDs**: Track requests across system components
+4. **Regular Health Checks**: Implement comprehensive health checks
+5. **Capacity Planning**: Monitor trends for capacity planning
+6. **Documentation**: Keep monitoring documentation up to date
 
 ## Support
 
-For additional support and troubleshooting:
-
-1. Check the application logs for detailed error information
-2. Review the health check endpoints for system status
-3. Monitor the metrics endpoints for performance data
-4. Consult this documentation for common issues and solutions
-5. Contact the development team with correlation IDs for specific issues
+For monitoring-related issues:
+- Check the troubleshooting section
+- Review Prometheus and Grafana documentation
+- Create an issue on GitHub with monitoring logs

@@ -5,3 +5,4 @@ export * from './WebhookSender';
 export * from './HttpClient';
 export * from './DeliveryTracker';
 export * from './QueueProcessor';
+export * from './WebhookConfigProvider';

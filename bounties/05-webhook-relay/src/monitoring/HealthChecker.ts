@@ -172,6 +172,7 @@ export class HealthChecker implements IHealthChecker {
           const freeSpaceGB = (stats.bavail * stats.bsize) / 1024 / 1024 / 1024;
           return freeSpaceGB > minFreeSpaceGB;
         } catch (error) {
+          this.logger.debug('Disk space check failed', { error: (error as Error).message });
           return false;
         }
       },
