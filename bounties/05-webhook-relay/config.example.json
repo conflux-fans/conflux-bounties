@@ -1,0 +1,57 @@
+{
+  "network": {
+    "rpcUrl": "https://evmtestnet.confluxrpc.com",
+    "wsUrl": "wss://evmtestnet.confluxrpc.com/ws",
+    "chainId": 71,
+    "confirmations": 2
+  },
+  "subscriptions": [
+    {
+      "id": "contract-event-monitoring",
+      "contractAddress": [
+        "0x1234567890123456789012345678901234567890",
+        "0x14b2d3bc65e74dae1030eafd8ac30c533c976a9b"
+      ],
+      "eventSignature": [
+        "Deposit(address indexed dst, uint256 wad)",
+        "Withdrawal(address indexed src, uint256 wad)",
+        "Approval(address indexed owner, address indexed spender, uint256 value)",
+        "Transfer(address indexed from, address indexed to, uint256 value)"
+      ],
+      "filters": {
+        "value": {
+          "operator": "gt",
+          "value": "1000000000000000000"
+        }
+      },
+      "webhooks": [
+        {
+          "id": "hookdeck-contract-webhook",
+          "url": "https://hkdk.events/m0t8gxe2jfe4j91",
+          "format": "generic",
+          "headers": {
+            "Authorization": "Bearer your-token-here",
+            "Content-Type": "application/json"
+          },
+          "timeout": 30000,
+          "retryAttempts": 3
+        }
+      ]
+    }
+  ],
+  "monitoring": {
+    "logLevel": "debug",
+    "metricsEnabled": true,
+    "healthCheckPort": 3001,
+    "loadFromDeliveries": true,
+    "loadHistoricalData": true,
+    "historicalDataHours": 24
+  },
+  "options": {
+    "maxConcurrentWebhooks": 10,
+    "defaultRetryAttempts": 3,
+    "defaultRetryDelay": 1000,
+    "webhookTimeout": 30000,
+    "queueProcessingInterval": 5000
+  }
+}
