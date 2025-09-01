@@ -1,0 +1,111 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    container_name: ai-auditor-postgres
+    restart: unless-stopped 
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mypassword123
+      POSTGRES_DB: audit_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-auditor-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  slither:
+    image: trailofbits/eth-security-toolbox:latest
+    container_name: ai-auditor-slither
+    restart: unless-stopped
+    volumes:
+      - analysis_workspace:/workspace
+    working_dir: /workspace
+    command: sh -c "
+      echo 'Installing common Solidity versions...' &&
+      solc-select install 0.4.26 &&
+      solc-select install 0.5.16 &&
+      solc-select install 0.6.12 &&
+      solc-select install 0.7.6 &&
+      solc-select install 0.8.19 &&
+      solc-select install 0.8.20 &&
+      solc-select install 0.8.21 &&
+      solc-select use 0.8.19 &&
+      echo 'Solidity versions installed successfully' &&
+      solc-select versions &&
+      tail -f /dev/null
+      "  # Setup multiple solc versions and keep container running
+    
+  mythril:
+    image: mythril/myth:latest
+    container_name: ai-auditor-mythril
+    restart: unless-stopped
+    volumes:
+      - analysis_workspace:/workspace
+    working_dir: /workspace
+    command: tail -f /dev/null  # Keep container running
+
+  web:
+    build: .
+    container_name: ai-auditor-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      slither:
+        condition: service_started
+      mythril:
+        condition: service_started
+    environment:
+      # Database
+      - DATABASE_URL=postgresql://postgres:mypassword123@postgres:5432/audit_db?schema=public
+      
+      # Application
+      - NODE_ENV=production
+      - NEXT_PUBLIC_BASE_URL=http://localhost:3000
+      
+      # AI API Keys (will be overridden by .env.local)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # Conflux Network
+      - CONFLUXSCAN_API_URL=https://evmapi.confluxscan.org
+      
+      # Security
+      - JWT_SECRET=${JWT_SECRET:-your-random-jwt-secret-256-bits-long}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-your-webhook-hmac-secret-key}
+      
+      # Rate Limiting
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=${RATE_LIMIT_REQUESTS_PER_MINUTE:-60}
+      
+      # Redis
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - /app/node_modules
+      - /var/run/docker.sock:/var/run/docker.sock  # Mount Docker socket for static analysis
+      - analysis_workspace:/tmp/analysis  # Shared workspace for analysis files
+    command: sh -c "npx prisma db push --accept-data-loss && npm start"
+    user: root  # Required for Docker socket access
+
+volumes:
+  postgres_data:
+  redis_data:
+  analysis_workspace:

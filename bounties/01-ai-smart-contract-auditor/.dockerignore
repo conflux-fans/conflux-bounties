@@ -1,0 +1,19 @@
+node_modules
+npm-debug.log
+.next
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+coverage
+.nyc_output
+__tests__
+jest.config.js
+
+# Don't exclude prisma - we need it!
+!prisma/

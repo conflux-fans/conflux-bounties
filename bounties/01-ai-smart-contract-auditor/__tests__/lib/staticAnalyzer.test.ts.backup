@@ -1,0 +1,783 @@
+import { 
+  runStaticAnalysis, 
+  StaticFinding, 
+  SourceFile, 
+  mapSlitherSeverity,
+  mapMythrilSeverity,
+  checkStaticAnalysisAvailable,
+  setCorrectSolidityVersion,
+  writeSourceFilesToWorkspace
+} from '../../lib/staticAnalyzer';
+import { exec } from 'child_process';
+import * as fs from 'fs/promises';
+
+// Mock dependencies
+jest.mock('child_process', () => ({
+  exec: jest.fn()
+}));
+jest.mock('fs/promises');
+jest.mock('uuid', () => ({
+  v4: () => 'mock-uuid-123'
+}));
+
+const mockExec = exec as jest.MockedFunction<typeof exec>;
+const mockFs = fs as jest.Mocked<typeof fs>;
+
+describe('staticAnalyzer', () => {
+  describe('runStaticAnalysis', () => {
+    const mockSourceFiles: SourceFile[] = [
+      {
+        name: 'Contract.sol',
+        content: 'pragma solidity ^0.8.0; contract Test { function test() {} }'
+      }
+    ];
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      console.log = jest.fn();
+      console.warn = jest.fn();
+    });
+
+    it('should return empty array when no source files provided', async () => {
+      const result = await runStaticAnalysis([]);
+      
+      expect(result).toEqual([]);
+      expect(console.warn).toHaveBeenCalledWith('[StaticAnalysis] No source files provided, returning empty results');
+    });
+
+    it('should return empty array when null source files provided', async () => {
+      const result = await runStaticAnalysis(null as any);
+      
+      expect(result).toEqual([]);
+      expect(console.warn).toHaveBeenCalledWith('[StaticAnalysis] No source files provided, returning empty results');
+    });
+
+    it('should return empty array and log appropriate messages for valid source files', async () => {
+      const result = await runStaticAnalysis(mockSourceFiles);
+      
+      expect(result).toEqual([]);
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Starting static analysis with Slither and Mythril');
+      // Should handle Docker container unavailability gracefully
+    }, 15000);
+
+    it('should handle multiple source files', async () => {
+      const multipleFiles: SourceFile[] = [
+        { name: 'Contract1.sol', content: 'pragma solidity ^0.8.0; contract Test1 {}' },
+        { name: 'Contract2.sol', content: 'pragma solidity ^0.8.0; contract Test2 {}' },
+        { name: 'Contract3.sol', content: 'pragma solidity ^0.8.0; contract Test3 {}' }
+      ];
+
+      const result = await runStaticAnalysis(multipleFiles);
+      
+      expect(result).toEqual([]);
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Starting static analysis with Slither and Mythril');
+    }, 15000);
+
+    it('should return StaticFinding array type', async () => {
+      const result = await runStaticAnalysis(mockSourceFiles);
+      
+      expect(Array.isArray(result)).toBe(true);
+      // Verify it can hold StaticFinding objects
+      const mockFinding: StaticFinding = {
+        id: 'test-id',
+        tool: 'slither',
+        severity: 'high',
+        title: 'Test Finding',
+        description: 'Test description'
+      };
+      result.push(mockFinding);
+      expect(result[0]).toMatchObject(mockFinding);
+    });
+
+    it('should handle edge cases gracefully', async () => {
+      // Empty content files
+      const emptyContentFiles: SourceFile[] = [
+        { name: 'Empty.sol', content: '' }
+      ];
+
+      const result = await runStaticAnalysis(emptyContentFiles);
+      expect(result).toEqual([]);
+
+      // Very long content
+      const longContentFiles: SourceFile[] = [
+        { name: 'Long.sol', content: 'a'.repeat(10000) }
+      ];
+
+      const result2 = await runStaticAnalysis(longContentFiles);
+      expect(result2).toEqual([]);
+    });
+
+    it('should validate StaticFinding interface properties', () => {
+      // Test that StaticFinding interface has expected properties
+      const finding: StaticFinding = {
+        id: 'finding-1',
+        tool: 'mythril',
+        swc_id: 'SWC-101',
+        cwe_id: 'CWE-862',
+        severity: 'critical',
+        title: 'Authorization through tx.origin',
+        description: 'The contract uses tx.origin for authorization',
+        lines: [1, 2, 3],
+        file: 'Contract.sol',
+        impact: 'High impact vulnerability',
+        confidence: 'High'
+      };
+
+      expect(finding.id).toBe('finding-1');
+      expect(finding.tool).toBe('mythril');
+      expect(finding.swc_id).toBe('SWC-101');
+      expect(finding.cwe_id).toBe('CWE-862');
+      expect(finding.severity).toBe('critical');
+      expect(finding.title).toBe('Authorization through tx.origin');
+      expect(finding.description).toBe('The contract uses tx.origin for authorization');
+      expect(finding.lines).toEqual([1, 2, 3]);
+      expect(finding.file).toBe('Contract.sol');
+      expect(finding.impact).toBe('High impact vulnerability');
+      expect(finding.confidence).toBe('High');
+    });
+
+    it('should validate SourceFile interface properties', () => {
+      const sourceFile: SourceFile = {
+        name: 'TestContract.sol',
+        content: 'pragma solidity ^0.8.0;\ncontract Test {}'
+      };
+
+      expect(sourceFile.name).toBe('TestContract.sol');
+      expect(sourceFile.content).toBe('pragma solidity ^0.8.0;\ncontract Test {}');
+    });
+  });
+
+  describe('mapSlitherSeverity', () => {
+    it('should return critical for high impact and high confidence', () => {
+      expect(mapSlitherSeverity('High', 'High')).toBe('critical');
+      expect(mapSlitherSeverity('HIGH', 'HIGH')).toBe('critical');
+      expect(mapSlitherSeverity('high', 'high')).toBe('critical');
+    });
+
+    it('should return high for high impact medium confidence or medium impact high confidence', () => {
+      expect(mapSlitherSeverity('High', 'Medium')).toBe('high');
+      expect(mapSlitherSeverity('Medium', 'High')).toBe('high');
+      expect(mapSlitherSeverity('HIGH', 'MEDIUM')).toBe('high');
+      expect(mapSlitherSeverity('MEDIUM', 'HIGH')).toBe('high');
+    });
+
+    it('should return medium for medium impact medium confidence or high impact low confidence', () => {
+      expect(mapSlitherSeverity('Medium', 'Medium')).toBe('medium');
+      expect(mapSlitherSeverity('High', 'Low')).toBe('medium');
+      expect(mapSlitherSeverity('MEDIUM', 'MEDIUM')).toBe('medium');
+      expect(mapSlitherSeverity('HIGH', 'LOW')).toBe('medium');
+    });
+
+    it('should return low for all other combinations', () => {
+      expect(mapSlitherSeverity('Low', 'High')).toBe('low');
+      expect(mapSlitherSeverity('Low', 'Medium')).toBe('low');
+      expect(mapSlitherSeverity('Low', 'Low')).toBe('low');
+      expect(mapSlitherSeverity('Medium', 'Low')).toBe('low');
+      expect(mapSlitherSeverity('Unknown', 'Unknown')).toBe('low');
+      expect(mapSlitherSeverity('', '')).toBe('low');
+    });
+
+    it('should handle case insensitive input', () => {
+      expect(mapSlitherSeverity('hIgH', 'HiGh')).toBe('critical');
+      expect(mapSlitherSeverity('MeDiUm', 'lOw')).toBe('low');
+    });
+  });
+
+  describe('mapMythrilSeverity', () => {
+    it('should map high to critical', () => {
+      expect(mapMythrilSeverity('High')).toBe('critical');
+      expect(mapMythrilSeverity('HIGH')).toBe('critical');
+      expect(mapMythrilSeverity('high')).toBe('critical');
+    });
+
+    it('should map medium to high', () => {
+      expect(mapMythrilSeverity('Medium')).toBe('high');
+      expect(mapMythrilSeverity('MEDIUM')).toBe('high');
+      expect(mapMythrilSeverity('medium')).toBe('high');
+    });
+
+    it('should map low to medium', () => {
+      expect(mapMythrilSeverity('Low')).toBe('medium');
+      expect(mapMythrilSeverity('LOW')).toBe('medium');
+      expect(mapMythrilSeverity('low')).toBe('medium');
+    });
+
+    it('should map unknown values to low', () => {
+      expect(mapMythrilSeverity('Unknown')).toBe('low');
+      expect(mapMythrilSeverity('Critical')).toBe('low');
+      expect(mapMythrilSeverity('')).toBe('low');
+      expect(mapMythrilSeverity('invalid')).toBe('low');
+    });
+
+    it('should handle case insensitive input', () => {
+      expect(mapMythrilSeverity('HiGh')).toBe('critical');
+      expect(mapMythrilSeverity('MeDiUm')).toBe('high');
+      expect(mapMythrilSeverity('LoW')).toBe('medium');
+    });
+  });
+
+  describe('checkStaticAnalysisAvailable', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      console.warn = jest.fn();
+    });
+
+    it('should return true for both tools when both are available', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (typeof options === 'function') {
+          callback = options;
+        }
+        if (callback) {
+          callback(null, { stdout: 'slither 0.9.0', stderr: '' } as any);
+        }
+        return {} as any;
+      });
+
+      const result = await checkStaticAnalysisAvailable();
+      
+      expect(result).toEqual({ slither: true, mythril: true });
+      expect(mockExec).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return false for slither when it fails', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('slither')) {
+            callback(new Error('Container not found'), null);
+          } else {
+            callback(null, { stdout: 'mythril 0.23.0', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      const result = await checkStaticAnalysisAvailable();
+      
+      expect(result).toEqual({ slither: false, mythril: true });
+    });
+
+    it('should return false for mythril when it fails', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('mythril')) {
+            callback(new Error('Container not found'), null);
+          } else {
+            callback(null, { stdout: 'slither 0.9.0', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      const result = await checkStaticAnalysisAvailable();
+      
+      expect(result).toEqual({ slither: true, mythril: false });
+    });
+
+    it('should return false for both when both fail', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          callback(new Error('Docker not running'), null);
+        }
+        return {} as any;
+      });
+
+      const result = await checkStaticAnalysisAvailable();
+      
+      expect(result).toEqual({ slither: false, mythril: false });
+    });
+
+    it('should handle unexpected errors gracefully', async () => {
+      mockExec.mockImplementation(() => {
+        throw new Error('Unexpected error');
+      });
+
+      const result = await checkStaticAnalysisAvailable();
+      
+      expect(result).toEqual({ slither: false, mythril: false });
+      expect(console.warn).toHaveBeenCalledWith('[StaticAnalysis] Error checking tool availability:', expect.any(Error));
+    });
+  });
+
+  describe('setCorrectSolidityVersion', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      console.log = jest.fn();
+      console.warn = jest.fn();
+    });
+
+    it('should set version 0.8.21 for pragma ^0.8.0', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('cat')) {
+            callback(null, { stdout: 'pragma solidity ^0.8.0;\ncontract Test {}', stderr: '' } as any);
+          } else if (command.includes('versions')) {
+            callback(null, { stdout: '0.8.21\n0.8.19\n0.7.6', stderr: '' } as any);
+          } else {
+            callback(null, { stdout: 'Using version 0.8.21', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      await setCorrectSolidityVersion('/workspace/Contract.sol');
+
+      expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('solc-select use 0.8.21'), expect.any(Object), expect.any(Function));
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Setting Solidity version to: 0.8.21');
+    });
+
+    it('should set version 0.5.16 for pragma ^0.5.0', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('cat')) {
+            callback(null, { stdout: 'pragma solidity ^0.5.0;\ncontract Test {}', stderr: '' } as any);
+          } else if (command.includes('versions')) {
+            callback(null, { stdout: '0.5.16\n0.8.19', stderr: '' } as any);
+          } else {
+            callback(null, { stdout: 'Using version 0.5.16', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      await setCorrectSolidityVersion('/workspace/Contract.sol');
+
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Setting Solidity version to: 0.5.16');
+    });
+
+    it('should install version if not available', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('cat')) {
+            callback(null, { stdout: 'pragma solidity =0.4.26;\ncontract Test {}', stderr: '' } as any);
+          } else if (command.includes('versions')) {
+            callback(null, { stdout: '0.8.19\n0.7.6', stderr: '' } as any); // 0.4.26 not available
+          } else if (command.includes('install 0.4.26')) {
+            callback(null, { stdout: 'Installing 0.4.26...', stderr: '' } as any);
+          } else {
+            callback(null, { stdout: 'Using version 0.4.26', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      await setCorrectSolidityVersion('/workspace/Contract.sol');
+
+      expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('solc-select install 0.4.26'), expect.any(Object), expect.any(Function));
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Installing Solidity 0.4.26...');
+    });
+
+    it('should handle contract without pragma', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          callback(null, { stdout: 'contract Test { function test() {} }', stderr: '' } as any);
+        }
+        return {} as any;
+      });
+
+      await setCorrectSolidityVersion('/workspace/Contract.sol');
+
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] No pragma solidity found, using default version');
+    });
+
+    it('should handle unparseable pragma version', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          callback(null, { stdout: 'pragma solidity experimental;\ncontract Test {}', stderr: '' } as any);
+        }
+        return {} as any;
+      });
+
+      await setCorrectSolidityVersion('/workspace/Contract.sol');
+
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Could not parse version from: experimental, using default');
+    });
+
+    it('should handle unsupported version gracefully', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          callback(null, { stdout: 'pragma solidity ^0.9.0;\ncontract Test {}', stderr: '' } as any);
+        }
+        return {} as any;
+      });
+
+      await setCorrectSolidityVersion('/workspace/Contract.sol');
+
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Unsupported version 0.9.0, using default 0.8.19');
+    });
+
+    it('should handle version detection errors gracefully', async () => {
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          callback(new Error('Docker container not found'), null);
+        }
+        return {} as any;
+      });
+
+      await setCorrectSolidityVersion('/workspace/Contract.sol');
+
+      expect(console.warn).toHaveBeenCalledWith('[StaticAnalysis] Failed to set Solidity version, using default:', expect.any(Error));
+    });
+
+    it('should handle complex version ranges', async () => {
+      const testCases = [
+        { pragma: 'pragma solidity >=0.7.0 <0.9.0;', expectedVersion: '0.7.6' },
+        { pragma: 'pragma solidity =0.6.12;', expectedVersion: '0.6.12' },
+        { pragma: 'pragma solidity ~0.4.0;', expectedVersion: '0.4.26' }
+      ];
+
+      for (const testCase of testCases) {
+        mockExec.mockClear();
+        mockExec.mockImplementation((command, options, callback) => {
+          if (callback) {
+            if (command.includes('cat')) {
+              callback(null, { stdout: testCase.pragma, stderr: '' } as any);
+            } else if (command.includes('versions')) {
+              callback(null, { stdout: '0.4.26\n0.5.16\n0.6.12\n0.7.6\n0.8.21', stderr: '' } as any);
+            } else {
+              callback(null, { stdout: `Using version ${testCase.expectedVersion}`, stderr: '' } as any);
+            }
+          }
+          return {} as any;
+        });
+
+        await setCorrectSolidityVersion('/workspace/Contract.sol');
+
+        expect(console.log).toHaveBeenCalledWith(`[StaticAnalysis] Setting Solidity version to: ${testCase.expectedVersion}`);
+      }
+    });
+  });
+
+  describe('writeSourceFilesToWorkspace', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      console.log = jest.fn();
+      console.error = jest.fn();
+    });
+
+    it('should write source files to workspace directory', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'Contract.sol', content: 'pragma solidity ^0.8.0;\ncontract Test {}' },
+        { name: 'subfolder/Library.sol', content: 'library Math { function add() {} }' }
+      ];
+
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const result = await writeSourceFilesToWorkspace(sourceFiles, 'test-workspace-123');
+
+      expect(result).toBe('/tmp/analysis-test-workspace-123');
+      expect(mockFs.mkdir).toHaveBeenCalledWith('/tmp/analysis-test-workspace-123', { recursive: true });
+      expect(mockFs.mkdir).toHaveBeenCalledWith('/tmp/analysis-test-workspace-123', { recursive: true }); // for subfolder
+      expect(mockFs.writeFile).toHaveBeenCalledWith('/tmp/analysis-test-workspace-123/Contract.sol', 'pragma solidity ^0.8.0;\ncontract Test {}', 'utf8');
+      expect(mockFs.writeFile).toHaveBeenCalledWith('/tmp/analysis-test-workspace-123/subfolder/Library.sol', 'library Math { function add() {} }', 'utf8');
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Written 2 source files to /tmp/analysis-test-workspace-123');
+    });
+
+    it('should handle file write errors', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'Contract.sol', content: 'contract Test {}' }
+      ];
+
+      const error = new Error('Permission denied');
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockRejectedValue(error);
+
+      await expect(writeSourceFilesToWorkspace(sourceFiles, 'test-workspace')).rejects.toThrow('Permission denied');
+      expect(console.error).toHaveBeenCalledWith('[StaticAnalysis] Error writing source files:', error);
+    });
+
+    it('should handle directory creation errors', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'Contract.sol', content: 'contract Test {}' }
+      ];
+
+      const error = new Error('Disk full');
+      mockFs.mkdir.mockRejectedValue(error);
+
+      await expect(writeSourceFilesToWorkspace(sourceFiles, 'test-workspace')).rejects.toThrow('Disk full');
+      expect(console.error).toHaveBeenCalledWith('[StaticAnalysis] Error writing source files:', error);
+    });
+  });
+
+  describe('runStaticAnalysis integration tests', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      console.log = jest.fn();
+      console.warn = jest.fn();
+      console.error = jest.fn();
+    });
+
+    it('should handle successful Slither and Mythril analysis', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'VulnerableContract.sol', content: 'pragma solidity ^0.8.0;\ncontract Test { function test() external { selfdestruct(payable(msg.sender)); } }' }
+      ];
+
+      // Mock file operations
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.rm.mockResolvedValue(undefined);
+
+      // Mock Docker operations with realistic responses
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          // File system operations
+          if (command.includes('docker cp')) {
+            callback(null, { stdout: '', stderr: '' } as any);
+          }
+          // List files in container
+          else if (command.includes('ls /workspace')) {
+            callback(null, { stdout: 'VulnerableContract.sol\n', stderr: '' } as any);
+          }
+          // Slither version detection operations
+          else if (command.includes('cat /workspace/VulnerableContract.sol')) {
+            callback(null, { stdout: 'pragma solidity ^0.8.0;\ncontract Test { function test() external { selfdestruct(payable(msg.sender)); } }', stderr: '' } as any);
+          }
+          else if (command.includes('solc-select versions')) {
+            callback(null, { stdout: '0.8.21\n0.8.19\n0.7.6', stderr: '' } as any);
+          }
+          else if (command.includes('solc-select use')) {
+            callback(null, { stdout: 'Using version 0.8.21', stderr: '' } as any);
+          }
+          // Slither analysis
+          else if (command.includes('slither')) {
+            const slitherResult = {
+              results: {
+                detectors: [
+                  {
+                    check: 'suicidal',
+                    confidence: 'High',
+                    impact: 'High',
+                    description: 'Contract can be destroyed',
+                    elements: [{
+                      source_mapping: {
+                        lines: [3],
+                        filename_relative: 'VulnerableContract.sol'
+                      }
+                    }]
+                  }
+                ]
+              }
+            };
+            callback(null, { stdout: JSON.stringify(slitherResult), stderr: 'INFO: Analysis complete' } as any);
+          }
+          // Mythril analysis  
+          else if (command.includes('myth analyze')) {
+            const mythrilResult = {
+              issues: [
+                {
+                  title: 'Unprotected Selfdestruct',
+                  swc_id: 'SWC-106',
+                  severity: 'High',
+                  description: {
+                    head: 'Anyone can destroy the contract',
+                    tail: 'This is dangerous'
+                  },
+                  lineno: 3,
+                  filename: 'VulnerableContract.sol'
+                }
+              ]
+            };
+            callback(null, { stdout: JSON.stringify(mythrilResult), stderr: 'INFO: Analysis complete' } as any);
+          }
+          else {
+            callback(null, { stdout: '', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      const result = await runStaticAnalysis(sourceFiles);
+
+      expect(result).toHaveLength(2); // One from Slither, one from Mythril
+      expect(result[0]).toMatchObject({
+        id: 'mock-uuid-123',
+        tool: 'slither',
+        swc_id: 'SWC-106',
+        cwe_id: 'CWE-284',
+        severity: 'critical',
+        title: 'Slither: suicidal',
+        description: 'Contract can be destroyed'
+      });
+      expect(result[1]).toMatchObject({
+        id: 'mock-uuid-123',
+        tool: 'mythril',
+        swc_id: 'SWC-106',
+        severity: 'critical',
+        title: 'Unprotected Selfdestruct',
+        description: 'Anyone can destroy the contract This is dangerous'
+      });
+    });
+
+    it('should handle Docker container failures gracefully', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'Contract.sol', content: 'pragma solidity ^0.8.0;\ncontract Test {}' }
+      ];
+
+      // Mock file operations
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.rm.mockResolvedValue(undefined);
+
+      // Mock Docker failures
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('docker')) {
+            callback(new Error('Docker container not found'), null);
+          } else {
+            callback(null, { stdout: '', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      const result = await runStaticAnalysis(sourceFiles);
+
+      expect(result).toEqual([]);
+      expect(console.warn).toHaveBeenCalledWith('[StaticAnalysis] Slither analysis failed:', expect.any(Error));
+      expect(console.warn).toHaveBeenCalledWith('[StaticAnalysis] Mythril analysis failed:', expect.any(Error));
+    });
+
+    it('should handle Slither analysis with no findings', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'SafeContract.sol', content: 'pragma solidity ^0.8.0;\ncontract Safe { uint public value; }' }
+      ];
+
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.rm.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('docker cp') || command.includes('ls')) {
+            callback(null, { stdout: 'SafeContract.sol\n', stderr: '' } as any);
+          }
+          else if (command.includes('slither')) {
+            callback(null, { stdout: '{"results": {"detectors": []}}', stderr: '' } as any);
+          }
+          else if (command.includes('myth')) {
+            callback(null, { stdout: '{"issues": []}', stderr: '' } as any);
+          }
+          else {
+            callback(null, { stdout: 'pragma solidity ^0.8.0;\ncontract Safe { uint public value; }', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      const result = await runStaticAnalysis(sourceFiles);
+
+      expect(result).toEqual([]);
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Slither analysis completed: 0 findings');
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Mythril analysis completed: 0 findings');
+    });
+
+    it('should handle malformed tool output', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'Contract.sol', content: 'contract Test {}' }
+      ];
+
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.rm.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('slither')) {
+            callback(null, { stdout: 'invalid json', stderr: '' } as any);
+          }
+          else if (command.includes('myth')) {
+            callback(null, { stdout: 'also invalid json', stderr: '' } as any);
+          }
+          else {
+            callback(null, { stdout: 'Contract.sol\n', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      const result = await runStaticAnalysis(sourceFiles);
+
+      expect(result).toEqual([]);
+      expect(console.error).toHaveBeenCalledWith('[StaticAnalysis] Slither analysis failed:', expect.any(Error));
+      expect(console.error).toHaveBeenCalledWith('[StaticAnalysis] Mythril analysis failed:', expect.any(Error));
+    });
+
+    it('should handle empty tool output', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'Contract.sol', content: 'contract Test {}' }
+      ];
+
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.rm.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('slither') || command.includes('myth')) {
+            callback(null, { stdout: '', stderr: '' } as any);
+          }
+          else {
+            callback(null, { stdout: 'Contract.sol\n', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      const result = await runStaticAnalysis(sourceFiles);
+
+      expect(result).toEqual([]);
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Slither produced no output');
+      expect(console.log).toHaveBeenCalledWith('[StaticAnalysis] Mythril produced no output');
+    });
+
+    it('should handle no Solidity files found', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'README.md', content: '# This is not a Solidity file' }
+      ];
+
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.rm.mockResolvedValue(undefined);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          if (command.includes('ls')) {
+            callback(null, { stdout: 'README.md\n', stderr: '' } as any);
+          }
+          else {
+            callback(null, { stdout: '', stderr: '' } as any);
+          }
+        }
+        return {} as any;
+      });
+
+      const result = await runStaticAnalysis(sourceFiles);
+
+      expect(result).toEqual([]);
+      expect(console.warn).toHaveBeenCalledWith('[StaticAnalysis] No Solidity files found for Slither analysis');
+      expect(console.warn).toHaveBeenCalledWith('[StaticAnalysis] No Solidity files found for Mythril analysis');
+    });
+
+    it('should handle workspace cleanup failure gracefully', async () => {
+      const sourceFiles: SourceFile[] = [
+        { name: 'Contract.sol', content: 'contract Test {}' }
+      ];
+
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.rm.mockRejectedValue(new Error('Permission denied'));
+
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) {
+          callback(new Error('Docker not available'), null);
+        }
+        return {} as any;
+      });
+
+      const result = await runStaticAnalysis(sourceFiles);
+
+      expect(result).toEqual([]);
+      expect(console.warn).toHaveBeenCalledWith('[StaticAnalysis] Failed to cleanup workspace:', expect.any(Error));
+    });
+  });
+});

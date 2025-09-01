@@ -1,0 +1,88 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AuditReport {
+  id                    String   @id @default(cuid())
+  contractAddress       String   @map("contract_address")
+  reportJson            String   @map("report_json") // JSON stringified
+  reportMarkdown        String   @map("report_markdown")
+  findingsCount         Int      @map("findings_count")
+  criticalFindings      Int      @map("critical_findings")
+  highFindings          Int      @map("high_findings")
+  mediumFindings        Int      @map("medium_findings")
+  lowFindings           Int      @map("low_findings")
+  auditStatus           AuditStatus @map("audit_status")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  processingTimeMs      Int?     @map("processing_time_ms")
+  errorMessage          String?  @map("error_message")
+  auditEngineVersion    String?  @map("audit_engine_version")
+  staticAnalysisTools   String?  @map("static_analysis_tools") // JSON stringified array
+
+  // Relations
+  webhookDeliveries     WebhookDelivery[]
+
+  @@map("audit_reports")
+  @@index([contractAddress])
+  @@index([auditStatus])
+  @@index([createdAt])
+}
+
+model WebhookConfiguration {
+  id                    String   @id @default(cuid())
+  userId                String   @map("user_id")
+  webhookUrl            String   @map("webhook_url")
+  events                String   // JSON stringified array
+  isActive              Boolean  @default(true) @map("is_active")
+  secretHmac            String?  @map("secret_hmac")
+  retryCount            Int      @default(3) @map("retry_count")
+  timeoutSeconds        Int      @default(30) @map("timeout_seconds")
+  customHeaders         String?  @map("custom_headers") // JSON stringified object
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  webhookDeliveries     WebhookDelivery[]
+
+  @@map("webhook_configurations")
+  @@index([userId])
+  @@index([isActive])
+}
+
+model WebhookDelivery {
+  id                    String   @id @default(cuid())
+  webhookId             String   @map("webhook_id")
+  auditId               String   @map("audit_id")
+  eventType             String   @map("event_type")
+  payload               String   // JSON stringified
+  responseStatus        Int?     @map("response_status")
+  responseBody          String?  @map("response_body")
+  deliveryAttempts      Int      @default(0) @map("delivery_attempts")
+  deliveredAt           DateTime? @map("delivered_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  // Relations
+  webhook               WebhookConfiguration @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  auditReport           AuditReport @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@map("webhook_deliveries")
+  @@index([webhookId])
+  @@index([auditId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+enum AuditStatus {
+  COMPLETED
+  FAILED
+  PROCESSING
+
+  @@map("audit_status")
+}
