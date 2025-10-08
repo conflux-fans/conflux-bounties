@@ -6,6 +6,8 @@ import { db } from "@/lib/drizzle/client";
 import { users, deployedTokens, vestingSchedules } from "@/lib/drizzle/schema";
 
 import { z } from "zod";
+import { rateLimitPOST, getClientIdentifier } from "@/lib/api/rate-limit";
+import { sanitizeOptionalFields } from "@/lib/api/sanitize";
 
 const saveDeploymentSchema = z.object({
   userAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
@@ -43,8 +45,36 @@ const saveDeploymentSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // ✅ RATE LIMITING
+    const identifier = getClientIdentifier(request);
+    const rateLimitResult = rateLimitPOST(identifier);
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: "Too many requests",
+          retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000),
+        },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": rateLimitResult.limit.toString(),
+            "X-RateLimit-Remaining": rateLimitResult.remaining.toString(),
+            "X-RateLimit-Reset": rateLimitResult.reset.toString(),
+          },
+        }
+      );
+    }
+
     const body = await request.json();
     const data = saveDeploymentSchema.parse(body);
+
+    // ✅ SANITIZE OPTIONAL FIELDS
+    const sanitizedTokenConfig = sanitizeOptionalFields(data.tokenConfig, [
+      "description",
+      "website",
+      "logo",
+    ]);
 
     // ✅ WRAP ALL DATABASE OPERATIONS IN A TRANSACTION
     const result = await db.transaction(async (tx) => {
@@ -54,7 +84,7 @@ export async function POST(request: NextRequest) {
         .values({ address: data.userAddress })
         .onConflictDoNothing({ target: users.address });
 
-      // Save deployed token
+      // Save deployed token with sanitized data
       const [deployedToken] = await tx
         .insert(deployedTokens)
         .values({
@@ -65,9 +95,9 @@ export async function POST(request: NextRequest) {
           decimals: data.tokenConfig.decimals || 18,
           ownerAddress: data.userAddress,
           factoryTxHash: data.transactionHash,
-          description: data.tokenConfig.description,
-          website: data.tokenConfig.website,
-          logo: data.tokenConfig.logo,
+          description: sanitizedTokenConfig.description,
+          website: sanitizedTokenConfig.website,
+          logo: sanitizedTokenConfig.logo,
         })
         .returning();
 
@@ -120,11 +150,20 @@ export async function POST(request: NextRequest) {
       return { tokenId: deployedToken.id };
     });
 
-    return NextResponse.json({
-      success: true,
-      message: "Deployment saved successfully",
-      tokenId: result.tokenId,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Deployment saved successfully",
+        tokenId: result.tokenId,
+      },
+      {
+        headers: {
+          "X-RateLimit-Limit": rateLimitResult.limit.toString(),
+          "X-RateLimit-Remaining": rateLimitResult.remaining.toString(),
+          "X-RateLimit-Reset": rateLimitResult.reset.toString(),
+        },
+      }
+    );
   } catch (error) {
     console.error("Save deployment error:", error);
     return NextResponse.json(

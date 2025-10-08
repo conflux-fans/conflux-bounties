@@ -11,6 +11,8 @@ import {
 
 import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
+import { rateLimitPOST, rateLimitGET, getClientIdentifier } from "@/lib/api/rate-limit";
+import { sanitizeOptionalFields } from "@/lib/api/sanitize";
 
 const saveBatchDeploymentSchema = z.object({
   deploymentResult: z.object({
@@ -62,6 +64,27 @@ const saveBatchDeploymentSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // ✅ RATE LIMITING
+    const identifier = getClientIdentifier(request);
+    const rateLimitResult = rateLimitPOST(identifier);
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: "Too many requests",
+          retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000),
+        },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": rateLimitResult.limit.toString(),
+            "X-RateLimit-Remaining": rateLimitResult.remaining.toString(),
+            "X-RateLimit-Reset": rateLimitResult.reset.toString(),
+          },
+        }
+      );
+    }
+
     const body = await request.json();
     const data = saveBatchDeploymentSchema.parse(body);
 
@@ -89,6 +112,13 @@ export async function POST(request: NextRequest) {
         const tokenResult = deploymentResult.tokens[i];
         const tokenVestingContracts = deploymentResult.vestingContracts[i] || [];
 
+        // ✅ SANITIZE OPTIONAL FIELDS
+        const sanitizedConfig = sanitizeOptionalFields(tokenConfig, [
+          "description",
+          "website",
+          "logo",
+        ]);
+
         // Save deployed token
         const [savedToken] = await tx
           .insert(deployedTokens)
@@ -101,9 +131,9 @@ export async function POST(request: NextRequest) {
             ownerAddress: ownerAddress,
             factoryTxHash: deploymentResult.transactionHash,
             deployedAt: new Date(deploymentResult.deployedAt),
-            description: tokenConfig.description || null,
-            website: tokenConfig.website || null,
-            logo: tokenConfig.logo || null,
+            description: sanitizedConfig.description || null,
+            website: sanitizedConfig.website || null,
+            logo: sanitizedConfig.logo || null,
           })
           .returning();
 
@@ -161,10 +191,19 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      data: result,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        data: result,
+      },
+      {
+        headers: {
+          "X-RateLimit-Limit": rateLimitResult.limit.toString(),
+          "X-RateLimit-Remaining": rateLimitResult.remaining.toString(),
+          "X-RateLimit-Reset": rateLimitResult.reset.toString(),
+        },
+      }
+    );
   } catch (error) {
     console.error("Batch deployment API error:", error);
     return NextResponse.json(
