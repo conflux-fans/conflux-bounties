@@ -42,7 +42,7 @@ export function FundContractDialog({
   const { toast } = useToast();
 
   const { data: userBalance } = useUserTokenBalance(tokenAddress, userAddress);
-  const { shortfall, totalAmount } = useVestingContractBalance(
+  const { shortfall, totalAmount, balance } = useVestingContractBalance(
     tokenAddress,
     vestingContractAddress
   );
@@ -56,13 +56,23 @@ export function FundContractDialog({
   const totalAmountTokens = totalAmount
     ? parseFloat(formatEther(totalAmount))
     : 0;
+  const currentBalanceTokens = balance
+    ? parseFloat(formatEther(balance as bigint))
+    : 0;
 
-  // Auto-fill recommended amount
+  // ✅ CALCULATE REMAINING AMOUNT NEEDED (what's still needed to fully fund)
+  const remainingAmount = Math.max(0, totalAmountTokens - currentBalanceTokens);
+
+  // ✅ MAX AMOUNT USER CAN SEND (capped by user balance and remaining needed)
+  const maxSendAmount = Math.min(userBalanceTokens, remainingAmount);
+
+  // ✅ AUTO-FILL TO SHORTFALL ONLY (remaining amount needed)
   useEffect(() => {
-    if (shortfallTokens > 0) {
-      setAmount(shortfallTokens.toString());
+    if (open && remainingAmount > 0) {
+      // Auto-fill to the minimum of what's needed and what user has
+      setAmount(maxSendAmount.toString());
     }
-  }, [shortfallTokens]);
+  }, [open, remainingAmount, maxSendAmount]);
 
   // Handle success
   useEffect(() => {
@@ -108,6 +118,16 @@ export function FundContractDialog({
       return;
     }
 
+    // ✅ VALIDATE AGAINST REMAINING AMOUNT
+    if (amountFloat > remainingAmount) {
+      toast({
+        title: "Amount Exceeds Remaining",
+        description: `Contract only needs ${remainingAmount.toLocaleString()} ${tokenSymbol} more`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       // ✅ CONVERT TOKEN AMOUNT TO WEI ONLY FOR BLOCKCHAIN TRANSACTION
       const amountWei = parseEther(amount);
@@ -135,11 +155,16 @@ export function FundContractDialog({
             <AlertDescription>
               <div className="space-y-1 text-sm">
                 <div>
-                  Required: {totalAmountTokens.toLocaleString()} {tokenSymbol}
+                  <strong>Total Required:</strong> {totalAmountTokens.toLocaleString()} {tokenSymbol}
                 </div>
                 <div>
-                  Your Balance: {userBalanceTokens.toLocaleString()}{" "}
-                  {tokenSymbol}
+                  <strong>Current Balance:</strong> {currentBalanceTokens.toLocaleString()} {tokenSymbol}
+                </div>
+                <div className="text-orange-600 dark:text-orange-400">
+                  <strong>Remaining Needed:</strong> {remainingAmount.toLocaleString()} {tokenSymbol}
+                </div>
+                <div className="pt-1 border-t mt-2">
+                  <strong>Your Balance:</strong> {userBalanceTokens.toLocaleString()} {tokenSymbol}
                 </div>
               </div>
             </AlertDescription>
@@ -158,16 +183,21 @@ export function FundContractDialog({
                 className="flex-1"
                 step="0.000001"
                 min="0"
+                max={maxSendAmount}
               />
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setAmount(totalAmountTokens.toString())}
-                disabled={userBalanceTokens <= 0}
+                onClick={() => setAmount(maxSendAmount.toString())}
+                disabled={maxSendAmount <= 0}
+                title={`Max: ${maxSendAmount.toLocaleString()} ${tokenSymbol}`}
               >
                 Max
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Maximum you can send: {maxSendAmount.toLocaleString()} {tokenSymbol}
+            </p>
           </div>
 
           {/* Warnings */}
@@ -177,6 +207,27 @@ export function FundContractDialog({
               <AlertDescription>
                 Insufficient balance. You only have{" "}
                 {userBalanceTokens.toLocaleString()} {tokenSymbol}.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* ✅ DESTRUCTIVE ALERT IF EXCEEDING REMAINING */}
+          {parseFloat(amount) > remainingAmount && parseFloat(amount) <= userBalanceTokens && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                Amount exceeds what's needed. Contract only needs{" "}
+                {remainingAmount.toLocaleString()} {tokenSymbol} more to be fully funded.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Success indicator when fully funded */}
+          {remainingAmount === 0 && (
+            <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+              <Info className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-600 dark:text-green-400">
+                ✓ Contract is fully funded! No additional funding needed.
               </AlertDescription>
             </Alert>
           )}
