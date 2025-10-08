@@ -69,41 +69,55 @@ describe('rateLimitGET', () => {
 
 describe('getClientIdentifier', () => {
   it('should extract IP from x-forwarded-for header', () => {
-    const request = new Request('http://localhost', {
+    const mockRequest = {
       headers: {
-        'x-forwarded-for': '192.168.1.1, 10.0.0.1',
+        get: (name: string) => {
+          if (name === 'x-forwarded-for') return '192.168.1.1, 10.0.0.1';
+          return null;
+        },
       },
-    });
+    } as any;
 
-    const identifier = getClientIdentifier(request);
+    const identifier = getClientIdentifier(mockRequest);
     expect(identifier).toBe('192.168.1.1');
   });
 
   it('should extract IP from x-real-ip header', () => {
-    const request = new Request('http://localhost', {
+    const mockRequest = {
       headers: {
-        'x-real-ip': '192.168.1.2',
+        get: (name: string) => {
+          if (name === 'x-real-ip') return '192.168.1.2';
+          return null;
+        },
       },
-    });
+    } as any;
 
-    const identifier = getClientIdentifier(request);
+    const identifier = getClientIdentifier(mockRequest);
     expect(identifier).toBe('192.168.1.2');
   });
 
   it('should extract IP from cf-connecting-ip header', () => {
-    const request = new Request('http://localhost', {
+    const mockRequest = {
       headers: {
-        'cf-connecting-ip': '192.168.1.3',
+        get: (name: string) => {
+          if (name === 'cf-connecting-ip') return '192.168.1.3';
+          return null;
+        },
       },
-    });
+    } as any;
 
-    const identifier = getClientIdentifier(request);
+    const identifier = getClientIdentifier(mockRequest);
     expect(identifier).toBe('192.168.1.3');
   });
 
   it('should return unknown if no IP headers present', () => {
-    const request = new Request('http://localhost');
-    const identifier = getClientIdentifier(request);
+    const mockRequest = {
+      headers: {
+        get: () => null,
+      },
+    } as any;
+    
+    const identifier = getClientIdentifier(mockRequest);
     expect(identifier).toBe('unknown');
   });
 });
