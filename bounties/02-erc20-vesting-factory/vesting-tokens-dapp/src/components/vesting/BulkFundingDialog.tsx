@@ -49,6 +49,11 @@ export function BulkFundingDialog({
   const { sendTokens, isLoading } = useSendTokensToVesting();
   const { toast } = useToast();
 
+  // ✅ MOVE HOOKS TO TOP LEVEL - call useVestingContractBalance for all contracts
+  const contractBalances = vestingContracts.map(contract => 
+    useVestingContractBalance(tokenAddress, contract.address)
+  );
+
   // Reset selection when dialog opens
   useEffect(() => {
     if (open) {
@@ -69,11 +74,8 @@ export function BulkFundingDialog({
 
   const handleSelectAll = () => {
     const unfundedAddresses = vestingContracts
-      .filter((contract) => {
-        const { hassufficientBalance } = useVestingContractBalance(
-          tokenAddress,
-          contract.address
-        );
+      .filter((contract, index) => {
+        const { hassufficientBalance } = contractBalances[index];
         return !hassufficientBalance;
       })
       .map((c) => c.address);
@@ -134,11 +136,8 @@ export function BulkFundingDialog({
     return sum + (contract ? Number(contract.totalAmount) : 0);
   }, 0);
 
-  const unfundedContracts = vestingContracts.filter((contract) => {
-    const { hassufficientBalance } = useVestingContractBalance(
-      tokenAddress,
-      contract.address
-    );
+  const unfundedContracts = vestingContracts.filter((contract, index) => {
+    const { hassufficientBalance } = contractBalances[index];
     return !hassufficientBalance;
   });
 
@@ -174,7 +173,7 @@ export function BulkFundingDialog({
             {/* Contracts List */}
             <ScrollArea className="h-96">
               <div className="space-y-3">
-                {vestingContracts.map((contract) => (
+                {vestingContracts.map((contract, index) => (
                   <VestingContractItem
                     key={contract.address}
                     contract={contract}
@@ -183,6 +182,7 @@ export function BulkFundingDialog({
                     onSelect={handleSelectContract}
                     isSelected={selectedContracts.includes(contract.address)}
                     fundingState={fundingStates[contract.address]}
+                    balanceData={contractBalances[index]}
                   />
                 ))}
               </div>
@@ -230,6 +230,7 @@ function VestingContractItem({
   onSelect,
   isSelected,
   fundingState,
+  balanceData,
 }: {
   contract: VestingContract;
   tokenAddress: string;
@@ -237,11 +238,9 @@ function VestingContractItem({
   onSelect: (address: string, checked: boolean) => void;
   isSelected: boolean;
   fundingState?: "pending" | "success" | "error";
+  balanceData: ReturnType<typeof useVestingContractBalance>;
 }) {
-  const { hassufficientBalance, isLoading } = useVestingContractBalance(
-    tokenAddress,
-    contract.address
-  );
+  const { hassufficientBalance, isLoading } = balanceData;
 
   const getStatusIcon = () => {
     if (fundingState === "pending")
