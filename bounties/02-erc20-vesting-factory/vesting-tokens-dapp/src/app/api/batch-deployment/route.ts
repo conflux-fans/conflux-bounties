@@ -73,92 +73,97 @@ export async function POST(request: NextRequest) {
       ownerAddress,
     } = data;
 
-    // Create user if doesn't exist (upsert)
-    await db
-      .insert(users)
-      .values({ address: ownerAddress })
-      .onConflictDoNothing({ target: users.address });
+    // ✅ WRAP ALL DATABASE OPERATIONS IN A TRANSACTION
+    const result = await db.transaction(async (tx) => {
+      // Create user if doesn't exist (upsert)
+      await tx
+        .insert(users)
+        .values({ address: ownerAddress })
+        .onConflictDoNothing({ target: users.address });
 
-    const savedTokens = [];
+      const savedTokens = [];
 
-    // Process each token in the batch
-    for (let i = 0; i < tokenConfigs.length; i++) {
-      const tokenConfig = tokenConfigs[i];
-      const tokenResult = deploymentResult.tokens[i];
-      const tokenVestingContracts = deploymentResult.vestingContracts[i] || [];
+      // Process each token in the batch
+      for (let i = 0; i < tokenConfigs.length; i++) {
+        const tokenConfig = tokenConfigs[i];
+        const tokenResult = deploymentResult.tokens[i];
+        const tokenVestingContracts = deploymentResult.vestingContracts[i] || [];
 
-      // Save deployed token
-      const [savedToken] = await db
-        .insert(deployedTokens)
-        .values({
-          address: tokenResult.address,
-          name: tokenConfig.name,
-          symbol: tokenConfig.symbol,
-          totalSupply: tokenConfig.totalSupply,
-          decimals: tokenConfig.decimals,
-          ownerAddress: ownerAddress,
-          factoryTxHash: deploymentResult.transactionHash,
-          deployedAt: new Date(deploymentResult.deployedAt),
-          description: tokenConfig.description || null,
-          website: tokenConfig.website || null,
-          logo: tokenConfig.logo || null,
-        })
-        .returning();
+        // Save deployed token
+        const [savedToken] = await tx
+          .insert(deployedTokens)
+          .values({
+            address: tokenResult.address,
+            name: tokenConfig.name,
+            symbol: tokenConfig.symbol,
+            totalSupply: tokenConfig.totalSupply,
+            decimals: tokenConfig.decimals,
+            ownerAddress: ownerAddress,
+            factoryTxHash: deploymentResult.transactionHash,
+            deployedAt: new Date(deploymentResult.deployedAt),
+            description: tokenConfig.description || null,
+            website: tokenConfig.website || null,
+            logo: tokenConfig.logo || null,
+          })
+          .returning();
 
-      savedTokens.push({ ...savedToken, originalId: tokenConfig.id });
+        savedTokens.push({ ...savedToken, originalId: tokenConfig.id });
 
-      // Get beneficiaries for this token
-      const tokenBeneficiaries = beneficiaries.filter(
-        (b) => b.tokenId === tokenConfig.id
-      );
-
-      // Save vesting schedules for each beneficiary
-      for (let j = 0; j < tokenBeneficiaries.length; j++) {
-        const beneficiary = tokenBeneficiaries[j];
-        const schedule = vestingSchedules.find(
-          (s) =>
-            s.tokenId === tokenConfig.id && s.category === beneficiary.category
+        // Get beneficiaries for this token
+        const tokenBeneficiaries = beneficiaries.filter(
+          (b) => b.tokenId === tokenConfig.id
         );
 
-        if (!schedule) {
-          throw new Error(
-            `No vesting schedule found for beneficiary ${beneficiary.address} in category ${beneficiary.category}`
+        // Save vesting schedules for each beneficiary
+        for (let j = 0; j < tokenBeneficiaries.length; j++) {
+          const beneficiary = tokenBeneficiaries[j];
+          const schedule = vestingSchedules.find(
+            (s) =>
+              s.tokenId === tokenConfig.id && s.category === beneficiary.category
           );
+
+          if (!schedule) {
+            throw new Error(
+              `No vesting schedule found for beneficiary ${beneficiary.address} in category ${beneficiary.category}`
+            );
+          }
+
+          // Use the corresponding vesting contract address
+          const vestingContractAddress =
+            tokenVestingContracts[j] || tokenVestingContracts[0];
+
+          if (!vestingContractAddress) {
+            throw new Error(
+              `No vesting contract address found for beneficiary ${beneficiary.address}`
+            );
+          }
+
+          await tx.insert(vestingSchedulesTable).values({
+            tokenId: savedToken.id,
+            contractAddress: vestingContractAddress,
+            beneficiaryAddress: beneficiary.address,
+            totalAmount: beneficiary.amount,
+            cliffDuration: schedule.cliffMonths * 30 * 24 * 60 * 60, // Convert to seconds
+            vestingDuration: schedule.vestingMonths * 30 * 24 * 60 * 60, // Convert to seconds
+            startTime: new Date(deploymentResult.deployedAt),
+            releasedAmount: "0",
+            revoked: false,
+            category: beneficiary.category,
+          });
         }
-
-        // Use the corresponding vesting contract address
-        const vestingContractAddress =
-          tokenVestingContracts[j] || tokenVestingContracts[0];
-
-        if (!vestingContractAddress) {
-          throw new Error(
-            `No vesting contract address found for beneficiary ${beneficiary.address}`
-          );
-        }
-
-        await db.insert(vestingSchedulesTable).values({
-          tokenId: savedToken.id,
-          contractAddress: vestingContractAddress,
-          beneficiaryAddress: beneficiary.address,
-          totalAmount: beneficiary.amount,
-          cliffDuration: schedule.cliffMonths * 30 * 24 * 60 * 60, // Convert to seconds
-          vestingDuration: schedule.vestingMonths * 30 * 24 * 60 * 60, // Convert to seconds
-          startTime: new Date(deploymentResult.deployedAt),
-          releasedAmount: "0",
-          revoked: false,
-          category: beneficiary.category,
-        });
       }
-    }
 
-    return NextResponse.json({
-      success: true,
-      data: {
+      return {
         batchId: deploymentResult.batchId,
         savedTokens,
         totalTokens: tokenConfigs.length,
         totalVestingSchedules: beneficiaries.length,
-      },
+      };
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: result,
     });
   } catch (error) {
     console.error("Batch deployment API error:", error);

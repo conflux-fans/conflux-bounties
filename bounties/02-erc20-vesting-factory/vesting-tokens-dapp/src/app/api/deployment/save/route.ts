@@ -46,65 +46,84 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = saveDeploymentSchema.parse(body);
 
-    // Create user if doesn't exist (upsert)
-    await db
-      .insert(users)
-      .values({ address: data.userAddress })
-      .onConflictDoNothing({ target: users.address });
-
-    // Save deployed token
-    const [deployedToken] = await db
-      .insert(deployedTokens)
-      .values({
-        address: data.tokenAddress,
-        name: data.tokenConfig.name,
-        symbol: data.tokenConfig.symbol,
-        totalSupply: data.tokenConfig.totalSupply,
-        decimals: data.tokenConfig.decimals || 18,
-        ownerAddress: data.userAddress,
-        factoryTxHash: data.transactionHash,
-        description: data.tokenConfig.description,
-        website: data.tokenConfig.website,
-        logo: data.tokenConfig.logo,
-      })
-      .returning();
-
-    // Save vesting schedules
-    for (let i = 0; i < data.beneficiaries.length; i++) {
-      const beneficiary = data.beneficiaries[i];
-      const schedule = data.vestingSchedules.find(
-        (s) => s.category === beneficiary.category
-      )!;
-
-      // Create beneficiary user if doesn't exist
-      await db
+    // ✅ WRAP ALL DATABASE OPERATIONS IN A TRANSACTION
+    const result = await db.transaction(async (tx) => {
+      // Create user if doesn't exist (upsert)
+      await tx
         .insert(users)
-        .values({
-          address: beneficiary.address,
-          name: beneficiary.name,
-          email: beneficiary.email,
-        })
+        .values({ address: data.userAddress })
         .onConflictDoNothing({ target: users.address });
 
-      // Create vesting schedule
-      await db.insert(vestingSchedules).values({
-        tokenId: deployedToken.id,
-        contractAddress: data.vestingContracts[i],
-        beneficiaryAddress: beneficiary.address,
-        totalAmount: beneficiary.amount,
-        cliffDuration: schedule.cliffMonths * 30 * 24 * 60 * 60, // Convert to seconds
-        vestingDuration: schedule.vestingMonths * 30 * 24 * 60 * 60,
-        startTime: new Date(),
-        revocable: schedule.revocable,
-        category: beneficiary.category,
-        description: schedule.description,
-      });
-    }
+      // Save deployed token
+      const [deployedToken] = await tx
+        .insert(deployedTokens)
+        .values({
+          address: data.tokenAddress,
+          name: data.tokenConfig.name,
+          symbol: data.tokenConfig.symbol,
+          totalSupply: data.tokenConfig.totalSupply,
+          decimals: data.tokenConfig.decimals || 18,
+          ownerAddress: data.userAddress,
+          factoryTxHash: data.transactionHash,
+          description: data.tokenConfig.description,
+          website: data.tokenConfig.website,
+          logo: data.tokenConfig.logo,
+        })
+        .returning();
+
+      // Save vesting schedules
+      for (let i = 0; i < data.beneficiaries.length; i++) {
+        const beneficiary = data.beneficiaries[i];
+        const schedule = data.vestingSchedules.find(
+          (s) => s.category === beneficiary.category
+        );
+
+        // ✅ VALIDATE SCHEDULE EXISTS
+        if (!schedule) {
+          throw new Error(
+            `No vesting schedule found for category: ${beneficiary.category}`
+          );
+        }
+
+        // Create beneficiary user if doesn't exist
+        await tx
+          .insert(users)
+          .values({
+            address: beneficiary.address,
+            name: beneficiary.name,
+            email: beneficiary.email,
+          })
+          .onConflictDoNothing({ target: users.address });
+
+        // ✅ VALIDATE VESTING CONTRACT INDEX
+        if (i >= data.vestingContracts.length) {
+          throw new Error(
+            `Missing vesting contract for beneficiary at index ${i}`
+          );
+        }
+
+        // Create vesting schedule
+        await tx.insert(vestingSchedules).values({
+          tokenId: deployedToken.id,
+          contractAddress: data.vestingContracts[i],
+          beneficiaryAddress: beneficiary.address,
+          totalAmount: beneficiary.amount,
+          cliffDuration: schedule.cliffMonths * 30 * 24 * 60 * 60, // Convert to seconds
+          vestingDuration: schedule.vestingMonths * 30 * 24 * 60 * 60,
+          startTime: new Date(),
+          revocable: schedule.revocable,
+          category: beneficiary.category,
+          description: schedule.description,
+        });
+      }
+
+      return { tokenId: deployedToken.id };
+    });
 
     return NextResponse.json({
       success: true,
       message: "Deployment saved successfully",
-      tokenId: deployedToken.id,
+      tokenId: result.tokenId,
     });
   } catch (error) {
     console.error("Save deployment error:", error);
