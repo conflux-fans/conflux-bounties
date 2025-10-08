@@ -157,25 +157,36 @@ contract TokenVesting is Ownable, ReentrancyGuard {
      * @return Total vested amount
      */
     function vestedAmount() public view returns (uint256) {
+        // ✅ CLARITY: If vesting is revoked, no more tokens vest
         if (revoked) {
             return 0;
         }
 
         uint256 currentTime = block.timestamp;
         
-        // Before cliff ends, no tokens are vested
+        // ✅ VALIDATION: Ensure cliff is not longer than duration
+        require(duration > 0, "Duration must be greater than 0");
+        require(cliff <= duration, "Cliff cannot exceed duration");
+        
+        // ✅ CLARITY: Before cliff ends, no tokens are vested
         if (currentTime < start + cliff) {
             return 0;
         }
         
-        // After duration, all tokens are vested
+        // ✅ CLARITY: After duration, all tokens are vested
         if (currentTime >= start + duration) {
             return totalAmount;
         }
         
-        // During linear vesting period (after cliff but before end)
+        // ✅ CLARITY: During linear vesting period (after cliff but before end)
+        // Calculate how much time has passed since cliff ended
         uint256 timeElapsed = currentTime - start - cliff;
+        
+        // Calculate the total vesting duration (excluding cliff period)
         uint256 vestingDuration = duration - cliff;
+        
+        // ✅ VALIDATION: Prevent division by zero
+        require(vestingDuration > 0, "Vesting duration must be greater than 0");
         
         // Calculate linear portion: (timeElapsed / vestingDuration) * totalAmount
         uint256 linearAmount = (totalAmount * timeElapsed) / vestingDuration;
