@@ -21,6 +21,9 @@ contract VestedToken is ERC20, Ownable, Pausable {
 
     // Initialization flag for minimal proxy
     bool private _initialized;
+    
+    // ✅ FACTORY ADDRESS FOR ACCESS CONTROL
+    address public immutable factory;
 
     // Events
     event VestingContractAdded(address indexed vestingContract);
@@ -31,8 +34,11 @@ contract VestedToken is ERC20, Ownable, Pausable {
 
     /**
      * @dev Constructor for minimal proxy pattern - should not be called directly
+     * Sets the factory address to the deployer (TokenVestingFactory)
      */
     constructor() ERC20("", "") Ownable(msg.sender) {
+        // ✅ SET FACTORY ADDRESS - only factory can initialize clones
+        factory = msg.sender;
         // This constructor is only for the implementation contract
         // Actual initialization happens in initialize() function
     }
@@ -50,6 +56,8 @@ contract VestedToken is ERC20, Ownable, Pausable {
         uint256 totalSupply_,
         address owner_
     ) external {
+        // ✅ CRITICAL: ONLY FACTORY CAN INITIALIZE
+        require(msg.sender == factory, "Only factory can initialize");
         require(!_initialized, "Already initialized");
         require(bytes(name_).length > 0, "Name cannot be empty");
         require(bytes(symbol_).length > 0, "Symbol cannot be empty");

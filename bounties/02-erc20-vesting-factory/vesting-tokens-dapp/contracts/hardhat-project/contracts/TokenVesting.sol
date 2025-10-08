@@ -22,6 +22,9 @@ contract TokenVesting is Ownable, ReentrancyGuard {
 
     // Initialization flag for minimal proxy
     bool private _initialized;
+    
+    // ✅ FACTORY ADDRESS FOR ACCESS CONTROL
+    address public immutable factory;
 
     // Events
     event TokensReleased(address indexed beneficiary, uint256 amount);
@@ -37,8 +40,11 @@ contract TokenVesting is Ownable, ReentrancyGuard {
 
     /**
      * @dev Constructor for minimal proxy pattern - should not be called directly
+     * Sets the factory address to the deployer (TokenVestingFactory)
      */
     constructor() Ownable(msg.sender) {
+        // ✅ SET FACTORY ADDRESS - only factory can initialize clones
+        factory = msg.sender;
         // This constructor is only for the implementation contract
         // Actual initialization happens in initialize() function
     }
@@ -62,6 +68,8 @@ contract TokenVesting is Ownable, ReentrancyGuard {
         bool _revocable,
         address _owner
     ) external {
+        // ✅ CRITICAL: ONLY FACTORY CAN INITIALIZE
+        require(msg.sender == factory, "Only factory can initialize");
         require(!_initialized, "Already initialized");
         require(_token != address(0), "Invalid token address");
         require(_beneficiary != address(0), "Invalid beneficiary address");
