@@ -1,0 +1,83 @@
+# Configuration files
+*.config.js
+*.config.ts
+jest.setup.js
+jest.config.js
+next.config.js
+tailwind.config.js
+postcss.config.js
+
+# Type definition files
+*.d.ts
+*.types.ts
+*.types.js
+
+# Generated files
+dist/
+build/
+generated/
+.next/
+
+# Test files
+*.test.ts
+*.test.tsx
+*.test.js
+*.test.jsx
+*.spec.ts
+*.spec.tsx
+*.spec.js
+*.spec.jsx
+
+# Test utilities and fixtures
+**/__mocks__/**
+**/__fixtures__/**
+**/test-utils.tsx
+**/test-utils.ts
+
+# Re-export files
+**/index.ts
+**/index.js
+**/ui/index.ts
+**/components/index.ts
+
+# Constants and configuration
+**/constants.ts
+**/constants.js
+**/config.local.ts
+**/config.prod.ts
+**/config.dev.ts
+
+# Environment files
+.env*
+.env.local
+.env.development
+.env.production
+
+# Build artifacts
+**/node_modules/**
+**/.git/**
+
+# Documentation
+**/*.md
+**/*.txt
+**/*.log
+
+# Coverage reports
+coverage/
+*.lcov
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

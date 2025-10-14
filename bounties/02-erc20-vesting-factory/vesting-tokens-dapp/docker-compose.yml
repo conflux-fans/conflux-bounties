@@ -1,0 +1,147 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: vesting-dapp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vesting_dapp
+      POSTGRES_USER: vesting_user
+      POSTGRES_PASSWORD: vesting_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./drizzle/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - vesting-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vesting_user -d vesting_dapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: vesting-dapp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - vesting-network
+    command: redis-server --appendonly yes
+
+  # Vesting DApp (Development)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: vesting-dapp
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://vesting_user:vesting_password@postgres:5432/vesting_dapp
+      - REDIS_URL=redis://redis:6379
+      - NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=${NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID}
+      - NEXT_PUBLIC_ALCHEMY_API_KEY=${NEXT_PUBLIC_ALCHEMY_API_KEY}
+      - NEXT_PUBLIC_MAINNET_FACTORY_ADDRESS=${NEXT_PUBLIC_MAINNET_FACTORY_ADDRESS}
+      - NEXT_PUBLIC_SEPOLIA_FACTORY_ADDRESS=${NEXT_PUBLIC_SEPOLIA_FACTORY_ADDRESS}
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - vesting-network
+    command: npm run dev
+
+  # Vesting DApp (Production)
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: vesting-dapp-prod
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://vesting_user:vesting_password@postgres:5432/vesting_dapp
+      - REDIS_URL=redis://redis:6379
+      - NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=${NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID}
+      - NEXT_PUBLIC_ALCHEMY_API_KEY=${NEXT_PUBLIC_ALCHEMY_API_KEY}
+      - NEXT_PUBLIC_MAINNET_FACTORY_ADDRESS=${NEXT_PUBLIC_MAINNET_FACTORY_ADDRESS}
+      - NEXT_PUBLIC_SEPOLIA_FACTORY_ADDRESS=${NEXT_PUBLIC_SEPOLIA_FACTORY_ADDRESS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - vesting-network
+    profiles:
+      - production
+
+  # Database Admin Tool (pgAdmin)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: vesting-dapp-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@vestingdapp.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - vesting-network
+    profiles:
+      - tools
+
+  # Database Migration Service
+  migrate:
+    image: node:18-alpine
+    container_name: vesting-dapp-migrate
+    working_dir: /app
+    environment:
+      - DATABASE_URL=postgresql://vesting_user:vesting_password@postgres:5432/vesting_dapp
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - vesting-network
+    command: sh -c "npm install && npm run db:generate && npm run db:migrate"
+    profiles:
+      - setup
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  vesting-network:
+    driver: bridge 
