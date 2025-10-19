@@ -1,0 +1,37 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Web3Provider Component Snapshot Testing matches snapshot with complex children 1`] = `
+<div
+  data-testid="wagmi-provider"
+>
+  <div
+    data-testid="query-client-provider"
+  >
+    <div>
+      <h1>
+        Title
+      </h1>
+      <p>
+        Paragraph
+      </p>
+      <button>
+        Button
+      </button>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`Web3Provider Component Snapshot Testing matches snapshot with simple children 1`] = `
+<div
+  data-testid="wagmi-provider"
+>
+  <div
+    data-testid="query-client-provider"
+  >
+    <div>
+      Simple Content
+    </div>
+  </div>
+</div>
+`;

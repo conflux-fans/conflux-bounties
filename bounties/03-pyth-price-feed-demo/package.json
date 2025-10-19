@@ -1,0 +1,39 @@
+{
+  "name": "pyth-conflux-dapp",
+  "version": "1.0.0",
+  "description": "pyth-conflux-dapp",
+  "private": true,
+  "workspaces": ["contracts", "frontend", "backend"],
+  "scripts": {
+    "install:all": "npm install",
+    "clean": "npm run clean:contracts && npm run clean:frontend && npm run clean:backend",
+    "clean:contracts": "cd contracts && npm run clean",
+    "clean:frontend": "cd frontend && rm -rf dist node_modules",
+    "clean:backend": "cd backend && rm -rf dist node_modules",
+    "build": "npm run build:contracts && npm run build:frontend && npm run build:backend",
+    "build:contracts": "cd contracts && npm run compile",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "deploy:testnet": "cd contracts && npm run deploy:testnet",
+    "docker:build": "docker-compose -f docker/docker-compose.yml build",
+    "docker:up": "docker-compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker-compose -f docker/docker-compose.yml down",
+    "docker:logs": "docker-compose -f docker/docker-compose.yml logs -f",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "test": "npm run test -w frontend && npm run test -w backend && (npm run -w contracts test:contracts || npm run -w contracts coverage || npm run -w contracts test)",
+    "test:coverage": "npm run test:coverage -w frontend && npm run test:coverage -w backend && (npm run -w contracts coverage || npm run -w contracts test:contracts || npm run -w contracts test)"
+  },
+  "keywords": ["pyth","oracle","conflux","defi","blockchain","smart-contracts"],
+  "author": "AmirMP12",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/AmirMP12/pyth-oracle-dapp.git" },
+  "bugs": { "url": "https://github.com/AmirMP12/pyth-oracle-dapp/issues" },
+  "homepage": "https://github.com/AmirMP12/pyth-oracle-dapp#readme",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3",
+    "nyc": "^15.1.0"
+  }
+}

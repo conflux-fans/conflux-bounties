@@ -1,0 +1,210 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Layout Component Snapshot Testing matches snapshot with basic children 1`] = `
+<div
+  class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100"
+>
+  <header
+    class="bg-white shadow-md"
+  >
+    <div
+      class="container mx-auto px-4 py-4"
+    >
+      <div
+        class="flex items-center justify-between"
+      >
+        <div
+          class="flex items-center space-x-3"
+        >
+          <div
+            class="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center bg-white"
+          >
+            <img
+              alt="Logo"
+              class="w-full h-full object-contain"
+              src="/confi.png"
+            />
+          </div>
+          <div>
+            <h1
+              class="text-2xl font-bold text-gray-900"
+            >
+              Pyth Price Feed
+            </h1>
+            <p
+              class="text-sm text-gray-600"
+            >
+              Conflux eSpace Integration
+            </p>
+          </div>
+        </div>
+        <div
+          data-testid="wallet-connect"
+        >
+          WalletConnect Mock
+        </div>
+      </div>
+    </div>
+  </header>
+  <main
+    class="container mx-auto px-4 py-8"
+  >
+    <div
+      data-testid="test-child"
+    >
+      Test Children Content
+    </div>
+  </main>
+  <footer
+    class="bg-white mt-12 border-t border-gray-200"
+  >
+    <div
+      class="container mx-auto px-4 py-6"
+    >
+      <div
+        class="flex items-center justify-between text-sm text-gray-600"
+      >
+        <div>
+          <p>
+            Pyth Price Feed Demo Dapp - Testing Purpose
+          </p>
+        </div>
+        <div
+          class="flex space-x-6"
+        >
+          <a
+            class="hover:text-blue-600"
+            href="https://docs.pyth.network"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Pyth Docs
+          </a>
+          <a
+            class="hover:text-blue-600"
+            href="https://doc.confluxnetwork.org"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Conflux Docs
+          </a>
+          <a
+            class="hover:text-blue-600"
+            href="https://github.com/AmirMP12"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
+`;
+
+exports[`Layout Component Snapshot Testing matches snapshot with complex children 1`] = `
+<div
+  class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100"
+>
+  <header
+    class="bg-white shadow-md"
+  >
+    <div
+      class="container mx-auto px-4 py-4"
+    >
+      <div
+        class="flex items-center justify-between"
+      >
+        <div
+          class="flex items-center space-x-3"
+        >
+          <div
+            class="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center bg-white"
+          >
+            <img
+              alt="Logo"
+              class="w-full h-full object-contain"
+              src="/confi.png"
+            />
+          </div>
+          <div>
+            <h1
+              class="text-2xl font-bold text-gray-900"
+            >
+              Pyth Price Feed
+            </h1>
+            <p
+              class="text-sm text-gray-600"
+            >
+              Conflux eSpace Integration
+            </p>
+          </div>
+        </div>
+        <div
+          data-testid="wallet-connect"
+        >
+          WalletConnect Mock
+        </div>
+      </div>
+    </div>
+  </header>
+  <main
+    class="container mx-auto px-4 py-8"
+  >
+    <div>
+      <h1>
+        Test Page
+      </h1>
+      <p>
+        Test content
+      </p>
+    </div>
+  </main>
+  <footer
+    class="bg-white mt-12 border-t border-gray-200"
+  >
+    <div
+      class="container mx-auto px-4 py-6"
+    >
+      <div
+        class="flex items-center justify-between text-sm text-gray-600"
+      >
+        <div>
+          <p>
+            Pyth Price Feed Demo Dapp - Testing Purpose
+          </p>
+        </div>
+        <div
+          class="flex space-x-6"
+        >
+          <a
+            class="hover:text-blue-600"
+            href="https://docs.pyth.network"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Pyth Docs
+          </a>
+          <a
+            class="hover:text-blue-600"
+            href="https://doc.confluxnetwork.org"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Conflux Docs
+          </a>
+          <a
+            class="hover:text-blue-600"
+            href="https://github.com/AmirMP12"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
+`;
