@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_BACKEND_URL=http://backend:3000
+      - VITE_WS_URL=ws://backend:3000
+      - VITE_CONFLUX_RPC=https://evm.confluxrpc.com
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - PYTH_HERMES_URL=https://hermes.pyth.network
+      - CONFLUX_RPC_URL=https://evm.confluxrpc.com
+      - LOG_LEVEL=info
+    volumes:
+      - backend-logs:/app/logs
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  backend-logs:
+  redis-data:
+
+networks:
+  app-network:
+    driver: bridge
