@@ -1,0 +1,19 @@
+{
+  "name": "@conflux-registry/sdk",
+  "version": "1.0.0",
+  "description": "SDK for Conflux Contract Metadata Registry",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch"
+  },
+  "keywords": ["conflux", "registry", "metadata", "sdk"],
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}
