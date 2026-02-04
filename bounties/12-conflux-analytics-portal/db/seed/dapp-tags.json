@@ -1,0 +1,32 @@
+[
+  {
+    "contractAddress": "0x0000000000000000000000000000000000000801",
+    "dappName": "Swappi DEX",
+    "category": "DeFi",
+    "logoUrl": null
+  },
+  {
+    "contractAddress": "0x0000000000000000000000000000000000000802",
+    "dappName": "Nucleon Staking",
+    "category": "DeFi",
+    "logoUrl": null
+  },
+  {
+    "contractAddress": "0x0000000000000000000000000000000000000803",
+    "dappName": "ConfluxHub Bridge",
+    "category": "Infrastructure",
+    "logoUrl": null
+  },
+  {
+    "contractAddress": "0x0000000000000000000000000000000000000804",
+    "dappName": "Confi NFT Market",
+    "category": "NFT",
+    "logoUrl": null
+  },
+  {
+    "contractAddress": "0x0000000000000000000000000000000000000805",
+    "dappName": "Goledo Lending",
+    "category": "DeFi",
+    "logoUrl": null
+  }
+]
