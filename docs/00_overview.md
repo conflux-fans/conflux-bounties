@@ -1,8 +1,8 @@
-# Conflux Developer Bounties Initiative 2025 - Overview
+# Conflux Bounties Program - Overview
 
 ## Purpose & Vision
 
-The Conflux Bounties Initiative is a rolling incentive program designed to:
+The Conflux Bounties Program is a rolling incentive program designed to:
 
 - Solve real developer challenges in the Conflux ecosystem
 - Build open-source infrastructure that benefits the entire community
@@ -26,3 +26,10 @@ The Conflux Bounties Initiative is a rolling incentive program designed to:
 - Open Source Benefits - All bounty solutions become open source for everyone to use
 - Knowledge Sharing - Learn from implementations and contribute to discussions
 - Ecosystem Growth - Help build the tools and infrastructure that benefit all Conflux developers
+
+## Bounty Types
+
+To maximize ecosystem value, we categorize bounties into two types:
+
+1. **Standard Bounties**: Well-scoped projects with clear deliverables and acceptance criteria. These are expected to result in production-ready or near-production systems.
+2. **Exploratory Bounties**: Higher-risk, experimental projects intended to stimulate community creativity and surface new architectural ideas. These are evaluated on conceptual soundness and learning value rather than operational maturity.

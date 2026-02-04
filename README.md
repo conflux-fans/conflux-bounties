@@ -1,6 +1,9 @@
-# Conflux Bounties Initiative 2025
+# Conflux Bounties Program
 
-This repository hosts the Conflux Developer Bounties program for 2025. It provides open-source, well-scoped projects and incentives for developers to build tools, SDKs, integrations, and infrastructure that benefit the Conflux ecosystem.
+> [!IMPORTANT]
+> **Experimental & Non-Production**: All bounty projects and their resulting codebases are provided for educational and community-building purposes. They should be considered experimental and are not intended for use in production environments without further security auditing and refinement.
+
+This repository hosts the Conflux Bounties Program. It provides open-source, well-scoped projects and incentives for developers to build tools, SDKs, integrations, and infrastructure that benefit the Conflux ecosystem.
 
 ## How It Works
 - Browse and claim bounties in the `bounties/` directory
@@ -10,7 +13,7 @@ This repository hosts the Conflux Developer Bounties program for 2025. It provid
 
 ## Repository Structure
 ```
-conflux-bounties-2025/
+conflux-bounties/
 ├─ .github/                # Issue/PR templates, CI workflows
 ├─ docs/                   # Handbook, rules, guides, FAQ
 ├─ bounties/               # One folder per bounty

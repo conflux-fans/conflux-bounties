@@ -2,14 +2,17 @@
 
 ## General Questions
 
-### What is the Conflux Bounties Initiative?
-The Conflux Bounties Initiative is a program designed to incentivize developers to build open-source tools, libraries, and solutions that benefit the entire Conflux ecosystem.
+### What is the Conflux Bounties Program?
+The Conflux Bounties Program is a program designed to incentivize developers to build open-source tools, libraries, and solutions that benefit the entire Conflux ecosystem.
 
 ### Who can participate?
 Anyone can participate. We welcome developers of all skill levels - bounties are tagged by difficulty level.
 
 ### What types of projects are included?
-Bounties focus on developer tools, SDKs, integrations, documentation, and infrastructure that solve real pain points in the Conflux ecosystem.
+Bounties focus on developer tools, SDKs, integrations, documentation, and infrastructure that solve real pain points in the Conflux ecosystem. We offer both **Standard Bounties** (production-focused) and **Exploratory Bounties** (experimental/architectural).
+
+### What is an Exploratory Bounty?
+Exploratory bounties are higher-risk projects aimed at stimulating community creativity. They are not expected to be production-ready. Instead, we evaluate them based on the quality of their architectural ideas, conceptual soundness, and the learning value they provide to the community.
 
 ## Payment & Rewards
 

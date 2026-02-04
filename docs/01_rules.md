@@ -18,9 +18,10 @@
 
 - Open source license: MIT, Apache 2.0, or GPL v3
 - Documentation: README with setup, usage, and examples
-- Testing: Minimum 80% code coverage
+- Testing: Minimum 80% code coverage (Standard bounties) or as specified in the bounty spec
 - Code quality: Passes linting and security scans
 - Dependencies: Use stable, well-maintained packages
+- **Differentiated Expectations**: Standard bounties are evaluated on completeness and production readiness. Exploratory bounties are evaluated on conceptual soundness, architectural design, and learning value.
 
 ## Payment Information
 
