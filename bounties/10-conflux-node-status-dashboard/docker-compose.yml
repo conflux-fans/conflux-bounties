@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "3001:3001"
+    volumes:
+      - db-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_PATH=/app/data/dashboard.db
+      - METRIC_INTERVAL_MS=5000
+      - RETENTION_DAYS=30
+      - CONFLUX_CORE_RPC_URLS=https://main.confluxrpc.com,https://test.confluxrpc.com
+      - CONFLUX_ESPACE_RPC_URLS=https://evm.confluxrpc.com,https://evmtestnet.confluxrpc.com
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    ports:
+      - "3000:3000"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  db-data:
