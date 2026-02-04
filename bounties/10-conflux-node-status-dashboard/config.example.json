@@ -1,0 +1,69 @@
+{
+  "nodes": [
+    {
+      "name": "Conflux Core Mainnet",
+      "rpcUrl": "https://main.confluxrpc.com",
+      "spaceType": "core",
+      "enabled": true
+    },
+    {
+      "name": "Conflux eSpace Mainnet",
+      "rpcUrl": "https://evm.confluxrpc.com",
+      "spaceType": "espace",
+      "enabled": true
+    },
+    {
+      "name": "Conflux Core Testnet",
+      "rpcUrl": "https://test.confluxrpc.com",
+      "spaceType": "core",
+      "enabled": true
+    },
+    {
+      "name": "Conflux eSpace Testnet",
+      "rpcUrl": "https://evmtestnet.confluxrpc.com",
+      "spaceType": "espace",
+      "enabled": true
+    }
+  ],
+  "alertRules": [
+    {
+      "name": "High Sync Lag",
+      "metric": "sync_lag",
+      "condition": "gt",
+      "threshold": 500,
+      "severity": "critical",
+      "cooldownMs": 300000,
+      "channels": ["console"]
+    },
+    {
+      "name": "Low Peer Count",
+      "metric": "peer_count",
+      "condition": "lt",
+      "threshold": 5,
+      "severity": "warning",
+      "cooldownMs": 600000,
+      "channels": ["console"]
+    },
+    {
+      "name": "High RPC Latency",
+      "metric": "rpc_latency",
+      "condition": "gt",
+      "threshold": 3000,
+      "severity": "warning",
+      "cooldownMs": 300000,
+      "channels": ["console"]
+    },
+    {
+      "name": "Consecutive RPC Failures",
+      "metric": "rpc_latency",
+      "condition": "consecutive_failures",
+      "threshold": 3,
+      "severity": "critical",
+      "cooldownMs": 600000,
+      "channels": ["console"]
+    }
+  ],
+  "pollingIntervalMs": 5000,
+  "retentionDays": 30,
+  "maintenanceMode": false
+}

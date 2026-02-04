@@ -1,0 +1,36 @@
+# ── Build stage ──
+FROM node:18-alpine AS builder
+RUN apk add --no-cache python3 make g++
+RUN corepack enable && corepack prepare pnpm@10 --activate
+WORKDIR /app
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .pnpm-approve-builds ./
+COPY server/package.json server/
+COPY tsconfig.base.json ./
+
+RUN pnpm install --frozen-lockfile --filter server
+
+COPY server/ server/
+RUN pnpm --filter server build
+
+# ── Production stage ──
+FROM node:18-alpine AS production
+RUN apk add --no-cache python3 make g++
+RUN corepack enable && corepack prepare pnpm@10 --activate
+WORKDIR /app
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .pnpm-approve-builds ./
+COPY server/package.json server/
+
+RUN pnpm install --frozen-lockfile --filter server --prod
+
+COPY --from=builder /app/server/dist server/dist
+COPY config.example.json config.json
+
+RUN mkdir -p /app/data
+
+ENV NODE_ENV=production
+ENV DATABASE_PATH=/app/data/dashboard.db
+EXPOSE 3001
+
+CMD ["node", "server/dist/index.js"]
