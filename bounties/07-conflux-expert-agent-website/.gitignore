@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+newui.js
+plan1.md 
+
+# Environment variables (contains secrets!)
+.env
+.env.local
+.env.*.local
+data/
+# OS files
+.DS_Store
+Thumbs.db
+
+# Processed data (can be regenerated)
+# data/processed/embeddings.json
