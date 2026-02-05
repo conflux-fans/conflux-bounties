@@ -1,0 +1,28 @@
+{
+  "name": "confluxpedia",
+  "version": "1.0.0",
+  "description": "Conflux Expert Agent Website",
+  "type": "module",
+  "scripts": {
+    "extract": "node scripts/extract.js",
+    "chunk": "node scripts/chunk.js",
+    "embed": "node scripts/embed.js",
+    "upload": "node scripts/upload.js",
+    "search": "node scripts/search.js",
+    "pipeline": "npm run chunk && npm run embed && npm run upload"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/core": "^1.1.19",
+    "@langchain/textsplitters": "^1.0.1",
+    "@supabase/supabase-js": "^2.94.1",
+    "dotenv": "^17.2.3",
+    "glob": "^10.3.10",
+    "gray-matter": "^4.0.3",
+    "langchain": "^1.2.17",
+    "openai": "^6.17.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "unist-util-visit": "^5.1.0"
+  }
+}
