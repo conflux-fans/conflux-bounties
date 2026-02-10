@@ -1,0 +1,84 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL 16 ──
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-x402}
+      POSTGRES_USER: ${DB_USER:-x402}
+      POSTGRES_PASSWORD: ${DB_PASS:-x402_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-x402}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── x402 Facilitator ──
+  facilitator:
+    build:
+      context: ./facilitator
+      dockerfile: Dockerfile
+    environment:
+      - NETWORK=${NETWORK:-testnet}
+      - RELAYER_PRIVATE_KEY=${RELAYER_PRIVATE_KEY}
+      - FACILITATOR_KEY=${FACILITATOR_KEY}
+      - FACILITATOR_PORT=3851
+      - PAYMENT_CONTRACT_TESTNET=${PAYMENT_CONTRACT_TESTNET}
+      - PAYMENT_CONTRACT_MAINNET=${PAYMENT_CONTRACT_MAINNET}
+    ports:
+      - "3851:3851"
+    restart: unless-stopped
+
+  # ── Seller API (Hono) ──
+  seller:
+    build:
+      context: ./seller
+      dockerfile: Dockerfile
+    environment:
+      - NETWORK=${NETWORK:-testnet}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-x402}
+      - DB_USER=${DB_USER:-x402}
+      - DB_PASS=${DB_PASS:-x402_secret}
+      - TREASURY_ADDRESS=${TREASURY_ADDRESS}
+      - FACILITATOR_KEY=${FACILITATOR_KEY}
+      - FACILITATOR_HOST=facilitator
+      - FACILITATOR_PORT=3851
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-3-5-haiku-20241022}
+      - SELLER_PORT=3852
+      - AGENT_PRIVATE_KEY=${AGENT_PRIVATE_KEY}
+      - PAYMENT_CONTRACT_TESTNET=${PAYMENT_CONTRACT_TESTNET}
+      - PAYMENT_CONTRACT_MAINNET=${PAYMENT_CONTRACT_MAINNET}
+    ports:
+      - "3852:3852"
+    depends_on:
+      db:
+        condition: service_healthy
+      facilitator:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── Next.js Frontend ──
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - NEXT_PUBLIC_SELLER_URL=${NEXT_PUBLIC_SELLER_URL:-http://localhost:3852}
+      - NEXT_PUBLIC_DEFAULT_NETWORK=${NEXT_PUBLIC_DEFAULT_NETWORK:-testnet}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - seller
+    restart: unless-stopped
+
+volumes:
+  pgdata:

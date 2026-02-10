@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [seller, facilitator, agent, frontend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install
+      - run: npm run build
+
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install
+      - run: npx hardhat compile
+      - run: npx hardhat test
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [lint-and-build, contracts]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker images
+        run: |
+          docker compose build --no-cache
+        env:
+          NETWORK: testnet
+          RELAYER_PRIVATE_KEY: "0x0000000000000000000000000000000000000000000000000000000000000001"
+          TREASURY_ADDRESS: "0x0000000000000000000000000000000000000001"
+          FACILITATOR_KEY: "ci-test-key"
+          CLAUDE_API_KEY: "sk-ant-fake"
+          PAYMENT_CONTRACT_TESTNET: "0x0000000000000000000000000000000000000001"
+          PAYMENT_CONTRACT_MAINNET: "0x0000000000000000000000000000000000000001"
