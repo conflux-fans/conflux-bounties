@@ -1,17 +1,15 @@
 #!/usr/bin/env node
-/**
- * Invoice expiry worker — standalone script
- *
- * Expires all pending invoices that have passed their deadline.
- * Run via cron, Docker, or manually:
- *
- *   npx tsx seller/src/workers/invoice-expiry.ts
- *
- * Recommended cron schedule (every 5 minutes):
- *   */5 * * * * cd /path/to/x402-fullstack && npx tsx seller/src/workers/invoice-expiry.ts
- *
- * @package x402-fullstack
- */
+//
+// Invoice expiry worker — standalone script
+//
+// Expires all pending invoices that have passed their deadline.
+// Run via cron, Docker, or manually:
+//
+//   npx tsx seller/src/workers/invoice-expiry.ts
+//
+// Recommended cron schedule (every 5 minutes):
+//   */5 * * * * cd /path/to/x402-fullstack && npx tsx seller/src/workers/invoice-expiry.ts
+//
 
 import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
