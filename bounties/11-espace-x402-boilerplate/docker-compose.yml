@@ -3,7 +3,7 @@ version: "3.9"
 services:
   # ── PostgreSQL 16 ──
   db:
-    image: postgres:16-alpine
+    image: postgres:16.11-alpine
     environment:
       POSTGRES_DB: ${DB_NAME:-x402}
       POSTGRES_USER: ${DB_USER:-x402}

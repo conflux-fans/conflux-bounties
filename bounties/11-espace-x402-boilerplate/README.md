@@ -8,10 +8,10 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6.svg)](https://www.typescriptlang.org/)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636.svg)](https://soliditylang.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)](https://www.postgresql.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16.11-336791.svg)](https://www.postgresql.org/)
 [![Conflux eSpace](https://img.shields.io/badge/Conflux_eSpace-Testnet_%2B_Mainnet-00BFFF.svg)](https://confluxnetwork.org/)
 [![x402](https://img.shields.io/badge/x402-V2-FF6B00.svg)](https://www.x402.org)
-[![x402scan](https://img.shields.io/badge/x402scan-Registered-8B5CF6.svg)](https://www.x402scan.com/server/10e92a74-5040-4b72-818d-71044d022b72)
+[![x402](https://img.shields.io/badge/.well--known%2Fx402-Discovery-8B5CF6.svg)](https://confluxarena.org/.well-known/x402)
 
 ---
 
@@ -42,7 +42,7 @@
 | **Smart Contract** | Solidity 0.8.24 + Hardhat | Universal payment receiver — deployed on Testnet & Mainnet |
 | **Web Frontend** | Next.js 14 + Tailwind CSS | Timeline UI, multi-wallet modal (MetaMask, Fluent, OKX), network/token selector |
 | **AI Agent** | TypeScript CLI | Autonomous 5-step payment flow with spending caps |
-| **Database** | PostgreSQL 16 | Payment logs, invoices, rate limits, AI queries |
+| **Database** | PostgreSQL 16.11 | Payment logs, invoices, rate limits, AI queries |
 
 ---
 
@@ -70,7 +70,7 @@ graph TD
         TOKENS["10 Tokens<br/>CFX · USDT0 · USDT · USDC<br/>BTC · ETH · AxCNH"]
     end
 
-    subgraph DB["PostgreSQL 16"]
+    subgraph DB["PostgreSQL 16.11"]
         TABLES["x402_payments<br/>x402_invoices<br/>x402_ai_queries<br/>x402_rate_limits"]
     end
 
@@ -110,8 +110,9 @@ x402-fullstack/
 │   └── src/
 │       ├── config/            # networks.ts, database.ts, env.ts
 │       ├── routes/            # ai.ts, data.ts, health.ts, payments.ts
-│       ├── services/          # payments.ts (logging, history, stats)
+│       ├── services/          # payments.ts, invoices.ts
 │       ├── middleware/         # x402.ts, rateLimiter.ts
+│       ├── workers/           # invoice-expiry.ts (standalone cron)
 │       ├── types.ts           # Typed Hono context (X402Env)
 │       └── index.ts           # Server entry
 ├── facilitator/               # Payment settlement service
@@ -126,8 +127,8 @@ x402-fullstack/
 ├── agent/                     # Autonomous CLI agent
 │   └── src/index.ts           # 5-step payment flow
 ├── contracts/                 # Solidity + Hardhat
-│   ├── contracts/             # X402PaymentReceiver.sol
-│   ├── test/                  # Hardhat tests
+│   ├── contracts/             # X402PaymentReceiver.sol, X402EscrowReceiver.sol
+│   ├── test/                  # 51 Hardhat tests
 │   └── scripts/deploy.ts      # Deploy script
 ├── database/schema.sql        # PostgreSQL 16 (4 tables)
 ├── .well-known/x402           # Discovery document
@@ -460,6 +461,65 @@ AGENT_PRIVATE_KEY=0x... npx tsx src/index.ts "Explain x402"
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Agent Demo Output
+
+```
+  ╔══════════════════════════════════════════════╗
+  ║   x402 Fullstack — AI Agent Demo             ║
+  ║   Multi-token payment on Conflux eSpace      ║
+  ╚══════════════════════════════════════════════╝
+
+  STEP 1/5   🌐  Requesting AI API...
+  ──────────────────────────────────────────────────
+  GET         http://localhost:3852/ai?q=What%20is...
+
+  HTTP 402   Payment Required
+  Token           CFX (native)
+  Price           0.001 CFX
+  Pay to          0x2E5C3F27...
+  Chain           71
+  Spend cap       0.001 / 1.0 CFX
+
+  STEP 2/5   💰  Connecting agent wallet...
+  ──────────────────────────────────────────────────
+  Agent           0x2E5C...190F
+  Balance         698.247 CFX
+  ✓ Sufficient balance
+
+  STEP 3/5   ✍️   Preparing native payment...
+  ──────────────────────────────────────────────────
+  Action          Sending CFX payment...
+  TX              0xa1b2c3d4e5f6...
+
+  ✓ Payment prepared
+
+  STEP 4/5   🚀  Sending paid request...
+  ──────────────────────────────────────────────────
+
+  HTTP 200 — PAID & SETTLED
+
+  STEP 5/5   ✨  Result
+  ──────────────────────────────────────────────────
+  TX Hash         0xa1b2c3d4e5f67890abcdef1234567890abcdef12
+  Payer           0x2E5C3F27dE0284D46650963c9F09c9C16cD0190F
+  Amount          0.001 CFX
+  Model           claude-3-5-haiku-20241022
+  Tokens          187
+  Explorer        https://evmtestnet.confluxscan.org/tx/0xa1b2...
+
+  AI Answer:
+
+  Conflux Network is a high-throughput, fully decentralized public
+  blockchain that features a unique Tree-Graph consensus mechanism
+  combining Proof of Work (PoW) and Proof of Stake (PoS). It supports
+  two execution environments: Core Space (Conflux-native) and eSpace
+  (EVM-compatible), enabling seamless interoperability with Ethereum
+  tooling while maintaining low fees and high TPS.
+
+  ──────────────────────────────────────────────────
+  Powered by x402 Protocol on Conflux eSpace
+```
+
 ---
 
 ## API Reference
@@ -593,11 +653,113 @@ AGENT_PRIVATE_KEY=0x... npx tsx src/index.ts "Explain x402"
 | Facilitator | TypeScript + ethers.js 6 |
 | Frontend | Next.js 14 + Tailwind CSS |
 | Agent | TypeScript CLI + ethers.js 6 |
-| Database | PostgreSQL 16 |
+| Database | PostgreSQL 16.11 |
 | Smart Contract | Solidity 0.8.24 + Hardhat |
 | Blockchain | Conflux eSpace (Testnet 71 + Mainnet 1030) |
 | CI/CD | GitHub Actions (6 jobs) |
 | Deploy | Docker Compose |
+
+---
+
+## Escrow Variant (Refund Support)
+
+In addition to the instant-settlement `X402PaymentReceiver`, the repository includes **`X402EscrowReceiver`** — an escrow variant that holds payments until explicitly released or refunded.
+
+### When to Use
+
+| Contract | Use Case |
+|----------|----------|
+| `X402PaymentReceiver` | Instant settlement — funds go directly to treasury (default) |
+| `X402EscrowReceiver` | Escrow + refund — funds held until seller releases or refunds |
+
+### Payment Lifecycle
+
+```
+Buyer  → holdNative(invoiceId){value}       → Status: Held
+Buyer  → holdToken(token, amount, invoiceId) → Status: Held
+
+Owner  → releasePayment(invoiceId)           → Status: Released (funds → treasury)
+Owner  → refundPayment(invoiceId)            → Status: Refunded (funds → payer)
+```
+
+### Functions
+
+| Function | Caller | Description |
+|----------|--------|-------------|
+| `holdNative(invoiceId)` | Buyer | Hold CFX in escrow |
+| `holdToken(token, amount, invoiceId)` | Buyer | Hold ERC-20 in escrow |
+| `releasePayment(invoiceId)` | Owner | Release held funds to treasury |
+| `refundPayment(invoiceId)` | Owner | Return held funds to payer |
+| `getEscrow(invoiceId)` | Anyone | View escrow status (Held/Released/Refunded) |
+
+### Events
+
+```solidity
+event PaymentHeld(bytes32 indexed invoiceId, address indexed payer, address token, uint256 amount);
+event PaymentReleased(bytes32 indexed invoiceId, address indexed payer, uint256 amount);
+event PaymentRefunded(bytes32 indexed invoiceId, address indexed payer, uint256 amount);
+```
+
+### Tests
+
+27 Hardhat tests covering hold, release, refund, edge cases (duplicates, already released/refunded), and admin functions. Combined with the base contract: **51 tests total**.
+
+---
+
+## Invoice Lifecycle
+
+The `x402_invoices` table tracks the lifecycle of every 402 challenge:
+
+```
+pending → paid     (settled successfully)
+pending → expired  (past deadline, no payment)
+```
+
+### Invoice Service (`seller/src/services/invoices.ts`)
+
+```typescript
+import { createInvoice, markInvoicePaid, expireInvoices } from '../services/invoices.js';
+
+// When issuing a 402 challenge:
+createInvoice(invoiceId, 'CFX', amount, 71, 'eip155:71', '/ai').catch(() => {});
+
+// After successful settlement:
+markInvoicePaid(invoiceId, payerAddress).catch(() => {});
+```
+
+All functions are **fire-and-forget safe** — errors are logged but never thrown, so the payment flow is never disrupted.
+
+### Expiry Worker (`seller/src/workers/invoice-expiry.ts`)
+
+Standalone script that expires stale invoices:
+
+```bash
+# Run manually
+npx tsx seller/src/workers/invoice-expiry.ts
+
+# Cron (every 5 minutes)
+*/5 * * * * cd /path/to/x402-fullstack && npx tsx seller/src/workers/invoice-expiry.ts
+```
+
+Output:
+```
+[invoice-expiry] Expired 3 invoice(s)
+[invoice-expiry] Stats: 12 pending, 847 paid, 156 expired
+```
+
+### Integration
+
+To wire invoices into the x402 middleware, add two lines to `seller/src/middleware/x402.ts`:
+
+```typescript
+import { createInvoice, markInvoicePaid } from '../services/invoices.js';
+
+// In send402() — after generating invoiceId:
+createInvoice(invoiceId, token.symbol, token.pricePerQuery, network.chainId, network.caip2, endpoint).catch(() => {});
+
+// In verifyAndSettle() — after successful settlement:
+markInvoicePaid(invoiceId, settlement.payer).catch(() => {});
+```
 
 ---
 
