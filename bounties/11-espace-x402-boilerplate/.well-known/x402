@@ -1,0 +1,29 @@
+{
+  "x402Version": 2,
+  "description": "x402 Fullstack Boilerplate on Conflux eSpace",
+  "supports": ["exact"],
+  "paymentMethods": ["native", "erc20", "eip3009"],
+  "networks": {
+    "testnet": {
+      "chainId": 71,
+      "caip2": "eip155:71",
+      "rpcUrl": "https://evmtestnet.confluxrpc.com",
+      "tokens": ["CFX", "USDT", "USDC", "BTC", "ETH"]
+    },
+    "mainnet": {
+      "chainId": 1030,
+      "caip2": "eip155:1030",
+      "rpcUrl": "https://evm.confluxrpc.com",
+      "tokens": ["CFX", "USDT0", "USDT", "USDC", "AxCNH"]
+    }
+  },
+  "endpoints": {
+    "health": "/health",
+    "ai": "/ai",
+    "data": "/data/premium"
+  },
+  "facilitator": {
+    "verify": "/x402/verify-{method}",
+    "settle": "/x402/settle-{method}"
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "info": {
+    "name": "x402 Fullstack — Conflux eSpace",
+    "description": "x402 HTTP 402 Payment Required protocol endpoints for testing and development.\n\nSeller API (port 3852) + Facilitator (port 3851).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "seller_url",
+      "value": "http://localhost:3852"
+    },
+    {
+      "key": "facilitator_url",
+      "value": "http://localhost:3851"
+    }
+  ],
+  "item": [
+    {
+      "name": "Seller API",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{seller_url}}/health",
+            "description": "Returns server status, network info, and available tokens."
+          }
+        },
+        {
+          "name": "List Tokens",
+          "request": {
+            "method": "GET",
+            "url": "{{seller_url}}/tokens",
+            "description": "Returns all supported tokens for the current network."
+          }
+        },
+        {
+          "name": "Free Data",
+          "request": {
+            "method": "GET",
+            "url": "{{seller_url}}/data/free",
+            "description": "Free endpoint — no payment required."
+          }
+        },
+        {
+          "name": "Premium Data (→ 402)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{seller_url}}/data/premium?token=CFX",
+              "host": ["{{seller_url}}"],
+              "path": ["data", "premium"],
+              "query": [
+                { "key": "token", "value": "CFX" }
+              ]
+            },
+            "description": "Paid endpoint — returns HTTP 402 with PAYMENT-REQUIRED header."
+          }
+        },
+        {
+          "name": "AI Query (→ 402)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{seller_url}}/ai?q=What is Conflux?&token=CFX",
+              "host": ["{{seller_url}}"],
+              "path": ["ai"],
+              "query": [
+                { "key": "q", "value": "What is Conflux?" },
+                { "key": "token", "value": "CFX" }
+              ]
+            },
+            "description": "Paid AI endpoint — returns 402, then 200 with PAYMENT-SIGNATURE header."
+          }
+        },
+        {
+          "name": "AI Query with USDT",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{seller_url}}/ai?q=What is DeFi?&token=USDT",
+              "host": ["{{seller_url}}"],
+              "path": ["ai"],
+              "query": [
+                { "key": "q", "value": "What is DeFi?" },
+                { "key": "token", "value": "USDT" }
+              ]
+            },
+            "description": "Paid AI endpoint with ERC-20 token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Facilitator",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{facilitator_url}}/x402/health",
+            "description": "Facilitator health status."
+          }
+        },
+        {
+          "name": "Verify Native TX",
+          "request": {
+            "method": "POST",
+            "url": "{{facilitator_url}}/x402/verify-native",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Facilitator-Key", "value": "your_facilitator_key" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"txHash\": \"0x...\",\n  \"from\": \"0x...\",\n  \"amount\": \"1000000000000000\",\n  \"payTo\": \"0x...\"\n}"
+            },
+            "description": "Verify a native CFX payment by TX hash."
+          }
+        },
+        {
+          "name": "Settle Native TX",
+          "request": {
+            "method": "POST",
+            "url": "{{facilitator_url}}/x402/settle-native",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Facilitator-Key", "value": "your_facilitator_key" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"txHash\": \"0x...\"\n}"
+            },
+            "description": "Confirm and settle a native CFX payment."
+          }
+        },
+        {
+          "name": "Verify ERC-20",
+          "request": {
+            "method": "POST",
+            "url": "{{facilitator_url}}/x402/verify-erc20",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Facilitator-Key", "value": "your_facilitator_key" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": \"0x...\",\n  \"token\": \"0x...\",\n  \"amount\": \"100000000000000\",\n  \"payTo\": \"0x...\",\n  \"paymentContract\": \"0x...\"\n}"
+            },
+            "description": "Verify ERC-20 allowance for payment."
+          }
+        },
+        {
+          "name": "Settle ERC-20",
+          "request": {
+            "method": "POST",
+            "url": "{{facilitator_url}}/x402/settle-erc20",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Facilitator-Key", "value": "your_facilitator_key" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": \"0x...\",\n  \"token\": \"0x...\",\n  \"amount\": \"100000000000000\",\n  \"paymentContract\": \"0x...\",\n  \"invoiceId\": \"abc123\"\n}"
+            },
+            "description": "Execute ERC-20 payment via relayer."
+          }
+        },
+        {
+          "name": "Verify EIP-3009",
+          "request": {
+            "method": "POST",
+            "url": "{{facilitator_url}}/x402/verify-eip3009",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Facilitator-Key", "value": "your_facilitator_key" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signature\": \"0x...\",\n  \"authorization\": {\n    \"from\": \"0x...\",\n    \"to\": \"0x...\",\n    \"value\": \"100\",\n    \"validAfter\": \"0\",\n    \"validBefore\": \"1738700000\",\n    \"nonce\": \"0x...\"\n  },\n  \"token\": \"0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff\"\n}"
+            },
+            "description": "Verify EIP-3009 TransferWithAuthorization signature."
+          }
+        },
+        {
+          "name": "Settle EIP-3009",
+          "request": {
+            "method": "POST",
+            "url": "{{facilitator_url}}/x402/settle-eip3009",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Facilitator-Key", "value": "your_facilitator_key" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"signature\": \"0x...\",\n  \"authorization\": {\n    \"from\": \"0x...\",\n    \"to\": \"0x...\",\n    \"value\": \"100\",\n    \"validAfter\": \"0\",\n    \"validBefore\": \"1738700000\",\n    \"nonce\": \"0x...\"\n  },\n  \"token\": \"0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff\"\n}"
+            },
+            "description": "Execute EIP-3009 transferWithAuthorization on-chain."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.next/
+out/
+cache/
+artifacts/
+typechain-types/
+coverage/
+.env
+.env.local
+*.log
+.DS_Store
+.turbo
+tsconfig.tsbuildinfo
+*.tsbuildinfo
