@@ -32,9 +32,11 @@ conflux-bounties/
 5. Submit your work via pull request
 
 ## Community & Support
+- [Telegram](https://t.me/ConfluxDevs) for real-time help
 - [Discord](https://discord.gg/confluxnetwork) for real-time help
 - [FAQ](docs/04_FAQ.md) for common questions
 - [Project Board](project_board.md) for progress tracking
 
 ## License
 Open source under the MIT, Apache 2.0, or GPL v3 license (see individual bounties for details). 
+
