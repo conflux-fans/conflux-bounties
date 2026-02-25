@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+.turbo/
+coverage/
+*.log
+.env
+.env.local
+.env.*.local
+# frontend/.env has no secrets — commit it so NEXT_PUBLIC_* vars are available
+!frontend/.env
+artifacts/
+cache/
+deployments/local/
+data/*.db
+data/*.db-journal
+data/*.db-shm
+data/*.db-wal
+data/*.bak*

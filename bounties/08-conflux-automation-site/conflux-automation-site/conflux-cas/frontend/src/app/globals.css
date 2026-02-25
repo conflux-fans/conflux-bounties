@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #020617;
+  --foreground: #f8fafc;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  background-image:
+    radial-gradient(circle at top, rgba(0, 120, 200, 0.08), transparent 50%),
+    radial-gradient(circle at bottom, rgba(0, 120, 200, 0.03), transparent 60%);
+  background-attachment: fixed;
+}

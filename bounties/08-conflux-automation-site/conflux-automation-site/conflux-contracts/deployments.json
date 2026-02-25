@@ -1,0 +1,12 @@
+{
+  "71": {
+    "AutomationManager": "0x33e5e5b262e5d8ebc443e1c6c9f14215b020554d",
+    "SwappiPriceAdapter": "0x88c48e0e8f76493bb926131a2be779cc17ecbedf",
+    "PermitHandler": "0x4240882f2d9d70cdb9fbcc859cdd4d3e59f5d137"
+  },
+  "1030": {
+    "AutomationManager": "0x9D5B131e5bA37A238cd1C485E2D9d7c2A68E1d0F",
+    "SwappiPriceAdapter": "0xD2Cc2a7Eb4A5792cE6383CcD0f789C1A9c48ECf9",
+    "PermitHandler": "0x0D566aC9Dd1e20Fc63990bEEf6e8abBA876c896B"
+  }
+}
