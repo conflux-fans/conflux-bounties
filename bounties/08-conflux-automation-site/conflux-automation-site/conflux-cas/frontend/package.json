@@ -1,0 +1,41 @@
+{
+  "name": "@conflux-cas/frontend",
+  "version": "0.1.0",
+  "description": "Next.js 14 frontend – Strategy Builder, Dashboard, Safety Panel",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:https": "next dev --experimental-https",
+    "build": "next build",
+    "start": "next start",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@cfxdevkit/sdk": "workspace:*",
+    "@conflux-cas/shared": "workspace:*",
+    "@tanstack/react-query": "^5.59.0",
+    "lucide-react": "^0.575.0",
+    "next": "^14.2.20",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "siwe": "^2.3.2",
+    "viem": "^2.43.3",
+    "wagmi": "^2.12.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.0.3",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "autoprefixer": "^10.4.19",
+    "jsdom": "^28.1.0",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

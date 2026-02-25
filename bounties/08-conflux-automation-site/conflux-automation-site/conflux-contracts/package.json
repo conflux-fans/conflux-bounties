@@ -1,0 +1,33 @@
+{
+  "name": "@cfxdevkit/contracts",
+  "version": "0.1.0",
+  "description": "Solidity smart contracts for conflux-cas automation — Hardhat project with @wagmi/cli codegen for SDK",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "compile:generate": "hardhat compile && wagmi generate",
+    "wagmi:generate": "wagmi generate",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.ts --network espaceTestnet",
+    "deploy:mainnet": "hardhat run scripts/deploy.ts --network espaceMainnet",
+    "deploy:local": "hardhat run scripts/deploy.ts --network hardhat",
+    "check-wallet": "hardhat run scripts/check-wallet.ts",
+    "verify": "hardhat run scripts/verify.ts --network espaceTestnet",
+    "verify:mainnet": "hardhat run scripts/verify.ts --network espaceMainnet",
+    "fix-adapter-factory": "hardhat run scripts/fix-price-adapter-factory.ts --network espaceMainnet",
+    "clean": "hardhat clean",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.0.2",
+    "@types/chai": "^4.3.16",
+    "@types/node": "^25.3.0",
+    "@wagmi/cli": "^2.2.0",
+    "chai": "^4.5.0",
+    "dotenv": "^17.3.1",
+    "hardhat": "^2.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
