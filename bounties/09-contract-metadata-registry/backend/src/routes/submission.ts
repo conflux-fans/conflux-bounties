@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import { MetadataSchema, DEFAULT_MAX_METADATA_BYTES } from '@conflux-metadata/shared';
 import { IpfsService } from '../services/ipfs';
-import { verificationQueue } from '../services/verification';
+import { getVerificationQueue } from '../services/verification';
 import { notifyMetadataApproved } from '../services/webhook';
 import { ethers } from 'ethers';
 import IORedis from 'ioredis';
@@ -11,7 +11,8 @@ import IORedis from 'ioredis';
 const prisma = new PrismaClient();
 const ipfs = new IpfsService();
 const redis = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    maxRetriesPerRequest: null
+    maxRetriesPerRequest: null,
+    lazyConnect: true
 });
 
 /** Max metadata size, 50KB default. Override with MAX_METADATA_KB. */
@@ -129,7 +130,7 @@ export async function submissionRoutes(fastify: FastifyInstance) {
                 }
             });
 
-            await verificationQueue.add('verify-submission', {
+            await getVerificationQueue().add('verify-submission', {
                 submissionId: submission.id,
                 contractAddress: body.contractAddress,
                 cid: body.cid,

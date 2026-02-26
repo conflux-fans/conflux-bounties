@@ -57,6 +57,12 @@ export function ConnectWallet() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [dropdownOpen, closeDropdown]);
 
+  useEffect(() => {
+    if (!displayError) return;
+    const timer = setTimeout(() => setLocalError(null), 8000);
+    return () => clearTimeout(timer);
+  }, [displayError]);
+
   const handleConnect = useCallback(
     async (connector: Connector | undefined) => {
       setLocalError(null);
@@ -68,10 +74,24 @@ export function ConnectWallet() {
       try {
         await connect(connector);
         closeDropdown();
-      } catch {}
+      } catch (e: unknown) {
+        if (e instanceof Error && !wagmiError) {
+          setLocalError(e.message);
+        }
+      }
     },
-    [connect, closeDropdown]
+    [connect, closeDropdown, wagmiError]
   );
+
+  const handleSwitchChain = useCallback(async () => {
+    try {
+      await switchChain();
+    } catch (e: unknown) {
+      if (e instanceof Error && !wagmiError) {
+        setLocalError(e.message);
+      }
+    }
+  }, [switchChain, wagmiError]);
 
   const handleCopyAddress = useCallback(() => {
     if (!address) return;
@@ -83,17 +103,17 @@ export function ConnectWallet() {
 
   if (isConnected && address) {
     return (
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
         {!isCorrectChain && (
-          <Badge variant="warning" className="shrink-0">
+          <Badge variant="warning" className="shrink-0 text-[10px] sm:text-xs">
             Wrong network
           </Badge>
         )}
-        <div className="flex items-center gap-1.5 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg-elevated))]/80 py-1 pl-2 pr-1">
+        <div className="flex items-center gap-1 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg-elevated))]/80 py-1 pl-2 pr-1">
           <button
             type="button"
             onClick={handleCopyAddress}
-            className="max-w-[100px] truncate font-mono text-xs text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] transition-colors sm:max-w-[140px]"
+            className="max-w-[90px] truncate font-mono text-[10px] text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] transition-colors sm:max-w-[140px] sm:text-xs"
             title={address}
             aria-label={`Copy address ${address}`}
           >
@@ -101,12 +121,12 @@ export function ConnectWallet() {
           </button>
           <span
             className={clsx(
-              'text-xs px-1.5 py-0.5 rounded transition-opacity',
+              'text-[10px] sm:text-xs px-1 py-0.5 rounded transition-opacity',
               copySuccess ? 'text-[rgb(var(--color-success))]' : 'text-[rgb(var(--color-text-muted))]'
             )}
             aria-live="polite"
           >
-            {copySuccess ? 'Copied!' : ''}
+            {copySuccess ? '✓' : ''}
           </span>
         </div>
         {!isCorrectChain && (
@@ -115,9 +135,9 @@ export function ConnectWallet() {
             size="sm"
             loading={isSwitchingChain}
             disabled={isSwitchingChain}
-            onClick={() => void switchChain()}
+            onClick={handleSwitchChain}
             aria-label={`Switch to ${supportedChain.name}`}
-            className="shrink-0"
+            className="shrink-0 text-[10px] sm:text-sm"
           >
             <span className="hidden sm:inline">{isSwitchingChain ? 'Switching…' : `Switch to ${supportedChain.name}`}</span>
             <span className="sm:hidden">{isSwitchingChain ? '…' : 'Switch'}</span>
@@ -128,10 +148,25 @@ export function ConnectWallet() {
           size="sm"
           onClick={() => disconnect()}
           aria-label="Disconnect wallet"
-          className="shrink-0 text-xs sm:text-sm"
+          className="shrink-0 text-[10px] sm:text-sm"
         >
-          Disconnect
+          <span className="hidden sm:inline">Disconnect</span>
+          <span className="sm:hidden">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </span>
         </Button>
+
+        {/* Error banner for switch-chain failures etc. */}
+        {displayError && (
+          <div
+            className="w-full rounded-lg border border-[rgb(var(--color-danger))]/50 bg-[rgb(var(--color-danger))]/10 p-2 text-left text-xs text-[rgb(var(--color-danger))]"
+            role="alert"
+          >
+            {displayError}
+          </div>
+        )}
       </div>
     );
   }
@@ -144,12 +179,14 @@ export function ConnectWallet() {
       <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
         <Button
           variant="primary"
+          size="sm"
           onClick={hasWallets ? openDropdown : () => handleConnect(undefined)}
           disabled={isConnecting}
           loading={isConnecting}
           aria-haspopup="listbox"
           aria-expanded={dropdownOpen}
           aria-label={hasWallets ? 'Choose wallet to connect' : 'Connect wallet (no wallet detected)'}
+          className="text-xs sm:text-sm"
         >
           {isConnecting ? 'Connecting…' : 'Connect Wallet'}
         </Button>
@@ -157,7 +194,7 @@ export function ConnectWallet() {
 
       {dropdownOpen && hasWallets && (
         <div
-          className="absolute right-0 top-full z-[200] mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg-elevated))] py-2 shadow-lg"
+          className="absolute right-0 top-full z-[200] mt-2 w-52 max-w-[calc(100vw-2rem)] rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg-elevated))] py-2 shadow-lg"
           role="listbox"
           aria-label="Wallet options"
         >
@@ -182,20 +219,20 @@ export function ConnectWallet() {
       )}
 
       {isConnecting && (
-        <p className="max-w-[280px] text-left text-xs text-[rgb(var(--color-text-muted))]">
+        <p className="max-w-[260px] text-left text-[11px] text-[rgb(var(--color-text-muted))] sm:text-xs">
           Check your wallet extension or popup to approve the connection.
         </p>
       )}
 
       {showErrorPanel && (
         <div
-          className="w-full max-w-[280px] rounded-lg border border-[rgb(var(--color-danger))]/50 bg-[rgb(var(--color-danger))]/10 p-3 text-left text-sm text-[rgb(var(--color-danger))]"
+          className="w-full max-w-[260px] rounded-lg border border-[rgb(var(--color-danger))]/50 bg-[rgb(var(--color-danger))]/10 p-3 text-left text-xs text-[rgb(var(--color-danger))] sm:max-w-[280px] sm:text-sm"
           role="alert"
         >
           {showNoWalletHelp && (
             <>
               <p className="font-medium">No wallet detected</p>
-              <p className="mt-1 text-xs">
+              <p className="mt-1 text-[11px] sm:text-xs">
                 Install MetaMask or Fluent, then refresh this page and click Connect Wallet again.
               </p>
             </>

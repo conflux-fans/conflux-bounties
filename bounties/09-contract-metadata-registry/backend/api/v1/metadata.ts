@@ -16,17 +16,23 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return;
   }
 
-  if (!isReady) {
-    await app.ready();
-    isReady = true;
-  }
+  try {
+    if (!isReady) {
+      await app.ready();
+      isReady = true;
+    }
 
-  // This function is mounted at /api/v1/metadata on Vercel,
-  // but Fastify routes are registered under /v1/metadata.
-  if (req.url && req.url.startsWith('/api/')) {
-    req.url = req.url.replace(/^\/api/, '') || '/';
-  }
+    // This function is mounted at /api/v1/metadata on Vercel,
+    // but Fastify routes are registered under /v1/metadata.
+    if (req.url && req.url.startsWith('/api/')) {
+      req.url = req.url.replace(/^\/api/, '') || '/';
+    }
 
-  app.server.emit('request', req, res);
+    app.server.emit('request', req, res);
+  } catch (err: any) {
+    console.error('Handler error:', err);
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'Internal server error', details: err.message }));
+  }
 }
-

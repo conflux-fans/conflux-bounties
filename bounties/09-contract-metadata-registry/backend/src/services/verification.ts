@@ -7,11 +7,26 @@ import { ethers } from 'ethers';
 import { verifyWithConfluxScan } from './confluxScan';
 
 const prisma = new PrismaClient();
-const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    maxRetriesPerRequest: null
-});
 
-export const verificationQueue = new Queue('verification', { connection: connection as any });
+let connection: IORedis | null = null;
+function getConnection(): IORedis {
+    if (!connection) {
+        connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
+            maxRetriesPerRequest: null
+        });
+    }
+    return connection;
+}
+
+let queue: Queue | null = null;
+export function getVerificationQueue(): Queue {
+    if (!queue) {
+        queue = new Queue('verification', { connection: getConnection() as any });
+    }
+    return queue;
+}
+
+export { getVerificationQueue as _getQueue };
 
 const client = createPublicClient({
     chain: confluxESpaceTestnet,
@@ -111,6 +126,17 @@ export function onVerificationFailed(job: { id?: string } | undefined, err: Erro
     console.log(`${job?.id} has failed with ${err.message}`);
 }
 
-const worker = new Worker('verification', job => handleVerificationJob(defaultVerificationDeps, job), { connection: connection as any });
-worker.on('completed', onVerificationCompleted);
-worker.on('failed', onVerificationFailed);
+/**
+ * Start the BullMQ worker. Call this ONLY in long-lived server mode (server.ts),
+ * NOT in Vercel serverless handlers.
+ */
+export function startWorker(): Worker {
+    const worker = new Worker(
+        'verification',
+        job => handleVerificationJob(defaultVerificationDeps, job),
+        { connection: getConnection() as any }
+    );
+    worker.on('completed', onVerificationCompleted);
+    worker.on('failed', onVerificationFailed);
+    return worker;
+}

@@ -21,7 +21,7 @@ export default function AdminPage() {
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
@@ -174,8 +174,11 @@ export default function AdminPage() {
             <div className="overflow-x-auto">
               <div className="divide-y divide-[rgb(var(--color-border))]/30 sm:hidden">
                 {submissions.length === 0 ? (
-                  <div className="px-4 py-12 text-center text-sm text-[rgb(var(--color-text-muted))]">
-                    No pending submissions.
+                  <div className="px-4 py-12 text-center">
+                    <svg className="mx-auto h-10 w-10 text-[rgb(var(--color-text-muted))]/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="mt-2 text-sm text-[rgb(var(--color-text-muted))]">No pending submissions.</p>
                   </div>
                 ) : (
                   submissions.map((sub) => (

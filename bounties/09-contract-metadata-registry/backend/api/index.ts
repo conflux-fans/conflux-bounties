@@ -16,18 +16,25 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return;
   }
 
-  if (!isReady) {
-    await app.ready();
-    isReady = true;
-  }
-
-  if (req.url) {
-    if (req.url === '/api') {
-      req.url = '/';
-    } else if (req.url.startsWith('/api/')) {
-      req.url = req.url.replace(/^\/api/, '') || '/';
+  try {
+    if (!isReady) {
+      await app.ready();
+      isReady = true;
     }
-  }
 
-  app.server.emit('request', req, res);
+    if (req.url) {
+      if (req.url === '/api') {
+        req.url = '/';
+      } else if (req.url.startsWith('/api/')) {
+        req.url = req.url.replace(/^\/api/, '') || '/';
+      }
+    }
+
+    app.server.emit('request', req, res);
+  } catch (err: any) {
+    console.error('Handler error:', err);
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'Internal server error', details: err.message }));
+  }
 }

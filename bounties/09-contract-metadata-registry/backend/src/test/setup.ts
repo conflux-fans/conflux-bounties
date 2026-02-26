@@ -38,6 +38,7 @@ vi.mock('../services/verification', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../services/verification')>();
     return {
         ...actual,
-        verificationQueue: mockVerificationQueue
+        getVerificationQueue: () => mockVerificationQueue,
+        startWorker: vi.fn()
     };
 });
