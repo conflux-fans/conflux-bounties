@@ -1,0 +1,79 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Contract {
+  address     String       @id
+  owner       String?      // Detected owner from on-chain/admin
+  createdAt   DateTime     @default(now())
+  submissions Submission[]
+  delegates   Delegate[]
+}
+
+model Submission {
+  id              String   @id @default(uuid())
+  contractAddress String
+  contract        Contract @relation(fields: [contractAddress], references: [address])
+
+  cid             String
+  checksum        String
+  submitter       String
+  
+  // Status: PENDING, VERIFIED, FAILED, SUBMITTED_ONCHAIN, APPROVED, REJECTED
+  status          String   @default("PENDING")
+
+  version         Int?     // Assigned when approved/on-chain
+
+  verificationLog String?  // JSON details of verification (bytecode match, ownership)
+  failureReason   String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Snapshots of what was verified
+  bytecodeHash    String?
+  chainId         Int?
+
+  // Optional denormalized fields for search
+  name            String?
+  description     String?
+  tagsJson        String?
+}
+
+model Delegate {
+  id              String   @id @default(uuid())
+  contractAddress String
+  contract        Contract @relation(fields: [contractAddress], references: [address])
+  delegateAddress String
+  expiry          DateTime?
+  addedBy         String
+  createdAt       DateTime @default(now())
+  
+  @@unique([contractAddress, delegateAddress])
+}
+
+model ModerationLog {
+  id        String   @id @default(uuid())
+  actor     String   // Admin wallet or username
+  action    String   // APPROVE, REJECT, OVERRIDE
+  target    String   // Submission ID or Contract Address
+  details   String?
+  timestamp DateTime @default(now())
+}
+
+model IpfsPin {
+  id        String   @id @default(uuid())
+  cid       String   @unique
+  provider  String
+  status    String
+  attempts  Int      @default(0)
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

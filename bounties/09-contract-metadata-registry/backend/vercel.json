@@ -1,0 +1,4 @@
+{
+  "installCommand": "cd .. && npm install",
+  "buildCommand": "cd .. && npm run build --workspace=@conflux-metadata/shared && cd backend && npx prisma generate && npm run build"
+}

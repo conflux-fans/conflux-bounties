@@ -1,0 +1,40 @@
+{
+  "name": "contracts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.ts",
+    "deploy:testnet": "hardhat run scripts/deploy.ts --network confluxTestnet",
+    "deploy:mainnet": "hardhat run scripts/deploy.ts --network confluxMainnet",
+    "deploy:mock": "hardhat run scripts/deploy-mock-ownable.ts --network confluxTestnet",
+    "verify": "hardhat run scripts/verify.ts",
+    "verify:testnet": "hardhat run scripts/verify.ts --network confluxTestnet",
+    "verify:mainnet": "hardhat run scripts/verify.ts --network confluxMainnet",
+    "coverage": "hardhat coverage",
+    "gas-report": "hardhat test",
+    "dev": "hardhat test --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "@openzeppelin/contracts": "^5.4.0",
+    "@openzeppelin/contracts-upgradeable": "^5.4.0",
+    "@openzeppelin/hardhat-upgrades": "^3.9.1",
+    "dotenv": "^17.2.4",
+    "hardhat": "^2.23.0",
+    "hardhat-gas-reporter": "^1.0.10",
+    "solidity-coverage": "^0.8.17",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "bufferutil": "^4.1.0",
+    "utf-8-validate": "^6.0.6"
+  }
+}

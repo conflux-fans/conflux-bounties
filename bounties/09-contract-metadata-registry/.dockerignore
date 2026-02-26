@@ -1,0 +1,34 @@
+# Reduce build context when using repo root (e.g. backend build)
+.git
+.github
+.dockerignore
+node_modules
+**/node_modules
+.next
+**/.next
+out
+**/out
+coverage
+**/coverage
+.nyc_output
+*.log
+.env
+.env.*
+
+# Test artifacts
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/e2e
+**/playwright-report
+**/test-results
+**/playwright/.cache
+
+# Unneeded for backend image
+contracts
+frontend
+sdk
+doc
+docs
+docker

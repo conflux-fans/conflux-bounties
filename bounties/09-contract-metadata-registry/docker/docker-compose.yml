@@ -1,0 +1,97 @@
+# Conflux Contract Metadata Registry – full local stack
+# Usage: from repo root: docker compose -f docker/docker-compose.yml up -d
+# Or start infra only: docker compose -f docker/docker-compose.yml up -d postgres redis
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: conflux_registry_db
+    environment:
+      POSTGRES_USER: metadata
+      POSTGRES_PASSWORD: metadata
+      POSTGRES_DB: metadata
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - registry_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metadata"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: conflux_registry_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - registry_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: conflux_registry_backend
+    environment:
+      DATABASE_URL: postgresql://metadata:metadata@postgres:5432/metadata?schema=public
+      REDIS_URL: redis://redis:6379
+      CONFLUX_RPC_URL: ${CONFLUX_RPC_URL:-https://evmtestnet.confluxrpc.com}
+      REGISTRY_ADDRESS: ${REGISTRY_ADDRESS:-}
+      PINATA_JWT: ${PINATA_JWT:-}
+      PINATA_GATEWAY: ${PINATA_GATEWAY:-https://gateway.pinata.cloud}
+      MODERATOR_WALLET: ${MODERATOR_WALLET:-}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+      MAX_METADATA_KB: ${MAX_METADATA_KB:-50}
+      ALLOWED_LOGO_MIME: ${ALLOWED_LOGO_MIME:-image/png,image/jpeg,image/svg+xml}
+      MAX_SUBMISSIONS_PER_WALLET_PER_MIN: ${MAX_SUBMISSIONS_PER_WALLET_PER_MIN:-10}
+      CONFLUXSCAN_API_URL: ${CONFLUXSCAN_API_URL:-}
+      CONFLUXSCAN_API_KEY: ${CONFLUXSCAN_API_KEY:-}
+      PORT: "3000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports:
+      - "3000:3000"
+    networks:
+      - registry_net
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/v1}
+        NEXT_PUBLIC_REGISTRY_ADDRESS: ${REGISTRY_ADDRESS:-}
+        NEXT_PUBLIC_CONFLUX_RPC_URL: ${CONFLUX_RPC_URL:-https://evmtestnet.confluxrpc.com}
+        NEXT_PUBLIC_IPFS_GATEWAY: ${NEXT_PUBLIC_IPFS_GATEWAY:-https://gateway.pinata.cloud}
+    container_name: conflux_registry_frontend
+    environment:
+      # Use localhost so browser can reach backend when user visits localhost:3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/v1}
+      NEXT_PUBLIC_REGISTRY_ADDRESS: ${REGISTRY_ADDRESS:-}
+      NEXT_PUBLIC_CONFLUX_RPC_URL: ${CONFLUX_RPC_URL:-https://evmtestnet.confluxrpc.com}
+      NEXT_PUBLIC_IPFS_GATEWAY: ${NEXT_PUBLIC_IPFS_GATEWAY:-https://gateway.pinata.cloud}
+    depends_on:
+      - backend
+    ports:
+      - "3001:3000"
+    networks:
+      - registry_net
+
+volumes:
+  pgdata:
+  redis_data:
+
+networks:
+  registry_net:
+    driver: bridge

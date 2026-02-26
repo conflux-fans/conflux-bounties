@@ -1,0 +1,34 @@
+{
+  "name": "conflux-metadata-registry",
+  "private": true,
+  "workspaces": [
+    "contracts",
+    "backend",
+    "frontend",
+    "shared",
+    "sdk"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces"
+  },
+  "dependencies": {
+    "@pinojs/redact": "^0.4.0",
+    "@rollup/rollup-win32-x64-msvc": "^4.57.1",
+    "@swc/helpers": "^0.5.5",
+    "atomic-sleep": "^1.0.0",
+    "esbuild": "^0.27.3",
+    "forwarded": "^0.2.0",
+    "ipaddr.js": "^2.3.0"
+  },
+  "devDependencies": {
+    "@openzeppelin/hardhat-upgrades": "^3.9.1",
+    "@vitest/coverage-v8": "^4.0.18",
+    "bytes": "^3.1.2",
+    "http-errors": "^2.0.1",
+    "is-number": "^7.0.0",
+    "prisma": "^5.22.0",
+    "vitest": "^4.0.18"
+  }
+}

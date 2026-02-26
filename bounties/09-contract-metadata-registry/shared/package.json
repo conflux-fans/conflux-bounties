@@ -1,0 +1,17 @@
+{
+    "name": "@conflux-metadata/shared",
+    "version": "1.0.0",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "dev": "npm run build --watch",
+        "test": "echo 'No tests in shared'"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    },
+    "dependencies": {
+        "zod": "^3.22.0"
+    }
+}
