@@ -24,6 +24,7 @@ export function ConnectWallet() {
     connect,
     disconnect,
     switchChain,
+    resetError,
     isConnecting,
     isSwitchingChain,
     error: wagmiError,
@@ -37,14 +38,19 @@ export function ConnectWallet() {
 
   const displayError = wagmiError ?? localError;
   const showNoWalletHelp = noWalletTried && !connectors.length;
-  const showErrorPanel = (displayError || showNoWalletHelp) && !dropdownOpen;
 
   const closeDropdown = useCallback(() => setDropdownOpen(false), []);
 
   const openDropdown = useCallback(() => {
     setLocalError(null);
+    resetError();
     setDropdownOpen(true);
-  }, []);
+  }, [resetError]);
+
+  const dismissError = useCallback(() => {
+    setLocalError(null);
+    resetError();
+  }, [resetError]);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -59,39 +65,36 @@ export function ConnectWallet() {
 
   useEffect(() => {
     if (!displayError) return;
-    const timer = setTimeout(() => setLocalError(null), 8000);
+    const timer = setTimeout(dismissError, 6000);
     return () => clearTimeout(timer);
-  }, [displayError]);
+  }, [displayError, dismissError]);
 
   const handleConnect = useCallback(
     async (connector: Connector | undefined) => {
-      setLocalError(null);
+      dismissError();
       if (!connector) {
         setNoWalletTried(true);
-        setLocalError('No wallet detected. Install a wallet (e.g. MetaMask or Fluent), then refresh and try again.');
+        setLocalError('No wallet detected. Install MetaMask or Fluent, then refresh.');
         return;
       }
       try {
         await connect(connector);
         closeDropdown();
-      } catch (e: unknown) {
-        if (e instanceof Error && !wagmiError) {
-          setLocalError(e.message);
-        }
+      } catch {
+
       }
     },
-    [connect, closeDropdown, wagmiError]
+    [connect, closeDropdown, dismissError]
   );
 
   const handleSwitchChain = useCallback(async () => {
+    dismissError();
     try {
       await switchChain();
-    } catch (e: unknown) {
-      if (e instanceof Error && !wagmiError) {
-        setLocalError(e.message);
-      }
+    } catch {
+      
     }
-  }, [switchChain, wagmiError]);
+  }, [switchChain, dismissError]);
 
   const handleCopyAddress = useCallback(() => {
     if (!address) return;
@@ -100,6 +103,30 @@ export function ConnectWallet() {
       setTimeout(() => setCopySuccess(false), 2000);
     });
   }, [address]);
+
+  const errorToast = displayError || showNoWalletHelp ? (
+    <div
+      className="flex items-start gap-2 rounded-lg border border-[rgb(var(--color-danger))]/40 bg-[rgb(var(--color-danger))]/10 px-3 py-2 text-left text-[11px] leading-snug text-[rgb(var(--color-danger))] sm:text-xs"
+      role="alert"
+      style={{ maxWidth: 240 }}
+    >
+      <span className="flex-1 min-w-0">
+        {showNoWalletHelp
+          ? <>No wallet found. <a href={METAMASK_URL} target="_blank" rel="noreferrer" className="underline">Get MetaMask</a></>
+          : displayError}
+      </span>
+      <button
+        type="button"
+        onClick={dismissError}
+        className="shrink-0 p-0.5 hover:text-[rgb(var(--color-text))] transition-colors"
+        aria-label="Dismiss error"
+      >
+        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  ) : null;
 
   if (isConnected && address) {
     return (
@@ -157,16 +184,7 @@ export function ConnectWallet() {
             </svg>
           </span>
         </Button>
-
-        {/* Error banner for switch-chain failures etc. */}
-        {displayError && (
-          <div
-            className="w-full rounded-lg border border-[rgb(var(--color-danger))]/50 bg-[rgb(var(--color-danger))]/10 p-2 text-left text-xs text-[rgb(var(--color-danger))]"
-            role="alert"
-          >
-            {displayError}
-          </div>
-        )}
+        {errorToast}
       </div>
     );
   }
@@ -176,21 +194,19 @@ export function ConnectWallet() {
 
   return (
     <div className="relative flex flex-col items-end gap-2 min-w-0" ref={dropdownRef}>
-      <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={hasWallets ? openDropdown : () => handleConnect(undefined)}
-          disabled={isConnecting}
-          loading={isConnecting}
-          aria-haspopup="listbox"
-          aria-expanded={dropdownOpen}
-          aria-label={hasWallets ? 'Choose wallet to connect' : 'Connect wallet (no wallet detected)'}
-          className="text-xs sm:text-sm"
-        >
-          {isConnecting ? 'Connecting…' : 'Connect Wallet'}
-        </Button>
-      </div>
+      <Button
+        variant="primary"
+        size="sm"
+        onClick={hasWallets ? openDropdown : () => handleConnect(undefined)}
+        disabled={isConnecting}
+        loading={isConnecting}
+        aria-haspopup="listbox"
+        aria-expanded={dropdownOpen}
+        aria-label={hasWallets ? 'Choose wallet to connect' : 'Connect wallet'}
+        className="text-xs sm:text-sm"
+      >
+        {isConnecting ? 'Connecting…' : 'Connect Wallet'}
+      </Button>
 
       {dropdownOpen && hasWallets && (
         <div
@@ -219,39 +235,12 @@ export function ConnectWallet() {
       )}
 
       {isConnecting && (
-        <p className="max-w-[260px] text-left text-[11px] text-[rgb(var(--color-text-muted))] sm:text-xs">
-          Check your wallet extension or popup to approve the connection.
+        <p className="text-left text-[11px] text-[rgb(var(--color-text-muted))] sm:text-xs" style={{ maxWidth: 220 }}>
+          Check your wallet to approve.
         </p>
       )}
 
-      {showErrorPanel && (
-        <div
-          className="w-full max-w-[260px] rounded-lg border border-[rgb(var(--color-danger))]/50 bg-[rgb(var(--color-danger))]/10 p-3 text-left text-xs text-[rgb(var(--color-danger))] sm:max-w-[280px] sm:text-sm"
-          role="alert"
-        >
-          {showNoWalletHelp && (
-            <>
-              <p className="font-medium">No wallet detected</p>
-              <p className="mt-1 text-[11px] sm:text-xs">
-                Install MetaMask or Fluent, then refresh this page and click Connect Wallet again.
-              </p>
-            </>
-          )}
-          {displayError && hasWallets && (
-            <>
-              <p className="font-medium">Connection failed</p>
-              <p className="mt-1">{displayError}</p>
-            </>
-          )}
-          {(showNoWalletHelp || displayError) && (
-            <p className="mt-2 flex flex-wrap gap-x-2 gap-y-1">
-              <a href={METAMASK_URL} target="_blank" rel="noreferrer" className="underline">
-                Install MetaMask
-              </a>
-            </p>
-          )}
-        </div>
-      )}
+      {!dropdownOpen && errorToast}
     </div>
   );
 }

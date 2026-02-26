@@ -66,14 +66,14 @@ export default function ContractPageClient({
 
   const record = onChainRecord as
     | {
-        owner?: `0x${string}`;
-        resolver?: `0x${string}`;
-        version?: bigint;
-        status?: number;
-        metadataCid?: string;
-        submitter?: `0x${string}`;
-        lastUpdated?: bigint;
-      }
+      owner?: `0x${string}`;
+      resolver?: `0x${string}`;
+      version?: bigint;
+      status?: number;
+      metadataCid?: string;
+      submitter?: `0x${string}`;
+      lastUpdated?: bigint;
+    }
     | undefined;
 
   const onChainVersion = record?.version != null ? Number(record.version) : 0;
@@ -82,9 +82,9 @@ export default function ContractPageClient({
   const lastUpdatedFormatted =
     hasOnChainRecord && record?.lastUpdated != null
       ? new Date(Number(record.lastUpdated) * 1000).toLocaleString(undefined, {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        })
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
       : null;
 
   const isOwner =
@@ -413,7 +413,7 @@ export default function ContractPageClient({
                       </Badge>
                     </td>
                     <td className="py-3 pr-4 text-[rgb(var(--color-text-muted))]">
-                      {new Date(row.createdAt).toLocaleDateString(undefined, {
+                      {new Date(row.createdAt).toLocaleString(undefined, {
                         dateStyle: 'medium',
                         timeStyle: 'short',
                       })}

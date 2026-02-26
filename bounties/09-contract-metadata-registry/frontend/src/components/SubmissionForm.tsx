@@ -48,6 +48,7 @@ export function SubmissionForm() {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<{ submissionId?: string; message?: string } | null>(null);
+    const [submitError, setSubmitError] = useState<string | null>(null);
     const [contractAddressError, setContractAddressError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -77,6 +78,7 @@ export function SubmissionForm() {
         }
         setLoading(true);
         setResult(null);
+        setSubmitError(null);
 
         try {
             if (!address || !chainId) throw new Error('Wallet not connected');
@@ -194,7 +196,7 @@ export function SubmissionForm() {
             if (message.includes('revert') || message.includes('reverted')) {
                 message = parseRevertReason(message);
             }
-            alert('Error: ' + message);
+            setSubmitError(message);
         } finally {
             setLoading(false);
         }
@@ -286,6 +288,21 @@ export function SubmissionForm() {
                                 result.message
                             )}
                         </span>
+                    </div>
+                )}
+                {submitError && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-[rgb(var(--color-danger))]/30 bg-[rgb(var(--color-danger))]/10 p-4">
+                        <div className="flex items-center gap-2">
+                            <Badge variant="danger">Error</Badge>
+                            <span className="text-sm text-[rgb(var(--color-danger))]">{submitError}</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSubmitError(null)}
+                            className="self-end text-xs text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text))] transition-colors"
+                        >
+                            Dismiss
+                        </button>
                     </div>
                 )}
             </form>
