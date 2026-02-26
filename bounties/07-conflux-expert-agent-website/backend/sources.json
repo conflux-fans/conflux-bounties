@@ -1,0 +1,58 @@
+[
+  {
+    "url": "https://github.com/Conflux-Chain/conflux-documentation",
+    "title": "Conflux Documentation",
+    "description": "Official Conflux Network documentation",
+    "type": "github_repo",
+    "branch": "main",
+    "paths": ["docs/**/*.md", "i18n/en/**/*.md"]
+  },
+  {
+    "url": "https://github.com/Conflux-Chain/conflux-rust",
+    "title": "Conflux Rust Client",
+    "description": "Rust implementation of Conflux protocol",
+    "type": "github_repo",
+    "branch": "master",
+    "paths": ["README.md", "docs/**/*.md"]
+  },
+  {
+    "url": "https://github.com/Conflux-Chain/js-conflux-sdk",
+    "title": "JavaScript SDK",
+    "description": "JavaScript SDK for Conflux Network",
+    "type": "github_repo",
+    "branch": "v2",
+    "paths": ["README.md", "docs/**/*.md"]
+  },
+  {
+    "url": "https://github.com/Conflux-Chain/go-conflux-sdk",
+    "title": "Go SDK",
+    "description": "Golang SDK for Conflux Network",
+    "type": "github_repo",
+    "branch": "master",
+    "paths": ["README.md", "docs/**/*.md"]
+  },
+  {
+    "url": "https://github.com/Conflux-Chain/python-conflux-sdk",
+    "title": "Python SDK",
+    "description": "Python SDK for Conflux Network",
+    "type": "github_repo",
+    "branch": "v1",
+    "paths": ["README.md", "docs/**/*.md"]
+  },
+  {
+    "url": "https://github.com/Conflux-Chain/conflux-portal",
+    "title": "Conflux Developer Portal",
+    "description": "Developer guides and tutorials",
+    "type": "github_repo",
+    "branch": "develop",
+    "paths": ["README.md", "docs/**/*.md"]
+  },
+  {
+    "url": "https://github.com/Conflux-Chain/conflux-evm-bridge",
+    "title": "Conflux eSpace Bridge",
+    "description": "Cross-space bridge documentation",
+    "type": "github_repo",
+    "branch": "main",
+    "paths": ["README.md", "docs/**/*.md"]
+  }
+]
