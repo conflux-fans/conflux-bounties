@@ -9,6 +9,7 @@ out/
 
 # Coverage
 coverage/
+coverage.json
 .nyc_output/
 
 # Playwright
