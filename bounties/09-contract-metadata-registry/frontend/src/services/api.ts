@@ -10,7 +10,8 @@ export async function prepareSubmission(metadata: any) {
     });
 
     if (!response.ok) {
-        throw new Error('Preparation failed');
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Preparation failed');
     }
 
     return response.json();
