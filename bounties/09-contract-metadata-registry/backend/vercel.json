@@ -1,4 +1,33 @@
 {
   "installCommand": "cd .. && npm install",
-  "buildCommand": "cd .. && npm run build --workspace=@conflux-metadata/shared && cd backend && npx prisma generate && npm run build"
+  "buildCommand": "cd .. && npm run build --workspace=@conflux-metadata/shared && cd backend && npx prisma generate && npm run build",
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET,POST,PUT,DELETE,OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type,Authorization"
+        },
+        {
+          "key": "Access-Control-Max-Age",
+          "value": "86400"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/v1/(.*)",
+      "destination": "/api/v1/$1"
+    }
+  ]
 }
