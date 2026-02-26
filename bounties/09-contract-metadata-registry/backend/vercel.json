@@ -26,8 +26,20 @@
   ],
   "rewrites": [
     {
-      "source": "/api/v1/(.*)",
-      "destination": "/api/v1/$1"
+      "source": "/api/v1/submissions/:path*",
+      "destination": "/api/v1/submissions"
+    },
+    {
+      "source": "/api/v1/metadata/:path*",
+      "destination": "/api/v1/metadata"
+    },
+    {
+      "source": "/api/v1/assets/:path*",
+      "destination": "/api/[...path]"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/[...path]"
     }
   ]
 }
