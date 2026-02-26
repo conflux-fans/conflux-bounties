@@ -70,11 +70,7 @@ test.describe('Submit page', () => {
     await page.getByLabel(/description/i).fill('Description for e2e test');
     await page.getByLabel(/abi \(json\)/i).fill('[{"type":"function","name":"transfer","inputs":[{"name":"to","type":"address"},{"name":"amount","type":"uint256"}]}]');
     await page.getByRole('button', { name: /submit metadata/i }).click();
-
-    const dialogPromise = page.waitForEvent('dialog', { timeout: 5000 });
-    const dialog = await dialogPromise;
-    expect(dialog.message()).toMatch(/connect wallet|Connect wallet/i);
-    await dialog.accept();
+    await expect(page.getByText(/connect wallet first/i)).toBeVisible();
   });
 
 });

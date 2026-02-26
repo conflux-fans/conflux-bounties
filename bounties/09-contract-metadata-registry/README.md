@@ -35,7 +35,7 @@ A verified metadata registry where Conflux projects upload ABI, source, logo, an
 | `PRIVATE_KEY` | contracts | Deployer key (hex, no 0x) for deployment |
 | `NEXT_PUBLIC_*` | frontend | API URL, registry address, RPC (see `frontend/.env.example`) |
 
-Copy `backend/.env.example`, `contracts/.env.example`, and `frontend/.env.example` to `.env` and fill in values. Full variable list: [docs/env-and-config.md](docs/env-and-config.md).
+Copy `backend/.env.example`, `contracts/.env.example`, and `frontend/.env.example` to `.env` and fill in values.
 
 ---
 

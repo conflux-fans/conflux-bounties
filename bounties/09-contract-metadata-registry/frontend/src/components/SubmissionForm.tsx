@@ -64,7 +64,7 @@ export function SubmissionForm() {
         e.preventDefault();
         setContractAddressError(null);
         if (!address) {
-            alert('Connect wallet first');
+            setContractAddressError('Connect wallet first');
             return;
         }
         if (isRegistryProxy) {

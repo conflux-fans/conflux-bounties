@@ -166,6 +166,7 @@ export function ConnectWallet() {
               key={connector.uid}
               type="button"
               role="option"
+              aria-selected="false"
               onClick={() => void handleConnect(connector)}
               disabled={isConnecting}
               className={clsx(
