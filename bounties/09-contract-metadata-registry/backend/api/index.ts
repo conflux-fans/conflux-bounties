@@ -9,6 +9,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     await app.ready();
     isReady = true;
   }
-  // Delegate to Fastify's HTTP server
+
+  if (req.url) {
+    if (req.url === '/api') {
+      req.url = '/';
+    } else if (req.url.startsWith('/api/')) {
+      req.url = req.url.replace(/^\/api/, '') || '/';
+    }
+  }
+
   app.server.emit('request', req, res);
 }
