@@ -1,186 +1,120 @@
 # Conflux Contract Metadata Registry
 
-**Type:** Smart Contracts, IPFS, Web UI ·
+> A place for Conflux projects to publish verified metadata — ABI, source info, logos, and descriptions — for their deployed contracts. Everything lives on IPFS, and there's a web UI for submitting, updating, and browsing entries.
 
-A verified metadata registry where Conflux projects upload ABI, source, logo, and descriptions for deployed contracts. Metadata lives on IPFS; a web UI lets teams submit, update, and browse entries with validation rules. Explorers and wallets can consume metadata via a public API and the on-chain registry.
+Explorers and wallets shouldn't have to guess what a contract does. This registry gives them a canonical source of truth: an on-chain record pointing to a pinned IPFS payload, verified by the contract owner and approved by a moderator.
 
-## Project Structure
+## How it works
 
-| Directory    | Description |
-| ------------ | ----------- |
-| `contracts/`  | Solidity registry (UUPS upgradeable, OpenZeppelin), tests, deploy scripts, gas report |
-| `backend/`   | Node.js/Fastify API, schema validation (Zod), IPFS pinning, ConfluxScan, webhook, BullMQ/Redis, Prisma (Postgres) |
-| `frontend/`  | Next.js + Tailwind + wagmi (wallet connect, Conflux eSpace testnet) |
-| `shared/`    | Shared types & metadata schema (Zod) |
-| `sdk/`       | Lightweight SDK for wallets/explorers to fetch metadata (with caching guidance) |
-| `docker/`    | Docker Compose: Postgres, Redis, backend, frontend |
-| `docs/`      | API reference, metadata schema, runbook for re-pinning |
+1. A developer connects their wallet, fills in the submission form (contract address, ABI, description, logo, tags), and signs with EIP-712.
+2. The backend validates the metadata against a Zod schema, pins it to IPFS via Pinata, computes a keccak256 checksum, and queues a verification job (bytecode match + ownership check).
+3. The on-chain registry stores the CID, checksum, and version. A moderator reviews the entry and approves or rejects it.
+4. Once approved, any wallet or explorer can fetch the metadata through the public API (with caching headers) or read the registry contract directly.
+5. When metadata changes, the developer submits a new version — the history is kept in the database and shown in the UI.
 
----
+## Project layout
 
-## Environment & config
-
-| Variable | Where | Description |
-| -------- | ----- | ----------- |
-| `CONFLUX_RPC_URL` | contracts, backend, frontend | Conflux RPC (e.g. evmtestnet) |
-| `REGISTRY_ADDRESS` | backend, frontend | Deployed registry proxy address |
-| `PINATA_JWT` | backend | IPFS pinning (Pinata) |
-| `DATABASE_URL` | backend | Postgres connection string |
-| `REDIS_URL` | backend | Redis for BullMQ and rate limiting |
-| `MODERATOR_WALLET` | backend | Moderator address (audit / optional checks) |
-| `WEBHOOK_URL` | backend | Notify watchers on approval |
-| `MAX_METADATA_KB` | backend | Max metadata JSON size (default 50) |
-| `ALLOWED_LOGO_MIME` | backend | Allowed logo MIME types |
-| `CONFLUXSCAN_API_URL` / `CONFLUXSCAN_API_KEY` | backend | Optional ConfluxScan API for contract verification |
-| `PRIVATE_KEY` | contracts | Deployer key (hex, no 0x) for deployment |
-| `NEXT_PUBLIC_*` | frontend | API URL, registry address, RPC (see `frontend/.env.example`) |
-
-Copy `backend/.env.example`, `contracts/.env.example`, and `frontend/.env.example` to `.env` and fill in values.
+| Directory | What's inside |
+|-----------|---------------|
+| `contracts/` | Solidity registry contract (UUPS upgradeable, OpenZeppelin AccessControl), tests, deploy scripts, gas report |
+| `backend/` | Fastify API — schema validation, IPFS pinning, ConfluxScan checks, BullMQ verification queue, Prisma + Postgres |
+| `frontend/` | Next.js + Tailwind + wagmi — submission form, explore page, contract detail view, admin dashboard |
+| `shared/` | Shared Zod metadata schema and types used by both backend and frontend |
+| `sdk/` | Lightweight client for wallets/explorers to fetch metadata (with ETag caching) |
+| `docker/` | Docker Compose for the full local stack (Postgres, Redis, backend, frontend) |
+| `docs/` | API reference, metadata schema docs, re-pinning runbook, security notes, testing guide |
 
 ---
 
-## Prerequisites
+## Getting started
 
-- **Node.js** 18+ and **npm**
-- **Docker** and **Docker Compose** (for Postgres and Redis, or full stack)
-- **Conflux wallet** with testnet CFX for deploying contracts
-- **Pinata** account (for IPFS; used by the backend)
+### Prerequisites
 
----
+- **Node.js 18+** and npm
+- **Docker** (for Postgres and Redis — or install them locally)
+- A **Conflux wallet** with some testnet CFX ([get some here](https://faucet.confluxnetwork.org/))
+- A **Pinata** account for IPFS pinning
 
-## Step-by-step: Run contracts
+### 1. Install everything
 
-### 1. Install dependencies
-
-From the **repository root** (workspace installs all packages):
+From the repo root (npm workspaces will handle all packages):
 
 ```bash
 npm install
 ```
 
-Or only for contracts:
+### 2. Set up environment files
 
-```bash
-cd contracts
-npm install
-```
+Copy the example `.env` files and fill in your values:
 
-### 2. Configure environment (contracts)
+- `contracts/.env` — your deployer private key and RPC URL
+- `backend/.env` — database, Redis, Pinata, registry address
+- `frontend/.env` — public API URL, registry address, RPC
 
-Create `contracts/.env` with:
+Each directory has a `.env.example` you can use as a starting point.
 
-```env
-# Required for deployment. Use a wallet with testnet CFX.
-PRIVATE_KEY=your_deployer_private_key_hex_without_0x
+---
 
-# Optional; defaults to Conflux EVM testnet
-CONFLUX_RPC_URL=https://evmtestnet.confluxrpc.com
-```
+## Smart contracts
 
-- Get testnet CFX from the [Conflux faucet](https://faucet.confluxnetwork.org/).
-- Never commit `.env` or share your private key.
-
-### 3. Compile contracts
+### Compile
 
 ```bash
 cd contracts
 npx hardhat compile
 ```
 
-You should see `Compiled X Solidity files successfully` and artifacts under `contracts/artifacts/`.
-
-### 4. Run contract tests (optional)
+### Run tests
 
 ```bash
 cd contracts
 npm test
 ```
 
-**Gas report:** The same command runs tests with the gas reporter enabled (see `hardhat.config.ts`). For a printed gas report, run `npx hardhat test` in `contracts/`.
+This also prints a gas report (enabled in `hardhat.config.ts`).
 
-### 5. Deploy to Conflux testnet
+### Deploy to Conflux testnet
+
+Make sure `contracts/.env` has your `PRIVATE_KEY` (hex, no `0x` prefix) and optionally `CONFLUX_RPC_URL`.
 
 ```bash
 cd contracts
 npx hardhat run scripts/deploy.ts --network confluxTestnet
 ```
 
-Example output:
+You'll see the proxy address in the output — save it, you'll need it for the backend and frontend config.
 
-```text
-Deploying contracts with the account: 0x...
-MetadataRegistry deployed to: 0x...
-```
+### Local development (optional)
 
-Save the **deployed proxy address**; the frontend and backend may need it (e.g. `NEXT_PUBLIC_REGISTRY_ADDRESS` or config).
-
-### 6. Deploy to a local Hardhat network (optional)
+If you'd rather test against a local Hardhat node:
 
 ```bash
 cd contracts
 npx hardhat node
-```
-
-In another terminal:
-
-```bash
-cd contracts
+# In another terminal:
 npx hardhat run scripts/deploy.ts --network localhost
 ```
 
+### Upgrading
+
+The contract uses UUPS. To upgrade, deploy a new implementation and call `upgradeToAndCall` from an account with `UPGRADER_ROLE`. See the OpenZeppelin UUPS docs and the contract's `_authorizeUpgrade` for details.
+
 ---
 
-## Step-by-step: Run backend
+## Backend
 
-The backend needs **PostgreSQL** and **Redis**. You can run them via Docker or install them locally.
+The backend needs **Postgres** and **Redis**. The easiest way to get them running is Docker.
 
-### 1. Install dependencies
-
-From the repo root (recommended):
-
-```bash
-npm install
-```
-
-Or only backend:
-
-```bash
-cd backend
-npm install
-```
-
-### 2. Configure environment (backend)
-
-Copy `backend/.env.example` to `backend/.env` and set:
-
-- **Required:** `DATABASE_URL`, `REDIS_URL`, `PINATA_JWT`, `CONFLUX_RPC_URL`, `REGISTRY_ADDRESS`
-- **Optional:** `MODERATOR_WALLET`, `WEBHOOK_URL`, `MAX_METADATA_KB` (default 50), `ALLOWED_LOGO_MIME`, `MAX_SUBMISSIONS_PER_WALLET_PER_MIN` (default 10), `CONFLUXSCAN_API_URL`, `CONFLUXSCAN_API_KEY`, `PORT`
-
-If you use Docker Compose, `DATABASE_URL` and `REDIS_URL` must point at the `postgres` and `redis` services (see `docker/docker-compose.yml`).
-
-### 3. Start Postgres and Redis (Docker)
-
-From the **repository root**:
+### Start the infrastructure
 
 ```bash
 cd docker
 docker compose up -d postgres redis
 ```
 
-Or with legacy CLI:
+This gives you Postgres on `localhost:5432` and Redis on `localhost:6379`.
 
-```bash
-docker-compose -f docker/docker-compose.yml up -d postgres redis
-```
-
-This starts:
-
-- **PostgreSQL** on `localhost:5432` (user `metadata`, password `metadata`, database `metadata` with the first block in `docker-compose.yml`).
-- **Redis** on `localhost:6379`.
-
-To start only Postgres and Redis from the **second** block in your compose file (different credentials), use the same command but ensure the compose file you use defines those services; adjust `backend/.env` to match (e.g. `user`/`password`/`conflux_registry` if that block is the one in use).
-
-### 4. Create and migrate the database
+### Set up the database
 
 ```bash
 cd backend
@@ -188,118 +122,133 @@ npx prisma generate
 npx prisma migrate dev
 ```
 
-- `prisma generate` generates the Prisma client.
-- `prisma migrate dev` creates the database if needed and applies migrations.
+When Prisma asks for a migration name, something like `init` works fine.
 
-When prompted for a migration name, you can use e.g. `init`.
-
-### 5. Run the backend
+### Start the API server
 
 ```bash
 cd backend
 npm run dev
 ```
 
-The API listens on **http://localhost:3000** (or the `PORT` in `.env`).
+The API runs on **http://localhost:3000** by default.
 
-Useful endpoints:
+### Key endpoints
 
-- `GET  /v1/metadata/` – list approved metadata (optional `?tag=` and `?q=`)
-- `GET  /v1/metadata/:address` – registry record (CID, checksum, version) with cache headers
-- `GET  /v1/metadata/:address/full` – full metadata JSON from IPFS (for wallets/explorers) with cache headers
-- `POST /v1/submissions/prepare` – prepare submission (returns CID and checksum)
-- `POST /v1/submissions/finalize` – finalize submission (rate limited per IP and per wallet)
-- `GET  /v1/submissions/` – list submissions (e.g. for admin)
-- `POST /v1/assets/logo` – upload logo (multipart; MIME restricted by `ALLOWED_LOGO_MIME`)
+| Method | Path | What it does |
+|--------|------|-------------|
+| `GET` | `/v1/metadata/` | List approved metadata (supports `?tag=` and `?q=` filters) |
+| `GET` | `/v1/metadata/:address` | Registry record (CID, checksum, version) with cache headers |
+| `GET` | `/v1/metadata/:address/full` | Full metadata JSON from IPFS, with caching |
+| `POST` | `/v1/submissions/prepare` | Validate metadata, pin to IPFS, return CID + checksum |
+| `POST` | `/v1/submissions/finalize` | Create submission record, enqueue verification |
+| `GET` | `/v1/submissions/` | List submissions (for admin dashboard) |
+| `POST` | `/v1/assets/logo` | Upload a logo image (multipart, MIME restricted) |
 
-Full API: [docs/api-reference.md](docs/api-reference.md). Metadata schema: [docs/metadata-schema.md](docs/metadata-schema.md).
+See [docs/api-reference.md](docs/api-reference.md) for the full reference.
 
-### 6. Run backend tests (optional)
+### Run backend tests
 
 ```bash
 cd backend
-npm run test:run
+npm run test:run          # single run
+npm run test:coverage     # with coverage report
 ```
 
-With coverage:
+---
+
+## Frontend
+
+The web UI is a Next.js app with Tailwind CSS and wagmi for wallet interactions.
 
 ```bash
-npm run test:coverage
+cd frontend
+npm run dev
 ```
 
----
+Then open **http://localhost:3001** (or whatever port Next.js assigns).
 
-## Run order summary
+The frontend includes:
 
-| Step | Where        | Command / action |
-| ---- | ------------ | ----------------- |
-| 1    | Root         | `npm install` |
-| 2    | Contracts    | Create `contracts/.env` (PRIVATE_KEY, CONFLUX_RPC_URL) |
-| 3    | Contracts    | `npx hardhat compile` |
-| 4    | Contracts    | `npx hardhat run scripts/deploy.ts --network confluxTestnet` (save proxy address) |
-| 5    | Backend      | Create `backend/.env` (DATABASE_URL, REDIS_URL, PINATA_JWT) |
-| 6    | Docker       | `cd docker && docker compose up -d postgres redis` |
-| 7    | Backend      | `npx prisma generate && npx prisma migrate dev` |
-| 8    | Backend      | `npm run dev` |
+- **Submit page** — fill in contract details, sign with your wallet, submit to the registry
+- **Explore page** — search and filter approved contracts by name, description, or tag
+- **Contract detail page** — view metadata, ABI, download links, version history, owner actions (transfer ownership, set resolver, manage delegates)
+- **Admin dashboard** — review and approve/reject pending submissions (requires `MODERATOR_ROLE`)
+
+The contract detail page uses **server-side rendering** for the initial metadata fetch, so it loads fast even before JavaScript hydrates.
 
 ---
 
-## Deploy on Vercel
+## Environment variables
 
-To run the full stack on Vercel, see **[docs/vercel-deployment.md](docs/vercel-deployment.md)**. You will create two projects (API + frontend), connect Neon (Postgres) and Upstash (Redis), and configure environment variables.
-
----
-
-## Run everything with Docker (optional)
-
-To run Postgres, Redis, backend, and frontend via Docker:
-
-1. Set in `backend/.env` (or compose env): `DATABASE_URL=postgresql://metadata:metadata@postgres:5432/metadata?schema=public`, `REDIS_URL=redis://redis:6379`, and a real `PINATA_JWT`.
-2. From repo root:
-
-   ```bash
-   docker compose -f docker/docker-compose.yml up -d
-   ```
-
-Backend will be on **http://localhost:3000**, frontend on **http://localhost:3001**. Build may take a few minutes the first time.
+| Variable | Used by | Description |
+|----------|---------|-------------|
+| `CONFLUX_RPC_URL` | contracts, backend, frontend | Conflux RPC endpoint (defaults to eSpace testnet) |
+| `REGISTRY_ADDRESS` | backend, frontend | Deployed registry proxy address |
+| `PINATA_JWT` | backend | Pinata API token for IPFS pinning |
+| `DATABASE_URL` | backend | Postgres connection string |
+| `REDIS_URL` | backend | Redis URL for BullMQ and rate limiting |
+| `MODERATOR_WALLET` | backend | Address allowed to approve/reject via the API |
+| `WEBHOOK_URL` | backend | URL to notify when metadata is approved |
+| `MAX_METADATA_KB` | backend | Max metadata JSON size (default: 50) |
+| `ALLOWED_LOGO_MIME` | backend | Comma-separated allowed MIME types for logos |
+| `PRIVATE_KEY` | contracts | Deployer private key (hex, no `0x`) |
+| `NEXT_PUBLIC_*` | frontend | API URL, registry address, RPC (see `frontend/.env.example`) |
 
 ---
 
-## Architecture
+## Running with Docker
 
-- **Registry contract**: UUPS upgradeable; stores metadata CIDs, checksums, version, status. `submitMetadata`, `approve`, `reject`, `transferOwnership`, `setResolver`; ownership via `owner()` or EIP-712 delegate. **Upgrade path:** Deploy a new implementation and call `upgradeToAndCall` (or `upgradeTo`) from an account with `UPGRADER_ROLE`; see OpenZeppelin UUPS docs and the contract’s `_authorizeUpgrade`.
-- **Backend**: Validates schema (Zod, &lt;50KB), pins to IPFS (Pinata), bytecode checksum verification, ConfluxScan, BullMQ verification queue, rate limit (per IP + per wallet), moderation log, webhook.
-- **Frontend**: Next.js + Tailwind + wagmi; submit, sign, browse, admin approval view; contract page uses **SSR** (server-side fetch from API for initial metadata).
-- **Integration kit**: Use `sdk/` or REST. For **caching**: call `GET /v1/metadata/:address/full`; respect `Cache-Control` (e.g. 5 min) and `ETag`; use `If-None-Match: <ETag>` for conditional requests to avoid re-downloading unchanged metadata. See [docs/api-reference.md](docs/api-reference.md).
+To spin up the entire stack (Postgres, Redis, backend, frontend) in one command:
 
----
+1. Set your environment values in `docker/.env` (or export them).
+2. From the repo root:
 
-## Docs & ops
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
 
-- [API reference](docs/api-reference.md)
-- [Metadata schema](docs/metadata-schema.md)
-- [Integration kit](docs/integration-kit.md) – SDK, REST examples, caching for wallets/explorers
-- [Runbook: IPFS re-pin and verify](docs/runbook-repin.md) – CLI `cd backend && npm run repin -- --cid <CID> | --address <0x...>`
-- [Testing](docs/testing.md) – Unit and integration tests, coverage target >80%, CI
-- [Security, RBAC & audit](docs/security-rbac-audit.md) – Roles, moderation log, rate limiting
+The backend will be at **http://localhost:3000** and the frontend at **http://localhost:3001**. The first build takes a few minutes.
 
 ---
 
-## Verification
+## Running tests
 
-Run all workspace tests (contracts, backend, frontend, sdk; target **>80% coverage** for contracts and API):
+Run all workspace tests from the root:
 
 ```bash
 npm run test
 ```
 
-Run workspace tests:
+Or run them individually:
 
 ```bash
-cd contracts && npm test
-cd backend  && npm run test:run
-cd frontend && npm run test -- --run
-cd sdk      && npm test
+cd contracts && npm test             # Hardhat (Solidity)
+cd backend  && npm run test:run      # Vitest
+cd frontend && npm run test -- --run # Vitest
+cd sdk      && npm test              # Vitest
 ```
 
-Coverage: `cd backend && npm run test:coverage`; `cd frontend && npm run test -- --run --coverage`. Full testing instructions: [docs/testing.md](docs/testing.md).
+For coverage reports: `cd backend && npm run test:coverage` or `cd frontend && npm run test -- --run --coverage`.
+
+Full testing details: [docs/testing.md](docs/testing.md).
+
+---
+
+## Architecture at a glance
+
+- **Registry contract** — UUPS upgradeable, stores metadata CIDs + checksums + versions on-chain. Ownership verified via `owner()` call or EIP-712 signature. Delegates can submit on behalf of owners. `approve` and `reject` are moderator-only.
+- **Backend** — Fastify API that validates metadata (Zod, <50KB), pins to IPFS (Pinata), checks bytecode hash against on-chain code, verifies via ConfluxScan, manages a BullMQ verification queue, rate-limits per IP and per wallet, writes an audit log, and fires webhooks on approval.
+- **Frontend** — Next.js + Tailwind + wagmi. SSR for the contract detail page. EIP-712 signing for submissions. Admin dashboard checks `MODERATOR_ROLE` on-chain before showing controls.
+- **SDK** — `ConfluxMetadataClient` wraps the public API with ETag-based caching. See `sdk/README.md`.
+
+---
+
+## Documentation
+
+- [API Reference](docs/api-reference.md) — every endpoint, request/response format, error codes
+- [Metadata Schema](docs/metadata-schema.md) — field definitions, validation rules, examples
+- [Integration Kit](docs/integration-kit.md) — SDK usage, REST examples, caching strategy
+- [IPFS Re-pin Runbook](docs/runbook-repin.md) — CLI for re-pinning and verifying CIDs
+- [Security, RBAC & Audit](docs/security-rbac-audit.md) — roles, permissions, rate limiting, audit logs
+- [Testing Guide](docs/testing.md) — how to run unit, integration, and e2e tests

@@ -1,66 +1,71 @@
-# Runbook: IPFS re-pin and verify
+# Runbook: IPFS Re-pin & Verify
 
-This runbook covers re-pinning metadata CIDs to IPFS and verifying checksums. Use it when ensuring redundancy or recovering from pin loss.
-
----
-
-## Prerequisites
-
-- Backend env configured: `DATABASE_URL`, `PINATA_JWT`, `PINATA_GATEWAY` (optional).
-- From repo root, backend deps installed (`npm install` in `backend/` or at root with workspaces).
+If a CID gets unpinned, a gateway goes down, or you just want to make sure your metadata is still safely pinned, this runbook walks you through re-pinning and verifying checksums.
 
 ---
 
-## CLI: re-pin by CID
+## Before you start
 
-Re-pin a single CID and optionally verify checksum against the database.
+Make sure you have:
+
+- Backend dependencies installed (`npm install` in `backend/` or at the repo root)
+- The backend `.env` configured with at least `DATABASE_URL` and `PINATA_JWT`
+- Optionally `PINATA_GATEWAY` if you're using a custom gateway
+
+---
+
+## Re-pin a specific CID
+
+If you know the CID you want to re-pin:
 
 ```bash
 cd backend
-npm run repin -- --cid <CID>
-# Or: npx ts-node src/scripts/ipfs-repin.ts --cid <CID>
+npm run repin -- --cid QmYourCIDHere
 ```
 
-- Fetches content from `PINATA_GATEWAY` (or default gateway).
-- Computes keccak256 of the response; if it does not match the stored checksum, prints a warning (remediation: fix metadata and resubmit, or update checksum in DB).
-- Calls Pinata “pin by hash” for the given CID.
-- Upserts `IpfsPin` in the DB (provider `pinata`, status `PINNED` or `FAILED`).
+What happens:
+1. Fetches the content from the IPFS gateway
+2. Computes a keccak256 checksum and compares it to what's stored in the database
+3. If the checksum doesn't match, prints a warning (the content may have changed or the stored checksum might be wrong)
+4. Re-pins the CID via Pinata
+5. Updates the `IpfsPin` record in the database
 
 ---
 
-## CLI: re-pin by contract address
+## Re-pin by contract address
 
-Re-pin the **latest approved** metadata for a contract:
+If you don't have the CID handy, you can look it up by contract address. This re-pins the **latest approved** version:
 
 ```bash
-npm run repin -- --address <0x...>
+npm run repin -- --address 0xYourContractAddress
 ```
 
-Re-pin a **specific version** for a contract:
+Or a specific version:
 
 ```bash
-npm run repin -- --address <0x...> --version <N>
+npm run repin -- --address 0xYourContractAddress --version 2
 ```
 
-The script resolves the CID and checksum from the database, then runs the same verify + re-pin logic as with `--cid`.
+The script finds the matching submission in the database, grabs the CID and checksum, and runs the same verify + re-pin flow.
 
 ---
 
-## Remediation
+## What to do when things go wrong
 
-| Situation | Action |
-|----------|--------|
-| Checksum mismatch | Fix the metadata (or source of truth), re-upload to IPFS, then update submission/record with new CID and checksum; or correct the stored checksum in DB if the content on IPFS is correct. |
-| Pin failed (network / Pinata) | Check `PINATA_JWT`, network, and Pinata dashboard; retry the CLI. |
-| CID not in DB | Use `--cid` only when you already have the CID; otherwise use `--address` (and optional `--version`) so the script can look up CID/checksum from the DB. |
+| What happened | What to do |
+|---------------|-----------|
+| **Checksum mismatch** | The content on IPFS doesn't match the stored checksum. Either re-upload the correct metadata and update the submission with a new CID, or — if the IPFS content is actually correct — fix the checksum in the database. |
+| **Pin failed** | Check your `PINATA_JWT` is valid, your network is working, and Pinata isn't having issues. Then retry. |
+| **CID not in database** | Use `--cid` only when you already know the CID. Use `--address` to let the script look it up from the database. |
 
 ---
 
-## Automation
+## Automating re-pins
 
-To re-pin all approved CIDs periodically, you can:
+If you want to periodically verify and re-pin everything:
 
-1. Query the DB for distinct CIDs with status `APPROVED` (or from `IpfsPin`).
-2. For each CID, run the same logic as the script (fetch → verify checksum → pin by hash → update `IpfsPin`).
+1. Query the database for all distinct CIDs with status `APPROVED`
+2. For each CID, run the same logic: fetch → verify checksum → pin by hash → update `IpfsPin`
+3. Set this up as a cron job or integrate it into a queue worker
 
-Integrate this into a cron job or queue worker; keep the same checksum verification and Pinata calls as in `backend/src/scripts/ipfs-repin.ts`.
+The core logic is all in `backend/src/scripts/ipfs-repin.ts` — you can import and reuse it.

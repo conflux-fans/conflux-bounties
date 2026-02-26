@@ -1,6 +1,6 @@
 # Conflux Metadata Registry – SDK
 
-Lightweight client for wallets and explorers to fetch contract metadata from the Conflux Metadata Registry API.
+A lightweight TypeScript client for wallets and explorers to fetch contract metadata from the Conflux Metadata Registry. Handles caching out of the box with ETag support.
 
 ## Install
 
@@ -8,38 +8,56 @@ Lightweight client for wallets and explorers to fetch contract metadata from the
 npm install conflux-metadata-sdk
 ```
 
-Or link from monorepo: `"conflux-metadata-sdk": "file:../sdk"`.
+Or if you're working in the monorepo, link it directly:
+
+```json
+"conflux-metadata-sdk": "file:../sdk"
+```
 
 ## Usage
 
-```ts
+```typescript
 import { ConfluxMetadataClient } from 'conflux-metadata-sdk';
 
-const client = new ConfluxMetadataClient({ baseUrl: 'https://api.example.com/v1' });
+const client = new ConfluxMetadataClient({
+  baseUrl: 'https://api.example.com/v1'
+});
 
-// Registry record (CID, checksum, version)
-const record = await client.getMetadata('0x...');
+// Get the registry record (CID, checksum, version)
+const record = await client.getMetadata('0xYourContractAddress');
 
-// Full metadata (ABI, description, logo, etc.) – for display
-const full = await client.getMetadataFull('0x...');
+// Get the full metadata (ABI, description, logo, tags, everything)
+const full = await client.getMetadataFull('0xYourContractAddress');
 if (full && 'data' in full) {
-  console.log(full.data.abi, full.data.description);
-} else if (full?.notModified) {
-  // Use your cached copy
+  console.log(full.data.name, full.data.abi);
+  // Save full.etag for caching on the next call
+}
+
+// On the next call, pass the saved etag to avoid re-downloading
+const cached = await client.getMetadataFull('0xYourContractAddress', {
+  etag: savedEtag
+});
+if (cached?.notModified) {
+  // Nothing changed — use your cached copy
 }
 ```
 
-## Caching guidance
+## Caching
 
-- The API returns `Cache-Control` (e.g. `public, max-age=300`) and `ETag` on `GET /metadata/:address` and `GET /metadata/:address/full`.
-- **Recommendation:** Cache full metadata for at least 5 minutes. Store the `ETag` and send `If-None-Match: <ETag>` on the next request; if the server returns `304 Not Modified`, reuse your cached copy.
-- Example with `getMetadataFull`: pass the previous `etag`; if the result is `{ notModified: true }`, keep using your cached copy.
+The API returns `Cache-Control` (5-minute TTL) and `ETag` headers on metadata endpoints. The SDK makes it easy to take advantage of this:
 
-## REST examples
+1. On the first call, `getMetadataFull` returns `{ data, etag }`
+2. Store the `etag` value
+3. On subsequent calls, pass it as `{ etag: savedEtag }`
+4. If nothing changed, the result is `{ notModified: true }` — skip the download and use your cache
 
-Without the SDK, use:
+This keeps your integration fast and avoids unnecessary bandwidth.
 
-- `GET /v1/metadata/:address` – record (CID, checksum, version).
-- `GET /v1/metadata/:address/full` – full metadata JSON (with cache headers).
+## Without the SDK
 
-See the main repo [API reference](../docs/api-reference.md) for full details.
+You can also call the REST API directly:
+
+- `GET /v1/metadata/:address` — registry record (CID, checksum, version)
+- `GET /v1/metadata/:address/full` — full metadata JSON with caching headers
+
+See the [API reference](../docs/api-reference.md) for complete documentation.

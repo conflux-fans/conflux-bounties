@@ -1,186 +1,227 @@
 # API Reference
 
-Base URL: `http://localhost:3000/v1` (or your deployed backend).
+**Base URL:** `http://localhost:3000/v1` (or wherever you deploy the backend).
 
-All public endpoints support CORS and return JSON. Cache headers are set where specified.
-
----
-
-## Public metadata (no auth)
-
-### GET /metadata
-
-List approved metadata entries. Supports search and filter.
-
-**Query**
-
-| Param | Type   | Description                    |
-|-------|--------|--------------------------------|
-| `tag` | string | Filter by tag (exact match)   |
-| `q`   | string | Search in name/description   |
-
-**Response:** `200` – Array of submission records (contractAddress, cid, checksum, status, version, name, description, tagsJson, etc.).
+Everything returns JSON. CORS is enabled. Cache headers are set on public endpoints so consumers can avoid re-fetching unchanged data.
 
 ---
 
-### GET /metadata/:address
+## Public metadata
 
-Get the **registry record** for a contract (CID, checksum, version). Use this for on-chain proof and to resolve the CID.
+These endpoints don't require authentication — they're meant for wallets, explorers, and anyone who wants to look up contract metadata.
 
-**Params**
+### `GET /metadata`
 
-- `address` – Contract address (0x-prefixed, 40 hex chars).
+Lists all approved metadata entries. You can filter by tag or search by name/description.
 
-**Response:** `200`
+| Param | Type | Description |
+|-------|------|-------------|
+| `tag` | string | Filter by tag (exact match, e.g. `?tag=defi`) |
+| `q` | string | Search in name and description (case-insensitive) |
 
-- `contractAddress`, `version`, `cid`, `checksum`, `status`
+**Response** `200` — Array of submission records with `contractAddress`, `cid`, `checksum`, `status`, `version`, `name`, `description`, `tagsJson`, etc.
 
-**Headers**
+---
 
+### `GET /metadata/:address`
+
+Returns the **registry record** for a specific contract — the CID, checksum, version, and status. This is the lightweight endpoint you'd use to resolve a CID or verify on-chain proof.
+
+**Response** `200`
+
+```json
+{
+  "contractAddress": "0x...",
+  "version": 1,
+  "cid": "Qm...",
+  "checksum": "0x...",
+  "status": "APPROVED"
+}
+```
+
+**Response headers:**
 - `Cache-Control: public, max-age=300`
 - `ETag: "<checksum>"`
 
-**Errors:** `404` – Metadata not found.
+Returns `404` if the contract has no approved metadata.
 
 ---
 
-### GET /metadata/:address/full
+### `GET /metadata/:address/full`
 
-Get **full metadata JSON** for a contract (resolved from IPFS). Intended for wallets and explorers. Response includes the record fields plus the full metadata payload (ABI, description, logo, tags, etc.).
+Returns the **full metadata payload** fetched from IPFS — ABI, description, logo, tags, compiler info, socials, and everything else. This is what wallets and explorers would call to display rich contract information.
 
-**Params**
+The response merges the registry record fields with the full metadata JSON:
 
-- `address` – Contract address (0x-prefixed).
+```json
+{
+  "contractAddress": "0x...",
+  "version": 1,
+  "cid": "Qm...",
+  "checksum": "0x...",
+  "name": "My Token",
+  "description": "An ERC-20 on Conflux",
+  "abi": [...],
+  "logoUrl": "ipfs://Qm...",
+  "tags": ["token", "erc20"],
+  "compiler": { "version": "0.8.26" },
+  "socials": { "github": "https://github.com/..." }
+}
+```
 
-**Response:** `200`
-
-- `contractAddress`, `version`, `cid`, `checksum`, plus all metadata fields (abi, description, logoUrl, tags, website, socials, compiler, etc.).
-
-**Headers**
-
+**Response headers:**
 - `Cache-Control: public, max-age=300, s-maxage=600`
 - `ETag: "<checksum>"`
 
-**Caching guidance (SDK / consumers):** Respect `Cache-Control` and `ETag`. Cache for at least 5 minutes; use conditional requests (`If-None-Match: <ETag>`) to avoid re-downloading unchanged metadata.
+**Caching tip:** Store the `ETag` value. On subsequent requests, send `If-None-Match: <ETag>` — if nothing has changed, you'll get a `304 Not Modified` and can reuse your cached copy.
 
-**Errors**
-
-- `404` – No approved metadata for this contract.
-- `502` – Failed to fetch from IPFS gateway.
-
----
-
-## Submissions (creator flow)
-
-### POST /submissions/prepare
-
-Validate metadata, pin to IPFS, and compute checksum. Does not create a DB submission.
-
-**Body (JSON)**
-
-- `metadata` – Object conforming to the [metadata schema](./metadata-schema.md) (abi, bytecodeHash, compiler, description, etc.). Size must be &lt; 50KB (configurable via `MAX_METADATA_KB`).
-
-**Response:** `200`
-
-- `cid` – IPFS CID of the pinned metadata.
-- `checksum` – Keccak256 of canonical JSON (for on-chain submission).
-
-**Errors:** `400` – Validation error or metadata too large.
+**Errors:**
+- `404` — no approved metadata for this contract
+- `502` — couldn't reach the IPFS gateway
 
 ---
 
-### POST /submissions/finalize
+## Submissions
 
-Create a submission record and enqueue verification (bytecode + ownership + ConfluxScan). Rate limited per IP and per wallet.
+These endpoints power the creator submission flow — preparing metadata, finalizing submissions, and moderating them.
 
-**Duplicate detection:** If a submission with the same `contractAddress` and `cid` already exists, the API returns the existing `submissionId` and does not create a duplicate (idempotent). To update metadata, submit with a new CID (new version). Use **manual override** `forceNew: true` to create a new submission record even when the same contract+CID exists (e.g. for re-verification or moderator override).
+### `POST /submissions/prepare`
 
-**Body (JSON)**
+Validates the metadata against the schema, pins it to IPFS, and returns the CID and checksum. This doesn't create a database record yet — it's a "dry run" that gives you what you need for the on-chain transaction.
 
-- `contractAddress` – Contract address.
-- `cid` – CID from `/prepare`.
-- `checksum` – Checksum from `/prepare`.
-- `signature` – EIP-712 or wallet signature (for verification).
-- `submitter` – (Optional) Submitter wallet address (for rate limiting and moderation log).
-- `metadata` – Same metadata object as in `/prepare` (for verification job).
-- `forceNew` – (Optional) If `true`, create a new submission even when same contract+CID exists (manual override).
+**Request body:**
 
-**Response:** `200`
+```json
+{
+  "metadata": {
+    "name": "My Token",
+    "description": "An ERC-20 on Conflux",
+    "abi": [...],
+    "bytecodeHash": "0x...",
+    "compiler": { "version": "0.8.26", "language": "Solidity" }
+  }
+}
+```
 
-- `success: true`, `submissionId`. Optionally `message: 'Already exists'` when duplicate was detected and not overridden.
+The metadata must conform to the [metadata schema](./metadata-schema.md) and be under 50KB (configurable with `MAX_METADATA_KB`).
 
-**Errors**
+**Response** `200`
 
-- `400` – Validation or checksum mismatch.
-- `429` – Rate limit exceeded (per IP or per wallet).
+```json
+{
+  "cid": "QmSomeCID...",
+  "checksum": "0xabc123..."
+}
+```
 
----
-
-### GET /submissions
-
-List submissions (for admin/dashboard or version history). Filter by status and/or contract address.
-
-**Query**
-
-- `status` – Single status or comma-separated (e.g. `PENDING`, `PENDING,VERIFIED`).
-- `contractAddress` – Filter by contract address (0x-prefixed, 40 hex chars). Returns version history for that contract, ordered by version/createdAt desc.
-
-**Response:** `200` – Array of submission records.
+Returns `400` on validation errors or if the payload is too large.
 
 ---
 
-### POST /submissions/:id/approve
+### `POST /submissions/finalize`
 
-Approve a submission (moderator). Updates status to `APPROVED`, assigns version, writes moderation log, and triggers webhook.
+Creates the actual submission record in the database and queues a verification job (bytecode check, ownership check, ConfluxScan). This endpoint is rate-limited per IP and per wallet.
 
-When `MODERATOR_WALLET` is set (and not zero), the request body must include `moderatorAddress` matching the configured wallet; otherwise returns `403`.
+**Duplicate handling:** If a submission with the same `contractAddress` + `cid` already exists, the API returns the existing `submissionId` without creating a duplicate. If you need to force a new record (e.g. for re-verification), pass `forceNew: true`.
 
-**Body (JSON, optional)**
+**Request body:**
 
-- `txHash` – On-chain approval tx hash (for moderation log).
-- `version` – Override version number (optional).
-- `moderatorAddress` – Wallet address of the caller (required when `MODERATOR_WALLET` is configured).
+```json
+{
+  "contractAddress": "0x...",
+  "cid": "QmSomeCID...",
+  "checksum": "0xabc123...",
+  "signature": "0x...",
+  "submitter": "0xYourWallet",
+  "metadata": { ... },
+  "forceNew": false
+}
+```
 
-**Response:** `200` – Updated submission.
+**Response** `200`
 
-**Errors:** `404` – Submission not found. `403` – Caller wallet does not match `MODERATOR_WALLET`.
+```json
+{
+  "success": true,
+  "submissionId": "uuid-here"
+}
+```
+
+**Errors:**
+- `400` — validation error or checksum mismatch
+- `429` — rate limit exceeded (try again in a minute)
 
 ---
 
-### POST /submissions/:id/reject
+### `GET /submissions`
 
-Reject a submission (moderator). Updates status to `REJECTED` and writes moderation log.
+Lists submissions — useful for the admin dashboard or fetching version history for a specific contract.
 
-When `MODERATOR_WALLET` is set (and not zero), the request body must include `moderatorAddress` matching the configured wallet; otherwise returns `403`.
+| Param | Type | Description |
+|-------|------|-------------|
+| `status` | string | Filter by status: `PENDING`, `VERIFIED`, `APPROVED`, `REJECTED`, or comma-separated like `PENDING,VERIFIED` |
+| `contractAddress` | string | Filter by contract address (returns version history, ordered by version descending) |
 
-**Body (JSON, optional)**
+**Response** `200` — array of submission records.
 
-- `reason` – Rejection reason.
-- `moderatorAddress` – Wallet address of the caller (required when `MODERATOR_WALLET` is configured).
+---
 
-**Response:** `200` – Updated submission.
+### `POST /submissions/:id/approve`
 
-**Errors:** `404` – Submission not found. `403` – Caller wallet does not match `MODERATOR_WALLET`.
+Approves a submission. Updates its status to `APPROVED`, assigns a version number, writes to the moderation log, and fires the webhook.
+
+When `MODERATOR_WALLET` is set in the backend config, the request must include a matching `moderatorAddress` — otherwise you'll get a `403`.
+
+**Request body (optional):**
+
+```json
+{
+  "txHash": "0x...",
+  "version": 1,
+  "moderatorAddress": "0x..."
+}
+```
+
+Returns `404` if the submission doesn't exist, `403` if you're not the configured moderator.
+
+---
+
+### `POST /submissions/:id/reject`
+
+Rejects a submission. Same moderator check as approve.
+
+**Request body (optional):**
+
+```json
+{
+  "reason": "Incomplete ABI",
+  "moderatorAddress": "0x..."
+}
+```
 
 ---
 
 ## Assets
 
-### POST /assets/logo
+### `POST /assets/logo`
 
-Upload a logo image for use in metadata. File is pinned to IPFS. Allowed MIME types are configured via `ALLOWED_LOGO_MIME` (default: `image/png`, `image/jpeg`, `image/svg+xml`).
+Uploads a logo image and pins it to IPFS. Send the file as `multipart/form-data`.
 
-**Body:** `multipart/form-data` with a file field.
+Allowed MIME types are configured with `ALLOWED_LOGO_MIME` (defaults to `image/png`, `image/jpeg`, `image/svg+xml`).
 
-**Response:** `200`
+**Response** `200`
 
-- `cid` – IPFS CID.
-- `url` – `ipfs://<cid>` (use with IPFS gateway for display).
+```json
+{
+  "cid": "Qm...",
+  "url": "ipfs://Qm..."
+}
+```
 
-**Errors:** `400` – No file or unsupported MIME type.
+Returns `400` if no file is provided or the MIME type isn't allowed.
 
 ---
 
 ## Environment
 
-See [README](../README.md) and [.env.example](../backend/.env.example) for required env vars: `DATABASE_URL`, `REDIS_URL`, `CONFLUX_RPC_URL`, `REGISTRY_ADDRESS`, `PINATA_JWT`, `MODERATOR_WALLET`, `WEBHOOK_URL`, `MAX_METADATA_KB`, `ALLOWED_LOGO_MIME`, etc.
+See the [README](../README.md) and `backend/.env.example` for the full list of environment variables.
