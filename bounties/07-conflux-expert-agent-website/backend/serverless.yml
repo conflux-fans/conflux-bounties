@@ -1,0 +1,56 @@
+service: conflux-expert-backend
+
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.11
+  region: us-east-1
+  memorySize: 1024
+  timeout: 30
+  environment:
+    GEMINI_API_KEY: ${env:GEMINI_API_KEY}
+    VECTOR_DB_API: ${env:VECTOR_DB_API}
+    PINECONE_INDEX: ${env:PINECONE_INDEX, 'conflux-expert'}
+    PINECONE_ENVIRONMENT: ${env:PINECONE_ENVIRONMENT, 'us-east-1'}
+    GITHUB_TOKEN: ${env:GITHUB_TOKEN}
+    GEMINI_MODEL: ${env:GEMINI_MODEL, 'gemini-2.5-flash'}
+    EMBEDDING_MODEL: ${env:EMBEDDING_MODEL, 'llama-text-embed-v2'}
+    EMBEDDING_DIMENSION: ${env:EMBEDDING_DIMENSION, '1024'}
+    TEMPERATURE: ${env:TEMPERATURE, '0.7'}
+    TOP_K_RESULTS: ${env:TOP_K_RESULTS, '5'}
+    ADMIN_PASSWORD: ${env:ADMIN_PASSWORD}
+    JWT_SECRET: ${env:JWT_SECRET}
+
+functions:
+  api:
+    handler: main.handler
+    events:
+      - httpApi:
+          path: /{proxy+}
+          method: ANY
+      - httpApi:
+          path: /
+          method: ANY
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: non-linux
+    slim: true
+    strip: false
+    layer: true
+
+package:
+  individually: false
+  patterns:
+    - "!node_modules/**"
+    - "!venv/**"
+    - "!.venv/**"
+    - "!__pycache__/**"
+    - "!.pytest_cache/**"
+    - "!tests/**"
+    - "!*.pyc"
+    - "!conflux_expert.log"
