@@ -9,6 +9,7 @@
     "test:coverage": "vitest run --coverage",
     "dev": "ts-node src/server.ts",
     "build": "tsc",
+    "prisma": "npx prisma generate",
     "repin": "ts-node src/scripts/ipfs-repin.ts"
   },
   "keywords": [],
