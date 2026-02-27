@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.unmock('./verification');
+
 import { ethers } from 'ethers';
 import {
     processVerificationJob,
@@ -9,6 +11,16 @@ import {
     type VerificationJobData
 } from './verification';
 import { mockPrisma } from '../test/mocks';
+
+vi.mock('bullmq', () => {
+    return {
+        Queue: vi.fn(),
+        Worker: class {
+            on = vi.fn().mockReturnThis();
+            close = vi.fn();
+        }
+    };
+});
 
 describe('verification', () => {
     const expectedHash = '0x' + 'a'.repeat(64);
@@ -152,7 +164,7 @@ describe('handleVerificationJob', () => {
 
 describe('onVerificationCompleted', () => {
     it('logs job id', () => {
-        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        const log = vi.spyOn(console, 'log').mockImplementation(() => { });
         onVerificationCompleted({ id: '123' });
         expect(log).toHaveBeenCalledWith('123 has completed!');
         log.mockRestore();
@@ -161,16 +173,68 @@ describe('onVerificationCompleted', () => {
 
 describe('onVerificationFailed', () => {
     it('logs job id and error message', () => {
-        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        const log = vi.spyOn(console, 'log').mockImplementation(() => { });
         onVerificationFailed({ id: '456' }, new Error('Something broke'));
         expect(log).toHaveBeenCalledWith('456 has failed with Something broke');
         log.mockRestore();
     });
 
     it('handles undefined job', () => {
-        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        const log = vi.spyOn(console, 'log').mockImplementation(() => { });
         onVerificationFailed(undefined, new Error('No job'));
         expect(log).toHaveBeenCalledWith('undefined has failed with No job');
         log.mockRestore();
     });
 });
+
+
+
+
+describe('processVerificationJob skipBytecodeCheck', () => {
+    it('skips bytecode hash check when placeholder is provided', async () => {
+        const deps = {
+            prisma: mockPrisma as any,
+            getBytecode: vi.fn().mockResolvedValue('0x' + 'f'.repeat(64)), // mismatching bytecode
+            readContract: vi.fn().mockResolvedValue('0xowner'),
+            verifyWithConfluxScan: vi.fn().mockResolvedValue({ success: true })
+        };
+        const jobData = {
+            submissionId: 'sub-1',
+            contractAddress: '0xabc',
+            cid: 'QmX',
+            checksum: '0xab',
+            signature: '0xsig',
+            metadata: { bytecodeHash: '0x' + '0'.repeat(64) } // placeholder
+        };
+
+        await expect(processVerificationJob(deps, jobData)).resolves.not.toThrow();
+
+        expect(deps.prisma.submission.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    verificationLog: expect.stringContaining('"skipped":true')
+                })
+            })
+        );
+    });
+});
+
+import { getConnection, getVerificationQueue, startWorker } from './verification';
+
+describe('verification infrastructure', () => {
+    it('getConnection returns an IORedis instance', () => {
+        const conn = getConnection();
+        expect(conn).toBeDefined();
+    });
+
+    it('getVerificationQueue returns a Queue instance', () => {
+        const q = getVerificationQueue();
+        expect(q).toBeDefined();
+    });
+
+    it('worker initialization', () => {
+        const worker = startWorker();
+        expect(worker).toBeDefined();
+    });
+});
+

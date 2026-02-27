@@ -20,3 +20,4 @@ playwright/.cache
 test-results
 .vitest
 *.log
+coverage.json

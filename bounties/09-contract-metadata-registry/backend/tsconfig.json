@@ -7,12 +7,7 @@
         "strict": true,
         "esModuleInterop": true,
         "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true,
-        "paths": {
-            "@conflux-metadata/shared": [
-                "../../shared/src/index"
-            ]
-        }
+        "forceConsistentCasingInFileNames": true
     },
     "include": [
         "src/**/*"

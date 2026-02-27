@@ -78,7 +78,7 @@ describe('api client', () => {
         json: async () => {
           throw new Error('invalid json');
         },
-      } as Response);
+      } as unknown as Response);
       const file = new File(['x'], 'logo.png');
       await expect(uploadLogo(file)).rejects.toThrow('Logo upload failed');
     });
@@ -169,7 +169,7 @@ describe('api client', () => {
     });
 
     it('throws on failure', async () => {
-      mockFetch.mockResolvedValue({ ok: false } as Response);
+      mockFetch.mockResolvedValue({ ok: false, json: async () => ({}) } as Response);
       await expect(prepareSubmission({} as any)).rejects.toThrow('Preparation failed');
     });
   });

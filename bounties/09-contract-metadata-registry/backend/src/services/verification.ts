@@ -9,7 +9,7 @@ import { verifyWithConfluxScan } from './confluxScan';
 const prisma = new PrismaClient();
 
 let connection: IORedis | null = null;
-function getConnection(): IORedis {
+export function getConnection(): IORedis {
     if (!connection) {
         connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
             maxRetriesPerRequest: null

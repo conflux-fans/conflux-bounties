@@ -13,6 +13,7 @@
     "verify:testnet": "hardhat run scripts/verify.ts --network confluxTestnet",
     "verify:mainnet": "hardhat run scripts/verify.ts --network confluxMainnet",
     "coverage": "hardhat coverage",
+    "test:coverage": "hardhat coverage",
     "gas-report": "hardhat test"
   },
   "keywords": [],

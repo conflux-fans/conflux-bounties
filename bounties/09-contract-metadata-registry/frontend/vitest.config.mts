@@ -11,7 +11,7 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['**/node_modules/**', '**/e2e/**'],
     coverage: {
-      provider: 'v8',
+      provider: 'istanbul',
       include: ['src/lib/registry.ts', 'src/lib/server-api.ts', 'src/services/api.ts'],
       exclude: ['**/*.test.{ts,tsx}', '**/node_modules/**'],
       thresholds: {

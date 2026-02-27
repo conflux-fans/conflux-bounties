@@ -6,7 +6,8 @@
     "scripts": {
         "build": "tsc",
         "dev": "npm run build --watch",
-        "test": "echo 'No tests in shared'"
+        "test": "echo 'No tests in shared'",
+        "lint": "tsc --noEmit"
     },
     "devDependencies": {
         "typescript": "^5.0.0"

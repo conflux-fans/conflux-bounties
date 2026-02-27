@@ -78,6 +78,8 @@ services:
     environment:
       # Use localhost so browser can reach backend when user visits localhost:3001
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/v1}
+      # Use backend:3000 for server-side fetches inside the frontend container
+      INTERNAL_API_URL: http://backend:3000/v1
       NEXT_PUBLIC_REGISTRY_ADDRESS: ${REGISTRY_ADDRESS:-}
       NEXT_PUBLIC_CONFLUX_RPC_URL: ${CONFLUX_RPC_URL:-https://evmtestnet.confluxrpc.com}
       NEXT_PUBLIC_IPFS_GATEWAY: ${NEXT_PUBLIC_IPFS_GATEWAY:-https://gateway.pinata.cloud}

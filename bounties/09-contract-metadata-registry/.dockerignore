@@ -32,3 +32,4 @@ sdk
 doc
 docs
 docker
+coverage.json
