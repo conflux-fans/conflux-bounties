@@ -252,3 +252,5 @@ Full testing details: [docs/testing.md](docs/testing.md).
 - [IPFS Re-pin Runbook](docs/runbook-repin.md) — CLI for re-pinning and verifying CIDs
 - [Security, RBAC & Audit](docs/security-rbac-audit.md) — roles, permissions, rate limiting, audit logs
 - [Testing Guide](docs/testing.md) — how to run unit, integration, and e2e tests
+- [Troubleshooting Guide](docs/troubleshooting.md) — common env, setup, verification, and API issues
+
