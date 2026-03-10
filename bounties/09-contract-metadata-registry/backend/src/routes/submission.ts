@@ -37,7 +37,7 @@ const PrepareSubmissionBody = z.object({
 });
 
 const FinalizeSubmissionBody = z.object({
-    contractAddress: z.string(),
+    contractAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
     cid: z.string(),
     checksum: z.string(),
     signature: z.string(),

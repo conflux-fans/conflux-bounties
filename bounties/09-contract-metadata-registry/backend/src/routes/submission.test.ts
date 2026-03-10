@@ -381,6 +381,21 @@ describe('submission routes', () => {
             expect(res.statusCode).toBe(400);
             expect(JSON.parse(res.body).error).toContain('DB error');
         });
+
+        it('returns 400 for invalid contractAddress', async () => {
+            const res = await app.inject({
+                method: 'POST',
+                url: '/v1/submissions/finalize',
+                payload: {
+                    contractAddress: 'not-an-address',
+                    cid: 'QmX',
+                    checksum: '0x' + 'a'.repeat(64),
+                    signature: '0xsig',
+                    metadata: validMetadata
+                }
+            });
+            expect(res.statusCode).toBe(400);
+        });
     });
 
     describe('GET /v1/submissions/', () => {
