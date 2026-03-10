@@ -21,5 +21,5 @@ ENV NODE_ENV=production
 ENV PORT=3000
 EXPOSE 3000
 
-# Run migrations then start server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+# Run db push (creates tables if missing, no migration files needed) then start server
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/server.js"]

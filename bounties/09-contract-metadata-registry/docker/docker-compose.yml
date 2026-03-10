@@ -1,6 +1,6 @@
 # Conflux Contract Metadata Registry – full local stack
-# Usage: from repo root: docker compose -f docker/docker-compose.yml up -d
-# Or start infra only: docker compose -f docker/docker-compose.yml up -d postgres redis
+# Usage: from repo root: docker compose --env-file docker/.env -f docker/docker-compose.yml up -d
+# Or start infra only: docker compose --env-file docker/.env -f docker/docker-compose.yml up -d postgres redis
 
 services:
   postgres:
@@ -17,7 +17,7 @@ services:
     networks:
       - registry_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U metadata"]
+      test: [ "CMD-SHELL", "pg_isready -U metadata" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -32,7 +32,7 @@ services:
     networks:
       - registry_net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -93,6 +93,7 @@ services:
 volumes:
   pgdata:
   redis_data:
+
 
 networks:
   registry_net:

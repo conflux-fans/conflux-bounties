@@ -201,11 +201,11 @@ The contract detail page uses **server-side rendering** for the initial metadata
 
 To spin up the entire stack (Postgres, Redis, backend, frontend) in one command:
 
-1. Set your environment values in `docker/.env` (or export them).
+1. Copy `docker/.env.example` to `docker/.env` and set your environment values.
 2. From the repo root:
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d
+docker compose --env-file docker/.env -f docker/docker-compose.yml up -d
 ```
 
 The backend will be at **http://localhost:3000** and the frontend at **http://localhost:3001**. The first build takes a few minutes.
