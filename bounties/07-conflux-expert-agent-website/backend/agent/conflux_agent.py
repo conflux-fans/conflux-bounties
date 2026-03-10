@@ -1,15 +1,15 @@
-"""Conflux Expert Agent - RAG + Tool orchestration."""
-from typing import List, Dict, Any, Optional, AsyncGenerator
-from google import genai
-from google.genai import types as genai_types
 import json
 import logging
 from datetime import datetime
+from typing import Any, AsyncGenerator, Dict, List, Optional
+
+from google import genai
+from google.genai import types as genai_types
 
 from config import settings
 from rag.vector_store import VectorStore
-from tools.confluxscan_client import ConfluxScanClient, NetworkType, CONFLUXSCAN_TOOLS
-
+from tools.confluxscan_client import CONFLUXSCAN_TOOLS, ConfluxScanClient, NetworkType
+from tools.mcp_client import MCPClient
 
 logger = logging.getLogger(__name__)
 
@@ -19,20 +19,14 @@ class ConfluxExpertAgent:
         self,
         vector_store: VectorStore,
         confluxscan_client: ConfluxScanClient,
+        mcp_client: Optional[MCPClient] = None,
         model: str = "gemini-3-flash-preview",
-        temperature: float = 0.7
+        temperature: float = 0.7,
     ):
-        """Initialize the agent.
-        
-        Args:
-            vector_store: VectorStore instance for RAG
-            confluxscan_client: ConfluxScan API client
-            model: Gemini model name
-            temperature: Sampling temperature
-        """
         self.vector_store = vector_store
         self.confluxscan = confluxscan_client
-        
+        self.mcp_client = mcp_client
+
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.model_name = model
         self.generation_config = genai_types.GenerateContentConfig(
@@ -42,33 +36,21 @@ class ConfluxExpertAgent:
             max_output_tokens=8192,
         )
         self.temperature = temperature
-        
-        # Conversation memory
+
         self.conversation_history: List[Dict[str, str]] = []
-        
-    def _format_context(self, search_results: List[Dict[str, Any]]) -> tuple[str, List[Dict[str, Any]]]:
-        """Format search results into context string and return normalized citations.
 
-        This performs non-destructive normalization so:
-        - every citation always includes `id` and `index` (both set to the original result index)
-        - duplicates (same URL) are annotated with `duplicate_of` pointing to the canonical index
-        - context string keeps original `[n]` markers so prompts remain consistent
-
-        The change is backward-compatible: callers still receive one citation per
-        search result index, but duplicate entries are flagged for client-side
-        deduping if desired.
-        """
+    def _format_context(
+        self, search_results: List[Dict[str, Any]]
+    ) -> tuple[str, List[Dict[str, Any]]]:
         context_parts: List[str] = []
         citations: List[Dict[str, Any]] = []
 
-        # Map URLs (or title-based keys when URL missing) -> canonical index
         canonical_by_url: Dict[str, int] = {}
 
         for i, result in enumerate(search_results, 1):
             metadata = result.get("metadata", {}) or {}
             text = result.get("text", "") or ""
 
-            # Add to context with citation marker (leave indices unchanged)
             context_parts.append(f"[{i}] {text}")
 
             url = (metadata.get("url") or "").strip()
@@ -100,8 +82,10 @@ class ConfluxExpertAgent:
 
         context_string = "\n\n".join(context_parts)
         return context_string, citations
-    
-    def _build_system_prompt(self, context: str, citations: List[Dict[str, str]]) -> str:
+
+    def _build_system_prompt(
+        self, context: str, citations: List[Dict[str, str]]
+    ) -> str:
         return f"""You are the Conflux Expert, an AI assistant specialized in the Conflux blockchain ecosystem.
 
 Your role is to provide accurate, helpful answers about Conflux technology, development, and ecosystem.
@@ -128,134 +112,160 @@ CITATION FORMAT:
 - Multiple sources: "The eSpace bridge connects Core and eSpace [1][2]."
 
 Remember: Every factual claim should have at least one citation."""
-    
+
     async def chat(
         self,
         user_message: str,
-        stream: bool = True
+        stream: bool = True,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Process a chat message with RAG and tool calling.
-        
-        Args:
-            user_message: User's question
-            stream: Whether to stream the response
-            
-        Yields:
-            Response chunks with type: 'context', 'tool', 'content', 'citations', 'done'
-        """
-        logger.info(f"Chat started: query='{user_message[:100]}...', stream={stream}")
-        
-        # Step 1: Retrieve relevant context
-        yield {
-            "type": "status",
-            "message": "Searching documentation..."
-        }
-        
+        logger.info(f"Chat: query='{user_message[:80]}...', stream={stream}")
+
+        yield {"type": "status", "message": "Searching documentation..."}
         search_results = self.vector_store.search(
-            query=user_message,
-            top_k=settings.top_k_results
+            query=user_message, top_k=settings.top_k_results
         )
-        logger.info(f"RAG search returned {len(search_results)} results")
-        
+        logger.info(f"RAG returned {len(search_results)} results")
         context, citations = self._format_context(search_results)
-        
         yield {
             "type": "context",
             "results": len(search_results),
-            "citations": citations
+            "citations": citations,
         }
-        
-        # Step 2: Build prompt with context
 
-        prompt = f"""You are the Conflux Expert, an AI assistant specialized in Conflux blockchain technology.
+        declarations: List[genai_types.FunctionDeclaration] = []
+        if self.mcp_client:
+            try:
+                declarations = await self.mcp_client.ensure_tools_loaded()
+            except Exception as e:
+                logger.warning(f"MCP tools unavailable, running RAG-only: {e}")
 
-CONTEXT FROM DOCUMENTATION:
-{context}
+        _SYSTEM = (
+            "You are the Conflux Expert, an AI assistant specialized in Conflux blockchain technology.\n"
+            "When the user asks for live blockchain data (balances, transactions, block info, gas prices, etc.),\n"
+            "use the available tools to fetch it.\n"
+            "Always cite documentation sources with [1], [2], etc. inline."
+        )
 
-IMPORTANT INSTRUCTIONS:
-- Answer based on the provided context
-- ALWAYS cite sources using [1], [2], etc. format referring to the context above
-- If asked about live blockchain data (balances, transactions, gas prices), mention you can check ConfluxScan
-- Be accurate and technical when needed
-- Keep responses concise but complete
+        user_content = (
+            f"CONTEXT FROM DOCUMENTATION:\n{context}\n\n"
+            f"CONVERSATION HISTORY:\n{self._format_history()}\n\n"
+            f"USER QUESTION: {user_message}\n\n"
+            "Cite sources with [1][2] etc. Use available tools for any live blockchain data needed."
+        )
 
-CONVERSATION HISTORY:
-{self._format_history()}
+        contents: List[genai_types.Content] = [
+            genai_types.Content(
+                role="user", parts=[genai_types.Part(text=user_content)]
+            )
+        ]
 
-USER QUESTION: {user_message}
+        if declarations:
+            yield {"type": "status", "message": "Thinking..."}
 
-ANSWER (remember to cite sources with [1][2] etc):"""
-        
-        # Step 3: Call Gemini
-        yield {
-            "type": "status",
-            "message": "Generating response..."
-        }
-        
-        try:
-            if stream:
-                response = self.client.models.generate_content_stream(
+            tool_config = genai_types.GenerateContentConfig(
+                system_instruction=_SYSTEM,
+                temperature=self.temperature,
+                top_p=0.95,
+                top_k=40,
+                max_output_tokens=8192,
+                tools=[genai_types.Tool(function_declarations=declarations)],
+            )
+
+            for _round in range(5):  # safety cap: max 5 tool rounds per message
+                response = self.client.models.generate_content(
                     model=self.model_name,
-                    contents=prompt,
-                    config=self.generation_config,
+                    contents=contents,
+                    config=tool_config,
                 )
-            else:
-                response = [self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
-                    config=self.generation_config,
-                )]
+                model_content = response.candidates[0].content
+                function_calls = [
+                    p.function_call for p in model_content.parts if p.function_call
+                ]
 
-            if stream:
-                full_content = ""
-                for chunk in response:
-                    if getattr(chunk, "text", None):
-                        full_content += chunk.text
-                        yield {
-                            "type": "content",
-                            "delta": chunk.text
-                        }
-                        
-                # Update conversation history
-                self.conversation_history.append({"role": "user", "content": user_message})
-                self.conversation_history.append({"role": "assistant", "content": full_content})
+                if not function_calls:
+                    break
 
-                # Send final citations
-                yield {
-                    "type": "citations",
-                    "citations": citations
-                }
+                contents.append(model_content)
 
-                yield {
-                    "type": "done",
-                    "message": full_content,
-                    "citations": citations,
-                    "timestamp": datetime.now().isoformat()
-                }
-        except Exception as e:
-            print(f"Error generating response: {e}")
+                response_parts: List[genai_types.Part] = []
+                for fc in function_calls:
+                    yield {
+                        "type": "status",
+                        "message": f"Fetching live data ({fc.name})...",
+                    }
+                    try:
+                        result = await self.mcp_client.call_tool(fc.name, dict(fc.args))
+                        logger.info(f"MCP '{fc.name}': {result}")
+                        yield {"type": "tool_result", "tool": fc.name, "result": result}
+                    except Exception as e:
+                        logger.error(f"MCP '{fc.name}' failed: {e}")
+                        result = {"error": str(e)}
+
+                    response_parts.append(
+                        genai_types.Part(
+                            function_response=genai_types.FunctionResponse(
+                                name=fc.name,
+                                response={"result": result},
+                            )
+                        )
+                    )
+
+                contents.append(genai_types.Content(role="user", parts=response_parts))
+
+        yield {"type": "status", "message": "Generating response..."}
+
+        final_config = genai_types.GenerateContentConfig(
+            system_instruction=_SYSTEM,
+            temperature=self.temperature,
+            top_p=0.95,
+            top_k=40,
+            max_output_tokens=8192,
+        )
+
+        try:
+            full_content = ""
+            for chunk in self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=contents,
+                config=final_config,
+            ):
+                if getattr(chunk, "text", None):
+                    full_content += chunk.text
+                    yield {"type": "content", "delta": chunk.text}
+
+            self.conversation_history.append({"role": "user", "content": user_message})
+            self.conversation_history.append(
+                {"role": "assistant", "content": full_content}
+            )
+
+            yield {"type": "citations", "citations": citations}
             yield {
-                "type": "error",
-                "message": f"Failed to generate response: {str(e)}"
+                "type": "done",
+                "message": full_content,
+                "citations": citations,
+                "timestamp": datetime.now().isoformat(),
             }
-    
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            yield {"type": "error", "message": f"Failed to generate response: {str(e)}"}
+
     def _format_history(self) -> str:
         """Format conversation history for prompt."""
         if not self.conversation_history:
             return "No previous conversation."
-        
+
         history_text = []
-        for msg in self.conversation_history[-settings.max_conversation_memory:]:
+        for msg in self.conversation_history[-settings.max_conversation_memory :]:
             role = msg["role"].upper()
             content = msg["content"]
             history_text.append(f"{role}: {content}")
-        
+
         return "\n".join(history_text)
-    
+
     def clear_history(self):
         """Clear conversation history."""
         self.conversation_history = []
-    
+
     def get_history(self) -> List[Dict[str, str]]:
         """Get conversation history."""
         return self.conversation_history.copy()

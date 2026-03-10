@@ -6,6 +6,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue)](https://python.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
+[![MCP Server](https://img.shields.io/badge/MCP-Serversvg)](https://modelcontextprotocol.io/docs/getting-started/intro)
 
 Get accurate, cited answers about Conflux blockchain.
 

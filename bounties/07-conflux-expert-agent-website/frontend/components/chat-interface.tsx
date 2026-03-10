@@ -15,6 +15,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   citations?: Array<{ id: number; title: string; url: string }>;
+  toolResult?: { tool: string; result: Record<string, unknown> };
   timestamp: Date;
 }
 
@@ -102,12 +103,13 @@ export function ChatInterface() {
       });
 
       const data = await response.json();
-      
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content: data.content,
         citations: data.citations,
+        toolResult: data.tool_result ?? undefined,
         timestamp: new Date(),
       };
 
@@ -128,20 +130,28 @@ export function ChatInterface() {
   return (
     <div className="flex flex-col h-full">
       {hasMessages && fixedTop !== null && (
-        <div style={{ top: fixedTop + 'px' }} className="fixed right-12 z-40 hidden sm:block">
-          <Button variant="outline" size="sm" onClick={downloadTranscript} className="gap-2 shadow-md">
+        <div
+          style={{ top: fixedTop + "px" }}
+          className="fixed right-12 z-40 hidden sm:block"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={downloadTranscript}
+            className="gap-2 shadow-md"
+          >
             <Download className="h-4 w-4" />
             Download Transcript
           </Button>
         </div>
       )}
 
-      {/* Scrollable messages — only rendered once chat starts */}
       {hasMessages && (
         <ScrollArea className="flex-1">
-          <div ref={messagesCardRef} className="max-w-3xl mx-auto p-4 space-y-6">
-  
-
+          <div
+            ref={messagesCardRef}
+            className="max-w-3xl mx-auto p-4 space-y-6"
+          >
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
@@ -163,7 +173,7 @@ export function ChatInterface() {
           "transition-all duration-300",
           !hasMessages
             ? "flex-1 flex flex-col items-center justify-center px-4 pb-40 gap-4"
-            : "border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0"
+            : "border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0",
         )}
       >
         {!hasMessages && (
@@ -177,7 +187,10 @@ export function ChatInterface() {
 
         <form
           onSubmit={handleSubmit}
-          className={cn("w-full max-w-3xl mx-auto", !hasMessages ? "p-0" : "p-4")}
+          className={cn(
+            "w-full max-w-3xl mx-auto",
+            !hasMessages ? "p-0" : "p-4",
+          )}
         >
           <div className="flex gap-2">
             <Input
@@ -200,7 +213,7 @@ export function ChatInterface() {
       </div>
     </div>
   );
-} 
+}
 
 function MessageBubble({ message }: { message: Message }) {
   const [copied, setCopied] = React.useState(false);
@@ -215,7 +228,7 @@ function MessageBubble({ message }: { message: Message }) {
     <div
       className={cn(
         "group relative",
-        message.role === "user" ? "flex justify-end" : "flex justify-start"
+        message.role === "user" ? "flex justify-end" : "flex justify-start",
       )}
     >
       <div
@@ -223,7 +236,7 @@ function MessageBubble({ message }: { message: Message }) {
           "max-w-[85%] min-w-0 overflow-hidden rounded-lg px-4 py-3 text-sm",
           message.role === "user"
             ? "bg-primary text-primary-foreground"
-            : "bg-muted"
+            : "bg-muted",
         )}
       >
         <div className="min-w-0">
@@ -259,7 +272,19 @@ function MessageBubble({ message }: { message: Message }) {
             {message.content}
           </ReactMarkdown>
         </div>
-        
+
+        {message.toolResult && (
+          <div className="mt-2 pt-2 border-t border-border/40">
+            <p className="text-xs font-semibold opacity-70 mb-1">
+              🌐 Live data ·{" "}
+              <span className="font-mono">{message.toolResult.tool}</span>
+            </p>
+            <pre className="text-xs bg-black/10 dark:bg-white/10 rounded p-2 overflow-x-auto whitespace-pre-wrap break-words">
+              {JSON.stringify(message.toolResult.result, null, 2)}
+            </pre>
+          </div>
+        )}
+
         {message.citations && message.citations.length > 0 && (
           <div className="mt-2 pt-2 border-t border-border/40 space-y-1">
             <p className="text-xs font-medium opacity-70">Sources:</p>
