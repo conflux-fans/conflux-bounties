@@ -1,6 +1,7 @@
 {
   "name": "conflux-metadata-registry",
   "private": true,
+  "license": "MIT",
   "workspaces": [
     "contracts",
     "backend",
