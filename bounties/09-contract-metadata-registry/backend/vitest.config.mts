@@ -1,6 +1,12 @@
 import { defineConfig } from 'vitest/config';
+import path from 'path';
 
 export default defineConfig({
+    resolve: {
+        alias: {
+            '@conflux-metadata/shared': path.resolve(__dirname, '../shared/src/index.ts'),
+        },
+    },
     test: {
         globals: true,
         environment: 'node',
@@ -24,10 +30,12 @@ export default defineConfig({
                 'src/services/ipfs.ts',
                 'src/routes/assets.ts'
             ],
-            statements: 80,
-            lines: 80,
-            branches: 80,
-            functions: 80
+            thresholds: {
+                statements: 80,
+                lines: 80,
+                branches: 80,
+                functions: 80
+            }
         }
     }
 });

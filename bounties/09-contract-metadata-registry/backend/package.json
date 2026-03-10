@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "vitest",
+    "pretest": "npm run build -w @conflux-metadata/shared",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "dev": "ts-node src/server.ts",
@@ -15,7 +16,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@conflux-metadata/shared": "file:../shared",
     "@fastify/cors": "^9.0.1",
