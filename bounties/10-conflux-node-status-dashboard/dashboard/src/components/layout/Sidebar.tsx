@@ -6,6 +6,7 @@ import {
   GitCompareArrows,
   Settings,
   Server,
+  ScrollText,
 } from "lucide-react";
 import { useRealtimeStore } from "../../stores/realtimeStore";
 
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
   { to: "/nodes", label: "Nodes", icon: Server },
   { to: "/alerts", label: "Alerts", icon: AlertTriangle },
   { to: "/comparison", label: "Compare", icon: GitCompareArrows },
+  { to: "/logs", label: "Event Log", icon: ScrollText },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

@@ -31,6 +31,7 @@ interface TimeSeriesChartProps {
   data: DataPoint[];
   series: Series[];
   height?: number;
+  defaultChartType?: ChartType;
 }
 
 type ChartType = "area" | "bar" | "line";
@@ -71,13 +72,19 @@ export function TimeSeriesChart({
   data,
   series,
   height = 300,
+  defaultChartType = "area",
 }: TimeSeriesChartProps) {
-  const [chartType, setChartType] = useState<ChartType>("area");
+  const [chartType, setChartType] = useState<ChartType>(defaultChartType);
 
   const commonAxisProps = {
     axisLine: false as const,
     tickLine: false as const,
     tick: { fill: "#a1a1aa", fontSize: 10, fontFamily: "JetBrains Mono" },
+  };
+
+  const yAxisProps = {
+    ...commonAxisProps,
+    domain: [0, "auto" as const] as [number, "auto"],
   };
 
   function renderChart() {
@@ -99,7 +106,7 @@ export function TimeSeriesChart({
           <BarChart {...commonProps}>
             <CartesianGrid {...gridProps} />
             <XAxis dataKey="time" {...commonAxisProps} dy={10} />
-            <YAxis {...commonAxisProps} />
+            <YAxis {...yAxisProps} />
             <Tooltip
               content={<ChartTooltip />}
               cursor={{ fill: "#f4f4f5" }}
@@ -120,7 +127,7 @@ export function TimeSeriesChart({
           <LineChart {...commonProps}>
             <CartesianGrid {...gridProps} />
             <XAxis dataKey="time" {...commonAxisProps} dy={10} />
-            <YAxis {...commonAxisProps} />
+            <YAxis {...yAxisProps} />
             <Tooltip
               content={<ChartTooltip />}
               cursor={{ stroke: "#e4e4e7", strokeWidth: 1 }}
@@ -128,11 +135,12 @@ export function TimeSeriesChart({
             {series.map((s) => (
               <Line
                 key={s.dataKey}
-                type="step"
+                type="monotone"
                 dataKey={s.dataKey}
                 stroke={s.color}
                 strokeWidth={2}
                 dot={false}
+                connectNulls
                 activeDot={{ r: 4, strokeWidth: 0, fill: s.color }}
               />
             ))}
@@ -159,7 +167,7 @@ export function TimeSeriesChart({
             </defs>
             <CartesianGrid {...gridProps} />
             <XAxis dataKey="time" {...commonAxisProps} dy={10} />
-            <YAxis {...commonAxisProps} />
+            <YAxis {...yAxisProps} />
             <Tooltip
               content={<ChartTooltip />}
               cursor={{ stroke: "#e4e4e7", strokeWidth: 1 }}
@@ -167,12 +175,13 @@ export function TimeSeriesChart({
             {series.map((s) => (
               <Area
                 key={s.dataKey}
-                type="step"
+                type="monotone"
                 dataKey={s.dataKey}
                 stroke={s.color}
                 strokeWidth={2}
                 fillOpacity={1}
                 fill={`url(#grad-${s.dataKey})`}
+                connectNulls
                 activeDot={{ r: 4, fill: s.color, strokeWidth: 0 }}
               />
             ))}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Database, Globe, RefreshCcw, Zap } from "lucide-react";
 import { Header } from "../components/layout/Header";
@@ -5,17 +6,18 @@ import { StatCard } from "../components/cards/StatCard";
 import { TimeSeriesChart } from "../components/charts/TimeSeriesChart";
 import { AlertsPanel } from "../components/alerts/AlertsPanel";
 import { NodeList } from "../components/nodes/NodeList";
+import { CsvExportModal } from "../components/export/CsvExportModal";
 import {
   fetchNodes,
   fetchAlerts,
   fetchMetrics,
   acknowledgeAlert,
-  buildCsvExportUrl,
 } from "../api/client";
 import { useRealtimeStore } from "../stores/realtimeStore";
 
 /** Main dashboard overview page */
 export function DashboardPage() {
+  const [showExport, setShowExport] = useState(false);
   const { data: nodes = [] } = useQuery({
     queryKey: ["nodes"],
     queryFn: fetchNodes,
@@ -93,9 +95,7 @@ export function DashboardPage() {
   }
 
   function handleExportCsv() {
-    if (!firstNodeId) return;
-    const url = buildCsvExportUrl({ nodeId: firstNodeId });
-    window.open(url, "_blank");
+    setShowExport(true);
   }
 
   return (
@@ -163,6 +163,8 @@ export function DashboardPage() {
       <div className="mb-12">
         <NodeList nodes={nodes} />
       </div>
+
+      {showExport && <CsvExportModal onClose={() => setShowExport(false)} />}
     </>
   );
 }

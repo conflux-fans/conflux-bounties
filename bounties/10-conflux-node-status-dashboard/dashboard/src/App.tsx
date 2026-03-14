@@ -6,6 +6,7 @@ import { NodesPage } from "./pages/NodesPage";
 import { NodeDetailPage } from "./pages/NodeDetailPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { ComparisonPage } from "./pages/ComparisonPage";
+import { LogsPage } from "./pages/LogsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { useSocket } from "./hooks/useSocket";
 
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="nodes/:id" element={<NodeDetailPage />} />
             <Route path="alerts" element={<AlertsPage />} />
             <Route path="comparison" element={<ComparisonPage />} />
+            <Route path="logs" element={<LogsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>

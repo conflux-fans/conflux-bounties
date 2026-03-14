@@ -26,6 +26,8 @@ RUN pnpm install --frozen-lockfile --filter server --prod
 
 COPY --from=builder /app/server/dist server/dist
 COPY config.example.json config.json
+COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 RUN mkdir -p /app/data
 
@@ -33,4 +35,5 @@ ENV NODE_ENV=production
 ENV DATABASE_PATH=/app/data/dashboard.db
 EXPOSE 3001
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "server/dist/index.js"]

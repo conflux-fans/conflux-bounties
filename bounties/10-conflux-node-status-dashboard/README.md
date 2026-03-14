@@ -72,8 +72,11 @@ cp .env.example .env   # edit as needed
 docker compose up --build
 ```
 
+Demo data (5 nodes, 24h of metrics) is auto-seeded on first run. Set `SEED_DEMO_DATA=false` in docker-compose.yml to disable.
+
 - Dashboard: http://localhost:3000
 - API: http://localhost:3001
+- Prometheus metrics: http://localhost:3001/metrics
 - Health: http://localhost:3001/health
 
 ## API Endpoints
@@ -92,6 +95,7 @@ docker compose up --build
 | POST | `/api/v1/alerts/:id/resolve` | Resolve an alert |
 | GET | `/api/v1/alerts/rules` | List alert rules |
 | POST | `/api/v1/alerts/rules` | Create alert rule |
+| GET | `/metrics` | Prometheus-format metrics |
 | GET | `/health` | Health check |
 
 ## WebSocket Events
@@ -133,6 +137,124 @@ Alert rules are defined in `config.json` or created via the API. Conditions: `gt
   "cooldownMs": 300000,
   "channels": ["console", "slack"]
 }
+```
+
+## Prometheus Metrics
+
+Metrics are exposed at `GET /metrics` in Prometheus text exposition format. Scrape config example:
+
+```yaml
+scrape_configs:
+  - job_name: conflux-dashboard
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["localhost:3001"]
+```
+
+## Deployment
+
+### Docker (recommended)
+
+```bash
+cp .env.example .env   # edit as needed
+docker compose up --build
+```
+
+On first run the server automatically seeds 5 demo nodes with 24 hours of simulated metrics. Set `SEED_DEMO_DATA=false` to disable.
+
+- Dashboard: http://localhost:3000
+- API: http://localhost:3001
+- Prometheus metrics: http://localhost:3001/metrics
+- Health: http://localhost:3001/health
+
+### systemd Service
+
+Create `/etc/systemd/system/conflux-dashboard.service`:
+
+```ini
+[Unit]
+Description=Conflux Node Status Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=dashboard
+WorkingDirectory=/opt/conflux-dashboard
+EnvironmentFile=/opt/conflux-dashboard/.env
+ExecStart=/usr/bin/node server/dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now conflux-dashboard
+sudo systemctl status conflux-dashboard
+```
+
+Serve the dashboard frontend with nginx (see TLS section below) or any static file server pointing at `dashboard/dist/`.
+
+### TLS Reverse Proxy (nginx)
+
+Install certbot and obtain certificates, then configure nginx:
+
+```nginx
+server {
+    listen 80;
+    server_name dashboard.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name dashboard.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/dashboard.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dashboard.example.com/privkey.pem;
+
+    # Dashboard SPA
+    location / {
+        root /opt/conflux-dashboard/dashboard/dist;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API reverse proxy
+    location /api/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+
+    # Prometheus metrics
+    location /metrics {
+        proxy_pass http://127.0.0.1:3001;
+    }
+
+    # Health check
+    location /health {
+        proxy_pass http://127.0.0.1:3001;
+    }
+}
+```
+
+```bash
+sudo certbot --nginx -d dashboard.example.com
+sudo systemctl reload nginx
 ```
 
 ## Tech Stack

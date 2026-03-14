@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { Header } from "../components/layout/Header";
 import { TimeSeriesChart } from "../components/charts/TimeSeriesChart";
 import { fetchNodes, fetchMetrics } from "../api/client";
@@ -15,12 +15,12 @@ const METRIC_OPTIONS = [
 ];
 
 const COLORS = [
-  "#2563eb",
-  "#9333ea",
+  "#22d3ee",
   "#f97316",
-  "#059669",
-  "#dc2626",
-  "#ec4899",
+  "#a3e635",
+  "#f43f5e",
+  "#a78bfa",
+  "#fbbf24",
 ];
 
 /** Side-by-side comparison of metrics across multiple nodes */
@@ -34,14 +34,21 @@ export function ComparisonPage() {
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [metric, setMetric] = useState("rpc_latency");
 
-  /** Fetch metric history for each selected node */
-  const seriesQueries = selectedNodeIds.map((nodeId) => {
-    return useQuery({
+  /** Auto-select first 2 nodes on initial load */
+  useEffect(() => {
+    if (nodes.length >= 2 && selectedNodeIds.length === 0) {
+      setSelectedNodeIds([nodes[0].id, nodes[1].id]);
+    }
+  }, [nodes]);
+
+  /** Fetch metric history for each selected node — useQueries avoids hooks-in-loop */
+  const seriesQueries = useQueries({
+    queries: selectedNodeIds.map((nodeId) => ({
       queryKey: ["comparison-metrics", nodeId, metric],
       queryFn: () => fetchMetrics({ nodeId, metricName: metric, limit: 120 }),
       enabled: selectedNodeIds.length > 0,
       refetchInterval: 10_000,
-    });
+    })),
   });
 
   /** Toggle a node in the selection */
@@ -51,31 +58,33 @@ export function ComparisonPage() {
     );
   }
 
-  /** Merge all series data by timestamp into chart-friendly rows */
+  /** Merge all series data by timestamp into chart-friendly rows.
+   *  Rounds timestamps to 5s buckets so data from different nodes aligns. */
   function buildChartData(): Array<{ time: string; [key: string]: string | number }> {
-    const timeMap = new Map<string, { time: string; [key: string]: string | number }>();
+    const BUCKET_MS = 5_000;
+    const timeMap = new Map<number, { time: string; [key: string]: string | number }>();
 
     seriesQueries.forEach((q, idx) => {
       const nodeId = selectedNodeIds[idx];
       const nodeName =
         nodes.find((n) => n.id === nodeId)?.name ?? nodeId.slice(0, 8);
 
-      (q.data ?? [])
-        .slice()
-        .reverse()
-        .forEach((row) => {
-          const time = new Date(row.timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          });
-          const existing = timeMap.get(time) ?? { time };
-          existing[nodeName] = Math.round(row.value * 100) / 100;
-          timeMap.set(time, existing);
+      (q.data ?? []).forEach((row) => {
+        const bucket = Math.round(row.timestamp / BUCKET_MS) * BUCKET_MS;
+        const time = new Date(bucket).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
         });
+        const existing = timeMap.get(bucket) ?? { time };
+        existing[nodeName] = Math.round(row.value * 100) / 100;
+        timeMap.set(bucket, existing);
+      });
     });
 
-    return Array.from(timeMap.values());
+    return Array.from(timeMap.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([, row]) => row);
   }
 
   const chartData = buildChartData();
@@ -146,12 +155,16 @@ export function ComparisonPage() {
 
       {/* Chart */}
       {selectedNodeIds.length > 0 ? (
-        <TimeSeriesChart
-          title={`${METRIC_OPTIONS.find((o) => o.value === metric)?.label ?? metric}`}
-          subtitle={`Comparing ${selectedNodeIds.length} nodes`}
-          data={chartData}
-          series={chartSeries}
-        />
+        <div className="h-[450px]">
+          <TimeSeriesChart
+            title={`${METRIC_OPTIONS.find((o) => o.value === metric)?.label ?? metric}`}
+            subtitle={`Comparing ${selectedNodeIds.length} nodes`}
+            data={chartData}
+            series={chartSeries}
+            height={350}
+            defaultChartType="line"
+          />
+        </div>
       ) : (
         <div className="bg-white border border-zinc-200 p-16 text-center">
           <p className="text-zinc-400 font-mono text-xs uppercase tracking-widest">

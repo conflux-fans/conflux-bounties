@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { Check, Clock, AlertTriangle, XSquare } from "lucide-react";
 import type { Alert } from "../../api/types";
 
@@ -8,6 +9,7 @@ interface AlertsPanelProps {
 
 /** Compact alerts panel for the dashboard — matches the design reference */
 export function AlertsPanel({ alerts, onAcknowledge }: AlertsPanelProps) {
+  const navigate = useNavigate();
   const active = alerts.filter((a) => !a.acknowledged && !a.resolved_at);
 
   return (
@@ -86,7 +88,10 @@ export function AlertsPanel({ alerts, onAcknowledge }: AlertsPanelProps) {
 
       {/* Footer */}
       <div className="p-3 bg-white border-t border-zinc-200">
-        <button className="w-full text-center text-[10px] uppercase font-bold tracking-widest text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 py-2 border border-dashed border-zinc-300 transition-all">
+        <button
+          onClick={() => navigate("/logs")}
+          className="w-full text-center text-[10px] uppercase font-bold tracking-widest text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 py-2 border border-dashed border-zinc-300 transition-all"
+        >
           :: View Event Log History
         </button>
       </div>
