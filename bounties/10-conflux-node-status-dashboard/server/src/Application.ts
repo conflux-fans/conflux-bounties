@@ -32,6 +32,7 @@ import { SocketManager } from "./api/websocket/SocketManager";
 import { nodeRoutes } from "./api/routes/nodeRoutes";
 import { metricRoutes } from "./api/routes/metricRoutes";
 import { alertRoutes } from "./api/routes/alertRoutes";
+import { prometheusRoutes } from "./api/routes/prometheusRoutes";
 import { apiKeyAuth } from "./api/middleware/apiKeyAuth";
 import { errorHandler } from "./api/middleware/errorHandler";
 
@@ -157,6 +158,9 @@ export class Application {
     this.app.use("/api/v1/nodes", nodeRoutes(this.nodeRepo));
     this.app.use("/api/v1/metrics", metricRoutes(this.metricRepo));
     this.app.use("/api/v1/alerts", alertRoutes(this.alertRepo));
+
+    /** Prometheus-compatible metrics endpoint (no auth) */
+    this.app.use("/metrics", prometheusRoutes(this.metricRepo, this.nodeRepo));
 
     /** Health check */
     this.app.get("/health", (_req, res) => {

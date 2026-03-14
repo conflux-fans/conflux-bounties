@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Download } from "lucide-react";
-import { fetchNode, fetchMetrics, fetchLatestMetrics, buildCsvExportUrl } from "../api/client";
+import { fetchNode, fetchMetrics, fetchLatestMetrics, fetchMetricNames, buildCsvExportUrl } from "../api/client";
 import { TimeSeriesChart } from "../components/charts/TimeSeriesChart";
 import { StatCard } from "../components/cards/StatCard";
 import {
@@ -13,9 +14,20 @@ import {
   HardDrive,
 } from "lucide-react";
 
+const EXPORT_RANGES = [
+  { label: "Last 1 hour", hours: 1 },
+  { label: "Last 6 hours", hours: 6 },
+  { label: "Last 24 hours", hours: 24 },
+  { label: "Last 7 days", hours: 168 },
+  { label: "Last 30 days", hours: 720 },
+];
+
 /** Detail page for a single node with charts and all metrics */
 export function NodeDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [showExportPanel, setShowExportPanel] = useState(false);
+  const [exportMetric, setExportMetric] = useState("");
+  const [exportRange, setExportRange] = useState(24);
 
   const { data: node } = useQuery({
     queryKey: ["node", id],
@@ -52,6 +64,12 @@ export function NodeDetailPage() {
       fetchMetrics({ nodeId: id!, metricName: "cpu_usage", limit: 120 }),
     enabled: !!id,
     refetchInterval: 10_000,
+  });
+
+  const { data: availableMetrics = [] } = useQuery({
+    queryKey: ["metric-names", id],
+    queryFn: () => fetchMetricNames(id!),
+    enabled: !!id,
   });
 
   /** Helper to get a latest metric value */
@@ -107,15 +125,71 @@ export function NodeDetailPage() {
           </p>
         </div>
         <button
-          onClick={() =>
-            window.open(buildCsvExportUrl({ nodeId: node.id }), "_blank")
-          }
+          onClick={() => setShowExportPanel((v) => !v)}
           className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-zinc-900 border border-zinc-900 hover:bg-zinc-800 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] active:translate-y-[1px] active:shadow-none transition-all uppercase tracking-wide"
         >
           <Download size={14} />
           Export CSV
         </button>
       </div>
+
+      {/* CSV Export Panel */}
+      {showExportPanel && (
+        <div className="bg-white border border-zinc-200 p-6 mb-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.05)]">
+          <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-4">
+            Export Configuration
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                Metric
+              </label>
+              <select
+                value={exportMetric}
+                onChange={(e) => setExportMetric(e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 text-zinc-900 text-xs font-mono uppercase focus:ring-2 focus:ring-zinc-900 outline-none"
+              >
+                <option value="">All metrics</option>
+                {availableMetrics.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                Date Range
+              </label>
+              <select
+                value={exportRange}
+                onChange={(e) => setExportRange(Number(e.target.value))}
+                className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 text-zinc-900 text-xs font-mono uppercase focus:ring-2 focus:ring-zinc-900 outline-none"
+              >
+                {EXPORT_RANGES.map((opt) => (
+                  <option key={opt.hours} value={opt.hours}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => {
+                  const from = Date.now() - exportRange * 60 * 60 * 1000;
+                  const url = buildCsvExportUrl({
+                    nodeId: node.id,
+                    metricName: exportMetric || undefined,
+                    from,
+                    to: Date.now(),
+                  });
+                  window.open(url, "_blank");
+                }}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-zinc-900 border border-zinc-900 hover:bg-zinc-800 transition-all uppercase tracking-wide"
+              >
+                <Download size={14} />
+                Download
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

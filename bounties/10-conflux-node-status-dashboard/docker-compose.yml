@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   server:
     build:
@@ -17,6 +15,7 @@ services:
       - RETENTION_DAYS=30
       - CONFLUX_CORE_RPC_URLS=https://main.confluxrpc.com,https://test.confluxrpc.com
       - CONFLUX_ESPACE_RPC_URLS=https://evm.confluxrpc.com,https://evmtestnet.confluxrpc.com
+      - SEED_DEMO_DATA=true
     restart: unless-stopped
 
   dashboard:
