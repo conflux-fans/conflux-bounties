@@ -1,0 +1,24 @@
+{
+  "name": "conflux-automation-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+  },
+  "dependencies": {
+    "fastify": "^4.24.3",
+    "@fastify/cors": "^8.4.1",
+    "@fastify/jwt": "^7.2.4",
+    "@fastify/websocket": "^8.2.0",
+    "better-sqlite3": "^9.2.2",
+    "ethers": "^6.9.0",
+    "zod": "^3.22.4",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-conflux-automation-secret-2024}
+      - DATABASE_URL=/app/data/automation.db
+      - CONFLUX_RPC_URL=${CONFLUX_RPC_URL:-https://test.confluxrpc.com}
+      - JOB_MANAGER_ADDRESS=${JOB_MANAGER_ADDRESS}
+      - PRICE_ORACLE_ADDRESS=${PRICE_ORACLE_ADDRESS}
+    volumes:
+      - automation-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Worker Service
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=/app/data/automation.db
+      - CONFLUX_RPC_URL=${CONFLUX_RPC_URL:-https://test.confluxrpc.com}
+      - PRIVATE_KEY_EXECUTOR=${PRIVATE_KEY_EXECUTOR}
+      - JOB_MANAGER_ADDRESS=${JOB_MANAGER_ADDRESS}
+      - PRICE_ORACLE_ADDRESS=${PRICE_ORACLE_ADDRESS}
+      - POLL_INTERVAL=*/30 * * * * *
+    volumes:
+      - automation-data:/app/data
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      - NEXT_PUBLIC_CONFLUX_CHAIN_ID=${NEXT_PUBLIC_CONFLUX_CHAIN_ID:-71}
+      - NEXT_PUBLIC_JOB_MANAGER_ADDRESS=${JOB_MANAGER_ADDRESS}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Optional: PostgreSQL (if using instead of SQLite)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     - POSTGRES_USER=conflux
+  #     - POSTGRES_PASSWORD=conflux123
+  #     - POSTGRES_DB=automation
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   restart: unless-stopped
+
+volumes:
+  automation-data:
+  # postgres-data:

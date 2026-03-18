@@ -1,0 +1,15 @@
+{
+  "name": "conflux-automation-worker",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/worker.js",
+    "dev": "node --watch src/worker.js"
+  },
+  "dependencies": {
+    "ethers": "^6.9.0",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3",
+    "better-sqlite3": "^9.2.2"
+  }
+}
