@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Conflux Expert Backend
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 1024
+    Runtime: python3.11
+    Architectures:
+      - x86_64
+
+Resources:
+  ConfluxExpertAPI:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: main.handler
+      Events:
+        ApiRoot:
+          Type: Api
+          Properties:
+            Path: /
+            Method: ANY
+        ApiProxy:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+      Environment:
+        Variables:
+          GEMINI_API_KEY: !Ref GeminiApiKey
+          VECTOR_DB_API: !Ref VectorDbApiKey
+          PINECONE_INDEX: !Ref PineconeIndexName
+          PINECONE_ENVIRONMENT: !Ref PineconeEnvironment
+          GITHUB_TOKEN: !Ref GithubToken
+          GEMINI_MODEL: !Ref GeminiModel
+          TEMPERATURE: !Ref Temperature
+          ADMIN_PASSWORD: !Ref AdminPassword
+          JWT_SECRET: !Ref JwtSecret
+
+Parameters:
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+  VectorDbApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+  PineconeIndexName:
+    Type: String
+    Default: "conflux-expert"
+
+  PineconeEnvironment:
+    Type: String
+    Default: "us-east-1"
+
+  GithubToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+  GeminiModel:
+    Type: String
+    Default: "gemini-2.5-flash"
+
+  Temperature:
+    Type: String
+    Default: "0.7"
+
+  AdminPassword:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+Outputs:
+  ApiEndpoint:
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+
+  FunctionArn:
+    Value: !GetAtt ConfluxExpertAPI.Arn
