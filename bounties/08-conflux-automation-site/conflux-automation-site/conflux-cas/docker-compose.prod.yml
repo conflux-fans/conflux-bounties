@@ -1,0 +1,57 @@
+# Production compose file — uses pre-built multi-arch images from ghcr.io.
+# Server usage:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Images are built and pushed from a dev machine with:
+#   conflux-cas/scripts/build-and-push.sh
+
+services:
+  backend:
+    image: ghcr.io/cfxdevkit/cas-backend:latest
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /data/cas.db
+      PORT: "3001"
+    ports:
+      - "3001:3001"
+    volumes:
+      - cas_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  worker:
+    image: ghcr.io/cfxdevkit/cas-worker:latest
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /data/cas.db
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - cas_data:/data
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/cfxdevkit/cas-frontend:latest
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # BACKEND_URL must be the Docker service name — overrides any .env value
+      BACKEND_URL: http://backend:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  cas_data:
+    driver: local
