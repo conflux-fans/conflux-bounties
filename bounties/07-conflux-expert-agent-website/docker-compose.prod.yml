@@ -1,0 +1,49 @@
+services:
+  mcp:
+    image: sharpdocke/conflux-mcp-server:v1.0
+    env_file:
+      - .env
+    environment:
+      MCP_SERVER_PORT: "5004"
+      PORT: "5004"
+    networks:
+      - conflux-expert-agent
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5004/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  backend:
+    image: sharpdocke/conflux-expert-backend:v1.0
+    env_file:
+      - ./backend/.env
+    environment:
+      MCP_SERVER_URL: "http://mcp:5004"
+    depends_on:
+      mcp:
+        condition: service_healthy
+    networks:
+      - conflux-expert-agent
+    restart: unless-stopped
+
+  frontend:
+    image: sharpdocke/conflux-expert-frontend:v1.0
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      BACKEND_URL: "http://backend:8000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - conflux-expert-agent
+    restart: unless-stopped
+
+networks:
+  conflux-expert-agent:
+    driver: bridge
