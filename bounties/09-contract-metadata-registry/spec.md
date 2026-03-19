@@ -69,4 +69,3 @@ Deliver (1) a Solidity registry contract mapping contract addresses to metadata 
 - **Developer Experience (25%)**: Submission UX, SDK quality, documentation clarity.
 - **Security & Compliance (20%)**: Rate limiting, RBAC, audit logs, minimal permissions.
 - **Performance & Ops (20%)**: Caching strategy, monitoring, CI/CD with automated tests.
-
