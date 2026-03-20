@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Contract {
+  id             Int       @id @default(autoincrement())
+  address        String    @unique
+  name           String?
+  compilerVersion String?
+  sourceCode     String    @default("")
+  abi            Json?
+  verified       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  auditReports   AuditReport[]
+  analysisJobs   AnalysisJob[]
+}
+
+model AuditReport {
+  id             Int        @id @default(autoincrement())
+  contractId     Int
+  contract       Contract   @relation(fields: [contractId], references: [id])
+  analysisEngine String
+  findings       Json
+  summary        Json
+  severityScore  Int?
+  status         String     @default("completed")
+  createdAt      DateTime   @default(now())
+  findingRecords Finding[]
+
+  @@map("audit_reports")
+}
+
+model Finding {
+  id             Int         @id @default(autoincrement())
+  auditReportId  Int
+  auditReport    AuditReport @relation(fields: [auditReportId], references: [id])
+  category       String
+  severity       String
+  swcId          String?
+  cweId          String?
+  title          String
+  description    String
+  lineNumbers    Int[]
+  codeSnippet    String?
+  recommendation  String?
+  createdAt      DateTime   @default(now())
+
+  @@map("findings")
+}
+
+model AnalysisJob {
+  id               Int       @id @default(autoincrement())
+  jobId            String    @unique
+  contractAddress  String
+  status           String    @default("pending")
+  progress         Int       @default(0)
+  errorMessage     String?
+  reportId         Int?
+  report           AuditReport? @relation(fields: [reportId], references: [id])
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@map("analysis_jobs")
+}
+
+model WebhookConfig {
+  id        Int      @id @default(autoincrement())
+  url       String
+  events    String[]
+  secret    String?
+  createdAt DateTime @default(now())
+
+  @@map("webhook_configs")
+}

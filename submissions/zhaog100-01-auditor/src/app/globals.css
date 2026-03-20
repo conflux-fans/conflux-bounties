@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --conflux-primary: #1a56db;
+  --conflux-dark: #0f172a;
+}
+
+body {
+  background: var(--conflux-dark);
+  color: #e2e8f0;
+}
