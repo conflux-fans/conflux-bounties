@@ -1,0 +1,11 @@
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - JWT_SECRET=change-me-in-production
+      - RPC_URL=https://evm.confluxrpc.com
+    volumes:
+      - ./src/data:/app/src/data
+    restart: unless-stopped
