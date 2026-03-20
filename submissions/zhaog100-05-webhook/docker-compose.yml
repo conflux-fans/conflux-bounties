@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  webhook-relay:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config/events.json:/app/config/events.json
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=info
+      - CONFIG_FILE=/app/config/events.json
+      - CONFLUX_RPC_URL=https://evm.confluxrpc.com
+      - PORT=3000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
