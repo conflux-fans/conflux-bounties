@@ -1,0 +1,80 @@
+{
+  "info": {
+    "name": "Conflux Gated Site",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth — nonce",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/auth/nonce"
+      }
+    },
+    {
+      "name": "Auth — me",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/auth/me"
+      }
+    },
+    {
+      "name": "Assets — issue signed URL",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"slug\": \"sample-pdf\"\n}"
+        },
+        "url": "{{baseUrl}}/api/assets/issue"
+      }
+    },
+    {
+      "name": "Assets — download (paste ?t= from issue)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/assets/download?t=PASTE_TOKEN"
+      }
+    },
+    {
+      "name": "Protected — ping",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/protected/ping"
+      }
+    },
+    {
+      "name": "Admin — rules",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/admin/rules"
+      }
+    },
+    {
+      "name": "Admin — assets list",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/admin/assets"
+      }
+    },
+    {
+      "name": "Admin — metadata refresh (from rules)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/admin/metadata/refresh"
+      }
+    },
+    {
+      "name": "Admin — access logs",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/admin/access-logs"
+      }
+    }
+  ],
+  "variable": [{ "key": "baseUrl", "value": "http://localhost:3000" }]
+}
