@@ -1,0 +1,51 @@
+{
+  "name": "06-token-nft-gated-site",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "test": "jest",
+    "test:e2e": "playwright test",
+    "db:seed": "node prisma/seed.mjs",
+    "db:up": "node scripts/db-up.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.1",
+    "@tanstack/react-query": "^5.91.2",
+    "ioredis": "^5.10.1",
+    "jose": "^6.2.2",
+    "next": "15.1.7",
+    "rate-limiter-flexible": "^10.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "viem": "^2.47.5",
+    "wagmi": "^3.5.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.58.2",
+    "@testing-library/react": "^16.3.2",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "dotenv": "^17.3.1",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.7",
+    "jest": "^28.1.3",
+    "jest-environment-jsdom": "^30.3.0",
+    "postcss": "^8",
+    "prisma": "^6.4.1",
+    "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  }
+}
