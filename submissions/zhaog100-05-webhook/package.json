@@ -1,0 +1,38 @@
+{
+  "name": "conflux-webhook-relay",
+  "version": "1.0.0",
+  "description": "Webhook relay service for Conflux eSpace on-chain events",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
+    "test:watch": "jest --watch",
+    "lint": "standard"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0",
+    "fastify": "^4.28.0",
+    "winston": "^3.13.0",
+    "better-sqlite3": "^11.0.0",
+    "dotenv": "^16.4.0",
+    "axios": "^1.7.0",
+    "bottleneck": "^2.19.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "standard": "^17.1.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      }
+    }
+  },
+  "license": "MIT"
+}

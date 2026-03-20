@@ -1,0 +1,70 @@
+{
+  "name": "Conflux eSpace Event Receiver",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "conflux-events",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.event }}",
+              "operation": "equals",
+              "value2": "Transfer"
+            }
+          ]
+        }
+      },
+      "id": "if-transfer",
+      "name": "If Transfer Event",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process the incoming Conflux event\nconst eventData = $input.item.json.json || $input.item.json;\nconst from = eventData.data.from;\nconst to = eventData.data.to;\nconst value = eventData.data.value;\nconst txHash = eventData.transactionHash;\n\nreturn [{\n  json: {\n    event: eventData.event,\n    from,\n    to,\n    value: value / 1e18,\n    txHash,\n    blockNumber: eventData.blockNumber,\n    timestamp: eventData.timestamp\n  }\n}];"
+      },
+      "id": "process-event",
+      "name": "Process Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "If Transfer Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Transfer Event": {
+      "main": [
+        [
+          {
+            "node": "Process Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

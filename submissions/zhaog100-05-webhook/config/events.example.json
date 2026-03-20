@@ -1,0 +1,39 @@
+{
+  "network": {
+    "rpcUrl": "https://evm.confluxrpc.com",
+    "chainId": 1030
+  },
+  "subscriptions": [
+    {
+      "id": "erc20-transfers",
+      "contract": "0xYOUR_CONTRACT_ADDRESS",
+      "events": ["Transfer"],
+      "filters": {},
+      "webhooks": [
+        {
+          "url": "https://hooks.zapier.com/hooks/catch/YOUR_HOOK_ID/",
+          "format": "zapier",
+          "headers": {
+            "Authorization": "Bearer YOUR_TOKEN"
+          }
+        },
+        {
+          "url": "https://YOUR_MAKE_WEBHOOK_URL",
+          "format": "make"
+        },
+        {
+          "url": "http://localhost:5678/webhook/conflux-events",
+          "format": "n8n"
+        }
+      ]
+    }
+  ],
+  "options": {
+    "retryAttempts": 3,
+    "retryDelay": 1000,
+    "maxConcurrentWebhooks": 10,
+    "webhookTimeout": 30000,
+    "pollInterval": 2000,
+    "batchSize": 1000
+  }
+}
