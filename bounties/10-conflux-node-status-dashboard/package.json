@@ -1,0 +1,31 @@
+{
+  "name": "conflux-node-status-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted dashboard for monitoring Conflux node health in real time",
+  "scripts": {
+    "dev": "pnpm --filter server dev & pnpm --filter dashboard dev",
+    "dev:server": "pnpm --filter server dev",
+    "dev:dashboard": "pnpm --filter dashboard dev",
+    "build": "pnpm --filter server build && pnpm --filter dashboard build",
+    "build:server": "pnpm --filter server build",
+    "build:dashboard": "pnpm --filter dashboard build",
+    "start": "pnpm --filter server start",
+    "test": "pnpm --filter server test && pnpm --filter dashboard test",
+    "test:server": "pnpm --filter server test",
+    "test:dashboard": "pnpm --filter dashboard test",
+    "lint": "pnpm --filter '*' lint",
+    "seed": "pnpm --filter server seed",
+    "test:rpc": "pnpm --filter server test:rpc"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  }
+}
