@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: x402
+          POSTGRES_PASSWORD: x402pass
+          POSTGRES_DB: x402_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U x402"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm install
+
+      - name: Build shared packages
+        run: npm run build -w packages/shared -w packages/x402-sdk
+
+      - name: Compile contracts
+        run: npm run compile -w packages/contracts
+
+      - name: Run contract tests
+        run: npm run test -w packages/contracts
+
+      - name: Run shared package tests
+        run: npm run test -w packages/shared
+
+      - name: Run API tests
+        run: npm run test -w apps/seller-api
+        env:
+          NODE_ENV: test
+
+      - name: Run agent tests
+        run: npm run test -w apps/agent
+
+      - name: Lint
+        run: npm run lint --if-present --workspaces
+        continue-on-error: true
+
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - run: npm run compile -w packages/contracts
+      - run: npm run test -w packages/contracts

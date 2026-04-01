@@ -1,0 +1,24 @@
+{
+  "date": "2026-03-30",
+  "url": "http://localhost:3000",
+  "healthScore": 82,
+  "issues": [
+    { "id": "ISSUE-001", "title": "Stale contract addresses in .env.local", "severity": "high", "category": "functional", "status": "fixed" },
+    { "id": "ISSUE-002", "title": "Agent wallet status contradicts server state", "severity": "medium", "category": "ux" },
+    { "id": "ISSUE-003", "title": "Premium endpoint buttons lack actionable guidance", "severity": "medium", "category": "ux" },
+    { "id": "ISSUE-004", "title": "Transaction History shows pending invoices", "severity": "low", "category": "ux" },
+    { "id": "ISSUE-005", "title": "Architecture page Back link placement", "severity": "low", "category": "ux" },
+    { "id": "ISSUE-006", "title": "No loading state for agent chat", "severity": "low", "category": "ux" },
+    { "id": "ISSUE-007", "title": "Aave Account console errors (external)", "severity": "info", "category": "console" }
+  ],
+  "categoryScores": {
+    "console": 100,
+    "links": 100,
+    "visual": 100,
+    "functional": 85,
+    "ux": 68,
+    "performance": 100,
+    "content": 97,
+    "accessibility": 85
+  }
+}

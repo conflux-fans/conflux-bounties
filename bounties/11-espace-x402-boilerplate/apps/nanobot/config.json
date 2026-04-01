@@ -1,0 +1,31 @@
+{
+  "providers": {
+    "openai": {
+      "apiKey": "__OPENAI_API_KEY__",
+      "apiBase": "__OPENAI_API_BASE__"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "__LLM_MODEL__",
+      "provider": "openai"
+    }
+  },
+  "tools": {
+    "exec": {
+      "enable": false
+    },
+    "restrictToWorkspace": true,
+    "mcpServers": {
+      "x402": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["tsx", "apps/agent/src/mcp-server.ts"],
+        "toolTimeout": 60,
+        "env": {
+          "NODE_ENV": "production"
+        }
+      }
+    }
+  }
+}
