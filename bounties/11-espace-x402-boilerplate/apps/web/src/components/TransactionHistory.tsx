@@ -4,25 +4,57 @@ import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccount } from "wagmi";
 import { apiFetch, submitDispute } from "@/lib/api";
-import { CheckCircle, Clock, XCircle, Receipt, RotateCcw, ExternalLink, AlertTriangle } from "lucide-react";
+import { CheckCircle, Clock, XCircle, Receipt, RotateCcw, ExternalLink, AlertTriangle, Lock, Unlock, Timer } from "lucide-react";
 
 interface Invoice {
   id: string;
   endpoint: string;
   amount: string;
+  token?: string;
   status: string;
   payer?: string;
   tx_hash?: string;
   created_at: string;
+  paid_at?: string;
+  release_at?: string;
+  escrow_remaining_ms?: number;
+  escrow_released?: boolean;
+}
+
+function tokenSymbol(address?: string): string {
+  if (!address) return "USDT0";
+  const known: Record<string, string> = {
+    "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff": "USDT0",
+    "0x70bfd7f7eadf9b9827541272589a6b2bb760ae2e": "CNHT0",
+    "0x15964435f2d3e500407e234b750bc2d4027996cd": "USDT0",
+    "0x91de8a02c4e85b4b7cab8c13f71a5272e4ef9b11": "USDT0",
+  };
+  return known[address.toLowerCase()] ?? "USDT0";
 }
 
 type DisputeMsg = { type: "success" | "error"; msg: string } | null;
+
+function formatTimeRemaining(ms: number): string {
+  if (ms <= 0) return "Ready";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return "<1m";
+}
 
 function statusBadge(s: string) {
   if (s === "paid")
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full">
-        <CheckCircle size={12} /> Paid
+        <Lock size={12} /> In Escrow
+      </span>
+    );
+  if (s === "released")
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full">
+        <Unlock size={12} /> Released
       </span>
     );
   if (s === "refunded")
@@ -44,6 +76,35 @@ function statusBadge(s: string) {
   );
 }
 
+function EscrowTimer({ invoice }: { invoice: Invoice }) {
+  const [now, setNow] = React.useState(Date.now());
+
+  React.useEffect(() => {
+    if (invoice.status !== "paid" || !invoice.release_at) return;
+    const interval = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(interval);
+  }, [invoice.status, invoice.release_at]);
+
+  if (invoice.status !== "paid" || !invoice.release_at) return null;
+
+  const releaseAt = new Date(invoice.release_at).getTime();
+  const remaining = Math.max(0, releaseAt - now);
+
+  if (remaining <= 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
+        <Unlock size={10} /> Ready to release
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-amber-400" title={`Refund window closes ${new Date(invoice.release_at).toLocaleString()}`}>
+      <Timer size={10} /> {formatTimeRemaining(remaining)} left
+    </span>
+  );
+}
+
 export function TransactionHistory() {
   const queryClient = useQueryClient();
   const { address } = useAccount();
@@ -58,7 +119,9 @@ export function TransactionHistory() {
     refetchInterval: 10000,
   });
 
-  const invoices = (data?.data as { invoices: Invoice[] })?.invoices ?? [];
+  const invoices = ((data?.data as { invoices: Invoice[] })?.invoices ?? []).filter(
+    (inv) => inv.status !== "pending"
+  );
 
   const handleDispute = async (invoiceId: string) => {
     if (!address || !disputeReason.trim()) return;
@@ -109,6 +172,7 @@ export function TransactionHistory() {
               <th className="text-right py-3 px-5 font-medium">Amount</th>
               <th className="text-left py-3 px-5 font-medium">Payer</th>
               <th className="text-left py-3 px-5 font-medium">Tx Hash</th>
+              <th className="text-center py-3 px-5 font-medium">Escrow</th>
               <th className="text-right py-3 px-5 font-medium">Time</th>
               <th className="text-center py-3 px-5 font-medium">Action</th>
             </tr>
@@ -125,7 +189,7 @@ export function TransactionHistory() {
                   </td>
                   <td className="py-3 px-5 text-right">
                     <span className="font-mono text-white">{(Number(inv.amount) / 1e6).toFixed(2)}</span>
-                    <span className="text-gray-500 text-xs ml-1">USDT0</span>
+                    <span className="text-gray-500 text-xs ml-1">{tokenSymbol(inv.token)}</span>
                   </td>
                   <td className="py-3 px-5 font-mono text-xs text-gray-400">
                     {inv.payer ? `${inv.payer.slice(0, 6)}...${inv.payer.slice(-4)}` : "\u2014"}
@@ -144,6 +208,9 @@ export function TransactionHistory() {
                     ) : (
                       <span className="text-gray-600">{"\u2014"}</span>
                     )}
+                  </td>
+                  <td className="py-3 px-5 text-center">
+                    <EscrowTimer invoice={inv} />
                   </td>
                   <td className="py-3 px-5 text-right text-gray-400 text-xs">
                     {new Date(inv.created_at).toLocaleString()}
@@ -164,7 +231,7 @@ export function TransactionHistory() {
                 </tr>
                 {disputeTarget === inv.id && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-3 bg-amber-500/5 border-t border-amber-500/20">
+                    <td colSpan={8} className="px-5 py-3 bg-amber-500/5 border-t border-amber-500/20">
                       <div className="flex items-center gap-3">
                         <textarea
                           placeholder="Describe the reason for your dispute..."

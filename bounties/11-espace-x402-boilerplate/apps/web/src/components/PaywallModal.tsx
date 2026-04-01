@@ -17,18 +17,31 @@ const balanceOfAbi = [
   },
 ] as const;
 
+/** Resolve a human-readable token symbol from an address */
+function tokenSymbol(address: string): string {
+  const known: Record<string, string> = {
+    "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff": "USDT0",
+    "0x70bfd7f7eadf9b9827541272589a6b2bb760ae2e": "CNHT0",
+  };
+  return known[address.toLowerCase()] ?? "USDT0";
+}
+
 interface Props {
   challenge: PaymentChallenge;
   onClose: () => void;
   onPaymentComplete: (invoiceId: string, payer?: string) => void;
+  onTokenSwitch?: (tokenAddress: string) => void;
 }
 
-export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
+export function PaywallModal({ challenge, onClose, onPaymentComplete, onTokenSwitch }: Props) {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
   const chainId = useChainId();
 
-  // Fetch USDT0 token balance
+  const symbol = tokenSymbol(challenge.token);
+  const hasMultipleTokens = challenge.supportedTokens && challenge.supportedTokens.length > 1;
+
+  // Fetch token balance for the current challenge token
   const { data: tokenBalance } = useReadContract({
     address: challenge.token as `0x${string}`,
     abi: balanceOfAbi,
@@ -45,6 +58,10 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
 
   const tokenAmount = (Number(challenge.amount) / 10 ** TOKEN_DECIMALS).toFixed(2);
 
+  // Detect if the connected wallet is the seller (recipient) — settlement will fail on-chain
+  const isSeller = address && challenge.recipient &&
+    address.toLowerCase() === challenge.recipient.toLowerCase();
+
   async function handlePay() {
     if (!walletClient || !address) return;
     setStatus("signing");
@@ -59,8 +76,7 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
       const validAfter = 0;
       const validBefore = challenge.expiry;
 
-      // Sign EIP-712 ReceiveWithAuthorization (off-chain — no gas for the user)
-      // `to` is the verifier contract, which receives funds then forwards to the seller.
+      // Sign EIP-712 ReceiveWithAuthorization (off-chain, no gas for the user)
       const tokenDomain = getERC3009Domain(challenge.token);
       const signature = await walletClient.signTypedData({
         domain: {
@@ -137,7 +153,7 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-white">Payment Required</h3>
-              <p className="text-xs text-gray-400">HTTP 402 — sign to authorize USDT0 payment</p>
+              <p className="text-xs text-gray-400">HTTP 402 — sign to authorize {symbol} payment</p>
             </div>
           </div>
 
@@ -159,7 +175,7 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
             </div>
             <div className="flex justify-between text-sm items-center">
               <span className="text-gray-400">Amount</span>
-              <span className="font-mono text-xl font-bold text-conflux-teal">{tokenAmount} <span className="text-sm font-normal text-gray-400">USDT0</span></span>
+              <span className="font-mono text-xl font-bold text-conflux-teal">{tokenAmount} <span className="text-sm font-normal text-gray-400">{symbol}</span></span>
             </div>
             {challenge.description && (
               <div className="flex justify-between text-sm">
@@ -173,6 +189,32 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
             </div>
           </div>
 
+          {/* Token selector (mainnet multi-token) */}
+          {hasMultipleTokens && onTokenSwitch && status === "idle" && (
+            <div className="rounded-xl bg-black/20 border border-gray-700/30 p-3 mb-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pay with</p>
+              <div className="flex gap-2">
+                {challenge.supportedTokens!.map((t) => {
+                  const isActive = t.address.toLowerCase() === challenge.token.toLowerCase();
+                  return (
+                    <button
+                      key={t.address}
+                      onClick={() => { if (!isActive) onTokenSwitch(t.address); }}
+                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all border ${
+                        isActive
+                          ? "bg-conflux-teal/15 text-conflux-teal border-conflux-teal/30"
+                          : "bg-gray-800/50 text-gray-400 border-gray-700/30 hover:border-gray-600 hover:text-gray-300"
+                      }`}
+                    >
+                      <span className="font-semibold">{t.symbol}</span>
+                      <span className="block text-xs opacity-70 mt-0.5">{t.price}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Wallet balances */}
           {address && (
             <div className="rounded-xl bg-black/20 border border-gray-700/30 p-4 mb-4">
@@ -182,7 +224,7 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm items-center">
-                  <span className="text-gray-400">USDT0</span>
+                  <span className="text-gray-400">{symbol}</span>
                   <span className={`font-mono font-semibold ${
                     tokenBalance !== undefined && BigInt(tokenBalance) >= BigInt(challenge.amount)
                       ? "text-emerald-400"
@@ -203,10 +245,23 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
               </div>
               {tokenBalance !== undefined && BigInt(tokenBalance) < BigInt(challenge.amount) && (
                 <p className="text-xs text-red-400 mt-3">
-                  Insufficient USDT0 balance. You need {tokenAmount} but have {formatUnits(BigInt(tokenBalance), TOKEN_DECIMALS)}.
-                  Mint test tokens below.
+                  Insufficient {symbol} balance. You need {tokenAmount} but have {formatUnits(BigInt(tokenBalance), TOKEN_DECIMALS)}.
+                  {chainId !== 1030 && " Mint test tokens below."}
                 </p>
               )}
+            </div>
+          )}
+
+          {isSeller && (
+            <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 mb-4">
+              <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" />
+              <div className="text-sm text-amber-300">
+                <p className="font-medium">You are the seller of this API</p>
+                <p className="text-xs text-amber-400/80 mt-1">
+                  The connected wallet is the payment recipient. On-chain settlement will fail because
+                  the buyer and seller cannot be the same address. Connect a different wallet to test as a buyer.
+                </p>
+              </div>
             </div>
           )}
 
@@ -231,7 +286,7 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
           ) : (
             <button
               onClick={handlePay}
-              disabled={status === "signing" || status === "confirming"}
+              disabled={status === "signing" || status === "confirming" || !!isSeller}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-conflux-teal to-blue-500 text-white font-medium
                          hover:opacity-90 disabled:opacity-50 transition-all
                          flex items-center justify-center gap-2 text-sm shadow-lg shadow-conflux-teal/20"
@@ -239,7 +294,7 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete }: Props) {
               {status === "signing" && <><Loader2 size={16} className="animate-spin" /> Sign authorization in wallet...</>}
               {status === "confirming" && <><Loader2 size={16} className="animate-spin" /> Settling payment...</>}
               {status === "error" && "Retry payment"}
-              {status === "idle" && `Authorize ${tokenAmount} USDT0`}
+              {status === "idle" && `Authorize ${tokenAmount} ${symbol}`}
             </button>
           )}
         </div>

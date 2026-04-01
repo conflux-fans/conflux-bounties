@@ -113,9 +113,32 @@ export class X402Verifier {
   }
 
   /**
+   * Release escrowed funds to the seller after the grace period (24 hours).
+   * Anyone can call this (permissionless) since it only sends to the recorded recipient.
+   */
+  async release(invoiceId: string): Promise<Hash> {
+    if (!this.walletClient || !this.account) {
+      throw new Error("Facilitator wallet not configured — provide facilitatorKey");
+    }
+
+    const invoiceIdHash = hashInvoiceId(invoiceId);
+
+    const hash = await this.walletClient.writeContract({
+      address: this.contractAddress,
+      abi: verifierAbi,
+      functionName: "release",
+      args: [invoiceIdHash],
+      chain: this.walletClient.chain,
+      account: this.account,
+    });
+
+    return hash;
+  }
+
+  /**
    * Refund a paid invoice back to the original payer.
    * Only the payment recipient (seller) can call this.
-   * Requires the recipient to have approved the verifier contract via ERC-20 approve().
+   * Funds are held in escrow, so no ERC-20 approval is needed.
    */
   async refund(invoiceId: string): Promise<Hash> {
     if (!this.walletClient || !this.account) {
@@ -162,7 +185,7 @@ export class X402Verifier {
   /**
    * Register the facilitator's wallet as a seller on the contract.
    */
-  async registerSeller(apiBaseUrl: string, description: string): Promise<Hash> {
+  async registerSeller(apiBaseUrl: string, description: string, escrowDurationSeconds: bigint = BigInt(0)): Promise<Hash> {
     if (!this.walletClient || !this.account) {
       throw new Error("Facilitator wallet not configured — provide facilitatorKey");
     }
@@ -171,7 +194,7 @@ export class X402Verifier {
       address: this.contractAddress,
       abi: verifierAbi,
       functionName: "registerSeller",
-      args: [apiBaseUrl, description],
+      args: [apiBaseUrl, description, escrowDurationSeconds],
       chain: this.walletClient.chain,
       account: this.account,
     });
@@ -181,8 +204,9 @@ export class X402Verifier {
 
   /**
    * Update seller profile.
+   * @param escrowDurationSeconds 0 = keep current value.
    */
-  async updateSeller(apiBaseUrl: string, description: string): Promise<Hash> {
+  async updateSeller(apiBaseUrl: string, description: string, escrowDurationSeconds: bigint = BigInt(0)): Promise<Hash> {
     if (!this.walletClient || !this.account) {
       throw new Error("Facilitator wallet not configured — provide facilitatorKey");
     }
@@ -191,7 +215,7 @@ export class X402Verifier {
       address: this.contractAddress,
       abi: verifierAbi,
       functionName: "updateSeller",
-      args: [apiBaseUrl, description],
+      args: [apiBaseUrl, description, escrowDurationSeconds],
       chain: this.walletClient.chain,
       account: this.account,
     });
@@ -214,13 +238,15 @@ export class X402Verifier {
     return { valid: result[0], payer: result[1] };
   }
 
-  async isNonceUsed(nonce: string): Promise<boolean> {
-    const nonceHash = keccak256(toBytes(nonce));
+  async isNonceUsed(from: `0x${string}`, nonce: `0x${string}`): Promise<boolean> {
+    const scopedHash = keccak256(
+      `0x${from.slice(2)}${nonce.slice(2)}` as `0x${string}`
+    );
     return (await this.client.readContract({
       address: this.contractAddress,
       abi: verifierAbi,
       functionName: "usedNonces",
-      args: [nonceHash],
+      args: [scopedHash],
     })) as boolean;
   }
 

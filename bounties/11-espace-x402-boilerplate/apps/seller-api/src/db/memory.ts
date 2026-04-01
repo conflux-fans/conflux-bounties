@@ -16,6 +16,13 @@ const store = {
 };
 
 // Seed default pricing
+store.endpoint_pricing.set("/data/instant", {
+  endpoint: "/data/instant",
+  price: "10000000000000000",
+  token: "0x0000000000000000000000000000000000000000",
+  description: "Instant lookup (no escrow)",
+  tier: "premium",
+});
 store.endpoint_pricing.set("/data/premium", {
   endpoint: "/data/premium",
   price: "100000000000000000",

@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { parseUnits } from "viem";
 import { Coins } from "lucide-react";
+import { useNetwork } from "@/components/NetworkContext";
 
-const USDT0_ADDRESS = process.env.NEXT_PUBLIC_USDT0_ADDRESS || "0x0000000000000000000000000000000000000000";
+const TESTNET_USDT0 = process.env.NEXT_PUBLIC_USDT0_ADDRESS || "0x91de8a02c4E85b4b7cAB8c13F71a5272E4EF9b11";
 
 const mintAbi = [
   {
@@ -22,11 +23,15 @@ const mintAbi = [
 
 export function MintTestTokens() {
   const { address, isConnected } = useAccount();
+  const { isTestnet } = useNetwork();
   const [amount, setAmount] = useState("100");
   const { writeContract, data: txHash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
-  if (!isConnected) return null;
+  // Only show on testnet — you can't mint real USDT0 on mainnet
+  if (!isConnected || !isTestnet) return null;
+
+  const USDT0_ADDRESS = TESTNET_USDT0;
 
   const handleMint = () => {
     if (!address) return;

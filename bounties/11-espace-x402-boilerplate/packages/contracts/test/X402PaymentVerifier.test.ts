@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { MockUSDT0, X402PaymentVerifier } from "../typechain-types";
 
 describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
@@ -55,6 +56,45 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     return { v, r, s };
   }
 
+  // Helper: ensure seller is registered (idempotent)
+  async function ensureSellerRegistered(sellerSigner: any) {
+    const seller = await verifier.getSeller(sellerSigner.address);
+    if (seller.registeredAt === 0n) {
+      await verifier.connect(sellerSigner).registerSeller("https://test.example.com", "Test Seller", 0);
+    } else if (!seller.active) {
+      await verifier.connect(sellerSigner).reactivateSeller("https://test.example.com", "Test Seller", 0);
+    }
+  }
+
+  // Helper to settle a payment and return common vars
+  async function settlePayment(
+    sellerSigner: any,
+    inv: string = invoiceId,
+    nonceSuffix: string = "001",
+    ep: string = endpoint
+  ) {
+    await ensureSellerRegistered(sellerSigner);
+
+    const tokenAddr = await token.getAddress();
+    const verifierAddr = await verifier.getAddress();
+    const nonce = ethers.id(`nonce-${nonceSuffix}`);
+    const validAfter = 0;
+    // Use blockchain time, not Date.now(), so it works after time.increase()
+    const latestBlock = await ethers.provider.getBlock("latest");
+    const validBefore = latestBlock!.timestamp + 300;
+
+    const { v, r, s } = await signReceiveAuthorization(
+      payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
+    );
+
+    await verifier.connect(sellerSigner).settle(
+      inv, tokenAddr, payer.address, sellerSigner.address, amount,
+      validAfter, validBefore, nonce, ep, v, r, s
+    );
+
+    return { tokenAddr, verifierAddr, nonce, validAfter, validBefore };
+  }
+
   beforeEach(async function () {
     [owner, payer, seller1, seller2] = await ethers.getSigners();
 
@@ -71,23 +111,22 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
 
     // Mint USDT0 to the payer
     await token.mint(payer.address, 10_000_000n); // 10 USDT0
+
   });
 
   // ─── Settlement Tests ───
 
-  it("should settle a valid ERC-3009 payment to any recipient", async function () {
+  it("should settle a valid ERC-3009 payment (funds held in escrow)", async function () {
+    await ensureSellerRegistered(seller1);
     const tokenAddr = await token.getAddress();
     const verifierAddr = await verifier.getAddress();
     const nonce = ethers.id("nonce-001");
     const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
+    const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
-    // Buyer signs authorization with to = verifier address
     const { v, r, s } = await signReceiveAuthorization(
       payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
     );
-
-    const balanceBefore = await token.balanceOf(seller1.address);
 
     // Seller1 calls settle (msg.sender == recipient required)
     await expect(
@@ -97,16 +136,25 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
       )
     )
       .to.emit(verifier, "PaymentReceived")
-      .withArgs(invoiceId, payer.address, seller1.address, tokenAddr, amount, endpoint, nonce);
+      .withArgs(invoiceId, payer.address, seller1.address, tokenAddr, amount, endpoint, nonce, (await ethers.provider.getNetwork()).chainId);
 
-    const balanceAfter = await token.balanceOf(seller1.address);
-    expect(balanceAfter - balanceBefore).to.equal(amount);
+    // Funds are in the contract (escrow), NOT with the seller yet
+    expect(await token.balanceOf(verifierAddr)).to.equal(amount);
+    expect(await token.balanceOf(seller1.address)).to.equal(0);
+
+    // Payment is recorded with escrow fields
+    const payment = await verifier.getPayment(invoiceId);
+    expect(payment.released).to.be.false;
+    expect(payment.refunded).to.be.false;
+    expect(payment.releaseAt).to.be.greaterThan(payment.paidAt);
   });
 
   it("should settle payments to different sellers (multi-tenant)", async function () {
+    await ensureSellerRegistered(seller1);
+    await ensureSellerRegistered(seller2);
     const tokenAddr = await token.getAddress();
     const verifierAddr = await verifier.getAddress();
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
+    const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
     // Payment to seller1
     const nonce1 = ethers.id("nonce-mt-001");
@@ -125,26 +173,12 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
       0, validBefore, nonce2, "/compute/simulate", sig2.v, sig2.r, sig2.s
     );
 
-    // Verify both payments
-    expect(await token.balanceOf(seller1.address)).to.equal(amount);
-    expect(await token.balanceOf(seller2.address)).to.equal(amount);
+    // Both payments held in escrow
+    expect(await token.balanceOf(verifierAddr)).to.equal(amount * 2n);
   });
 
   it("should verify a paid invoice", async function () {
-    const tokenAddr = await token.getAddress();
-    const verifierAddr = await verifier.getAddress();
-    const nonce = ethers.id("nonce-002");
-    const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
-
-    const { v, r, s } = await signReceiveAuthorization(
-      payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
-    );
-
-    await verifier.connect(seller1).settle(
-      invoiceId, tokenAddr, payer.address, seller1.address, amount,
-      validAfter, validBefore, nonce, endpoint, v, r, s
-    );
+    await settlePayment(seller1, invoiceId, "002");
 
     const [valid, payerAddr] = await verifier.verifyPayment(invoiceId, amount, endpoint);
     expect(valid).to.be.true;
@@ -152,6 +186,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
   });
 
   it("should reject expired authorization", async function () {
+    await ensureSellerRegistered(seller1);
     const tokenAddr = await token.getAddress();
     const verifierAddr = await verifier.getAddress();
     const nonce = ethers.id("nonce-003");
@@ -162,7 +197,6 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
       payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
     );
 
-    // Verifier now checks expiry itself before calling the token
     await expect(
       verifier.connect(seller1).settle(
         invoiceId, tokenAddr, payer.address, seller1.address, amount,
@@ -172,11 +206,12 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
   });
 
   it("should reject duplicate nonce", async function () {
+    await ensureSellerRegistered(seller1);
     const tokenAddr = await token.getAddress();
     const verifierAddr = await verifier.getAddress();
     const nonce = ethers.id("nonce-004");
     const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
+    const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
     const { v, r, s } = await signReceiveAuthorization(
       payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
@@ -201,12 +236,13 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
   });
 
   it("should reject duplicate invoice payment", async function () {
+    await ensureSellerRegistered(seller1);
     const tokenAddr = await token.getAddress();
     const verifierAddr = await verifier.getAddress();
     const nonce1 = ethers.id("nonce-005");
     const nonce2 = ethers.id("nonce-006");
     const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
+    const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
     const sig1 = await signReceiveAuthorization(
       payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce1
@@ -232,7 +268,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     const verifierAddr = await verifier.getAddress();
     const nonce = ethers.id("nonce-007");
     const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
+    const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
     const { v, r, s } = await signReceiveAuthorization(
       payer, tokenAddr, verifierAddr, 0n, validAfter, validBefore, nonce
@@ -250,7 +286,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     const tokenAddr = await token.getAddress();
     const nonce = ethers.id("nonce-zero-recip");
     const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
+    const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
     await expect(
       verifier.settle(
@@ -265,7 +301,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     const verifierAddr = await verifier.getAddress();
     const nonce = ethers.id("nonce-self-pay");
     const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
+    const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
     const { v, r, s } = await signReceiveAuthorization(
       seller1, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
@@ -284,13 +320,12 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     const verifierAddr = await verifier.getAddress();
     const nonce = ethers.id("nonce-non-recip");
     const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
+    const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
     const { v, r, s } = await signReceiveAuthorization(
       payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
     );
 
-    // seller2 tries to settle a payment intended for seller1
     await expect(
       verifier.connect(seller2).settle(
         invoiceId, tokenAddr, payer.address, seller1.address, amount,
@@ -300,20 +335,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
   });
 
   it("should fail verification for wrong endpoint", async function () {
-    const tokenAddr = await token.getAddress();
-    const verifierAddr = await verifier.getAddress();
-    const nonce = ethers.id("nonce-008");
-    const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
-
-    const { v, r, s } = await signReceiveAuthorization(
-      payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
-    );
-
-    await verifier.connect(seller1).settle(
-      invoiceId, tokenAddr, payer.address, seller1.address, amount,
-      validAfter, validBefore, nonce, endpoint, v, r, s
-    );
+    await settlePayment(seller1, invoiceId, "008");
 
     const [valid] = await verifier.verifyPayment(invoiceId, amount, "/wrong/endpoint");
     expect(valid).to.be.false;
@@ -323,7 +345,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     const fakeToken = "0x0000000000000000000000000000000000000001";
     const nonce = ethers.id("nonce-009");
     const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
+    const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
     await expect(
       verifier.connect(seller1).settle(
@@ -333,14 +355,261 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     ).to.be.revertedWith("X402: unsupported token");
   });
 
+  // ─── Escrow Release Tests ───
+
+  describe("Escrow", function () {
+    it("should release funds to seller after escrow period", async function () {
+      const { verifierAddr } = await settlePayment(seller1, invoiceId, "escrow-release");
+
+      // Fast-forward past escrow period (24 hours)
+      await time.increase(24 * 60 * 60 + 1);
+
+      const sellerBalBefore = await token.balanceOf(seller1.address);
+
+      await expect(verifier.connect(seller1).release(invoiceId))
+        .to.emit(verifier, "PaymentReleased")
+        .withArgs(invoiceId, seller1.address, await token.getAddress(), amount);
+
+      expect(await token.balanceOf(seller1.address)).to.equal(sellerBalBefore + amount);
+      expect(await token.balanceOf(verifierAddr!)).to.equal(0);
+
+      const payment = await verifier.getPayment(invoiceId);
+      expect(payment.released).to.be.true;
+    });
+
+    it("should allow anyone to call release after escrow period (permissionless)", async function () {
+      await settlePayment(seller1, invoiceId, "escrow-permissionless");
+
+      await time.increase(24 * 60 * 60 + 1);
+
+      // payer (not seller) calls release — should still work
+      await expect(verifier.connect(payer).release(invoiceId))
+        .to.emit(verifier, "PaymentReleased");
+
+      expect(await token.balanceOf(seller1.address)).to.equal(amount);
+    });
+
+    it("should reject release during escrow period", async function () {
+      await settlePayment(seller1, invoiceId, "escrow-early");
+
+      // Try to release immediately (escrow still active)
+      await expect(
+        verifier.connect(seller1).release(invoiceId)
+      ).to.be.revertedWith("X402: escrow period active");
+    });
+
+    it("should reject double release", async function () {
+      await settlePayment(seller1, invoiceId, "escrow-double-release");
+
+      await time.increase(24 * 60 * 60 + 1);
+      await verifier.connect(seller1).release(invoiceId);
+
+      await expect(
+        verifier.connect(seller1).release(invoiceId)
+      ).to.be.revertedWith("X402: already released");
+    });
+
+    it("should reject release of refunded payment", async function () {
+      await settlePayment(seller1, invoiceId, "escrow-release-refunded");
+
+      // Refund during escrow
+      await verifier.connect(seller1).refund(invoiceId);
+
+      await time.increase(24 * 60 * 60 + 1);
+
+      await expect(
+        verifier.connect(seller1).release(invoiceId)
+      ).to.be.revertedWith("X402: already refunded");
+    });
+
+    it("should reject release of unpaid invoice", async function () {
+      await expect(
+        verifier.connect(seller1).release(invoiceId)
+      ).to.be.revertedWith("X402: invoice not paid");
+    });
+  });
+
+  // ─── Refund Tests (Escrow-based) ───
+
+  describe("Refunds", function () {
+    it("should allow seller to refund during escrow (no approval needed)", async function () {
+      await settlePayment(seller1, invoiceId, "refund-escrow");
+
+      const payerBalBefore = await token.balanceOf(payer.address);
+
+      // No approve() needed! Funds are in the contract.
+      await expect(verifier.connect(seller1).refund(invoiceId))
+        .to.emit(verifier, "Refunded")
+        .withArgs(invoiceId, payer.address, await token.getAddress(), amount, payer.address);
+
+      expect(await token.balanceOf(payer.address)).to.equal(payerBalBefore + amount);
+
+      const payment = await verifier.getPayment(invoiceId);
+      expect(payment.refunded).to.be.true;
+    });
+
+    it("should allow refund to alternative address via refundTo", async function () {
+      await settlePayment(seller1, invoiceId, "refund-alt");
+
+      const altBalBefore = await token.balanceOf(seller2.address);
+
+      await expect(verifier.connect(seller1).refundTo(invoiceId, seller2.address))
+        .to.emit(verifier, "Refunded")
+        .withArgs(invoiceId, payer.address, await token.getAddress(), amount, seller2.address);
+
+      expect(await token.balanceOf(seller2.address)).to.equal(altBalBefore + amount);
+    });
+
+    it("should reject refund from non-recipient (including owner)", async function () {
+      await settlePayment(seller1, invoiceId, "refund-unauth");
+
+      await expect(
+        verifier.connect(owner).refund(invoiceId)
+      ).to.be.revertedWith("X402: only recipient can refund");
+
+      await expect(
+        verifier.connect(seller2).refund(invoiceId)
+      ).to.be.revertedWith("X402: only recipient can refund");
+    });
+
+    it("should prevent double-refund", async function () {
+      await settlePayment(seller1, invoiceId, "refund-double");
+
+      await verifier.connect(seller1).refund(invoiceId);
+
+      await expect(
+        verifier.connect(seller1).refund(invoiceId)
+      ).to.be.revertedWith("X402: already refunded");
+    });
+
+    it("should reject refund of unpaid invoice", async function () {
+      await expect(
+        verifier.connect(seller1).refund(invoiceId)
+      ).to.be.revertedWith("X402: invoice not paid");
+    });
+
+    it("should reject refund after release", async function () {
+      await settlePayment(seller1, invoiceId, "refund-after-release");
+
+      await time.increase(24 * 60 * 60 + 1);
+      await verifier.connect(seller1).release(invoiceId);
+
+      await expect(
+        verifier.connect(seller1).refund(invoiceId)
+      ).to.be.revertedWith("X402: already released");
+    });
+
+    it("should return false for verifyPayment after refund", async function () {
+      await settlePayment(seller1, invoiceId, "refund-verify");
+
+      await verifier.connect(seller1).refund(invoiceId);
+
+      const [valid] = await verifier.verifyPayment(invoiceId, amount, endpoint);
+      expect(valid).to.be.false;
+    });
+
+    it("should reject refundTo to seller's own address (M-1 fix)", async function () {
+      await settlePayment(seller1, invoiceId, "refund-self");
+
+      await expect(
+        verifier.connect(seller1).refundTo(invoiceId, seller1.address)
+      ).to.be.revertedWith("X402: cannot refund to seller");
+    });
+  });
+
+  // ─── ReleaseTo Tests (M-2 fix) ───
+
+  describe("ReleaseTo", function () {
+    it("should allow seller to release to alternative address", async function () {
+      await settlePayment(seller1, invoiceId, "releaseto-alt");
+
+      await time.increase(24 * 60 * 60 + 1);
+
+      const altBalBefore = await token.balanceOf(seller2.address);
+
+      await expect(verifier.connect(seller1).releaseTo(invoiceId, seller2.address))
+        .to.emit(verifier, "PaymentReleased")
+        .withArgs(invoiceId, seller2.address, await token.getAddress(), amount);
+
+      expect(await token.balanceOf(seller2.address)).to.equal(altBalBefore + amount);
+
+      const payment = await verifier.getPayment(invoiceId);
+      expect(payment.released).to.be.true;
+    });
+
+    it("should reject releaseTo from non-recipient", async function () {
+      await settlePayment(seller1, invoiceId, "releaseto-unauth");
+
+      await time.increase(24 * 60 * 60 + 1);
+
+      await expect(
+        verifier.connect(payer).releaseTo(invoiceId, payer.address)
+      ).to.be.revertedWith("X402: only recipient can redirect");
+    });
+
+    it("should reject releaseTo during escrow period", async function () {
+      await settlePayment(seller1, invoiceId, "releaseto-early");
+
+      await expect(
+        verifier.connect(seller1).releaseTo(invoiceId, seller2.address)
+      ).to.be.revertedWith("X402: escrow period active");
+    });
+
+    it("should reject releaseTo zero address", async function () {
+      await settlePayment(seller1, invoiceId, "releaseto-zero");
+
+      await time.increase(24 * 60 * 60 + 1);
+
+      await expect(
+        verifier.connect(seller1).releaseTo(invoiceId, ethers.ZeroAddress)
+      ).to.be.revertedWith("X402: zero address");
+    });
+  });
+
+  // ─── Registration Fee Tests (M-6 fix) ───
+
+  describe("Registration Fee", function () {
+    it("should allow registration when fee is zero", async function () {
+      await verifier.connect(seller1).registerSeller("https://api.com", "Test", 0);
+      const seller = await verifier.getSeller(seller1.address);
+      expect(seller.active).to.be.true;
+    });
+
+    it("should require fee when set", async function () {
+      const fee = ethers.parseEther("0.01");
+      await verifier.connect(owner).setRegistrationFee(fee);
+
+      await expect(
+        verifier.connect(seller1).registerSeller("https://api.com", "Test", 0)
+      ).to.be.revertedWith("X402: insufficient registration fee");
+
+      await expect(
+        verifier.connect(seller1).registerSeller("https://api.com", "Test", 0, { value: fee })
+      ).to.emit(verifier, "SellerRegistered");
+    });
+
+    it("should allow owner to withdraw fees", async function () {
+      const fee = ethers.parseEther("0.01");
+      await verifier.connect(owner).setRegistrationFee(fee);
+      await verifier.connect(seller1).registerSeller("https://api.com", "Test", 0, { value: fee });
+
+      const ownerBalBefore = await ethers.provider.getBalance(owner.address);
+      await verifier.connect(owner).withdrawFees();
+      const ownerBalAfter = await ethers.provider.getBalance(owner.address);
+
+      // Owner balance increased (minus gas)
+      expect(ownerBalAfter).to.be.greaterThan(ownerBalBefore);
+    });
+  });
+
   // ─── Seller Registry Tests ───
 
   it("should register a seller", async function () {
     await expect(
-      verifier.connect(seller1).registerSeller("https://api.seller1.com", "Seller 1 API")
+      verifier.connect(seller1).registerSeller("https://api.seller1.com", "Seller 1 API", 0)
     )
       .to.emit(verifier, "SellerRegistered")
-      .withArgs(seller1.address, "https://api.seller1.com");
+      .withArgs(seller1.address, "https://api.seller1.com", 24 * 60 * 60);
 
     const seller = await verifier.getSeller(seller1.address);
     expect(seller.wallet).to.equal(seller1.address);
@@ -349,25 +618,25 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
   });
 
   it("should reject duplicate seller registration", async function () {
-    await verifier.connect(seller1).registerSeller("https://api.seller1.com", "Seller 1");
+    await verifier.connect(seller1).registerSeller("https://api.seller1.com", "Seller 1", 0);
     await expect(
-      verifier.connect(seller1).registerSeller("https://api2.seller1.com", "Seller 1 v2")
+      verifier.connect(seller1).registerSeller("https://api2.seller1.com", "Seller 1 v2", 0)
     ).to.be.revertedWith("X402: already registered");
   });
 
   it("should reject empty API URL", async function () {
     await expect(
-      verifier.connect(seller1).registerSeller("", "Description")
+      verifier.connect(seller1).registerSeller("", "Description", 0)
     ).to.be.revertedWith("X402: empty API URL");
   });
 
   it("should update seller profile", async function () {
-    await verifier.connect(seller1).registerSeller("https://old.api.com", "Old");
+    await verifier.connect(seller1).registerSeller("https://old.api.com", "Old", 0);
     await expect(
-      verifier.connect(seller1).updateSeller("https://new.api.com", "New description")
+      verifier.connect(seller1).updateSeller("https://new.api.com", "New description", 0)
     )
       .to.emit(verifier, "SellerUpdated")
-      .withArgs(seller1.address, "https://new.api.com");
+      .withArgs(seller1.address, "https://new.api.com", 24 * 60 * 60);
 
     const seller = await verifier.getSeller(seller1.address);
     expect(seller.apiBaseUrl).to.equal("https://new.api.com");
@@ -375,20 +644,18 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
   });
 
   it("should deactivate seller (self) and remove from active list", async function () {
-    await verifier.connect(seller1).registerSeller("https://api.com", "Test");
+    await verifier.connect(seller1).registerSeller("https://api.com", "Test", 0);
     await expect(verifier.connect(seller1).deactivateSeller(seller1.address))
       .to.emit(verifier, "SellerDeactivated")
       .withArgs(seller1.address);
 
     const seller = await verifier.getSeller(seller1.address);
     expect(seller.active).to.be.false;
-
-    // Seller is removed from sellerList
     expect(await verifier.getSellerCount()).to.equal(0);
   });
 
   it("should deactivate seller (owner)", async function () {
-    await verifier.connect(seller1).registerSeller("https://api.com", "Test");
+    await verifier.connect(seller1).registerSeller("https://api.com", "Test", 0);
     await verifier.connect(owner).deactivateSeller(seller1.address);
 
     const seller = await verifier.getSeller(seller1.address);
@@ -396,23 +663,23 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
   });
 
   it("should reject unauthorized deactivation", async function () {
-    await verifier.connect(seller1).registerSeller("https://api.com", "Test");
+    await verifier.connect(seller1).registerSeller("https://api.com", "Test", 0);
     await expect(
       verifier.connect(seller2).deactivateSeller(seller1.address)
     ).to.be.revertedWith("X402: not authorized");
   });
 
   it("should reactivate a deactivated seller", async function () {
-    await verifier.connect(seller1).registerSeller("https://api1.com", "Seller 1");
+    await verifier.connect(seller1).registerSeller("https://api1.com", "Seller 1", 0);
     await verifier.connect(seller1).deactivateSeller(seller1.address);
 
     expect(await verifier.getSellerCount()).to.equal(0);
 
     await expect(
-      verifier.connect(seller1).reactivateSeller("https://api1-v2.com", "Seller 1 v2")
+      verifier.connect(seller1).reactivateSeller("https://api1-v2.com", "Seller 1 v2", 0)
     )
       .to.emit(verifier, "SellerRegistered")
-      .withArgs(seller1.address, "https://api1-v2.com");
+      .withArgs(seller1.address, "https://api1-v2.com", 24 * 60 * 60);
 
     const seller = await verifier.getSeller(seller1.address);
     expect(seller.active).to.be.true;
@@ -422,18 +689,17 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
 
   it("should reject reactivation of never-registered seller", async function () {
     await expect(
-      verifier.connect(seller1).reactivateSeller("https://api.com", "Test")
+      verifier.connect(seller1).reactivateSeller("https://api.com", "Test", 0)
     ).to.be.revertedWith("X402: not registered");
   });
 
   it("should return active sellers with pagination", async function () {
-    await verifier.connect(seller1).registerSeller("https://api1.com", "Seller 1");
-    await verifier.connect(seller2).registerSeller("https://api2.com", "Seller 2");
+    await verifier.connect(seller1).registerSeller("https://api1.com", "Seller 1", 0);
+    await verifier.connect(seller2).registerSeller("https://api2.com", "Seller 2", 0);
 
     let activeSellers = await verifier.getActiveSellers(0, 100);
     expect(activeSellers.length).to.equal(2);
 
-    // Deactivate seller1 — removed from list via swap-and-pop
     await verifier.connect(seller1).deactivateSeller(seller1.address);
     activeSellers = await verifier.getActiveSellers(0, 100);
     expect(activeSellers.length).to.equal(1);
@@ -441,14 +707,12 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
   });
 
   it("should handle pagination bounds correctly", async function () {
-    await verifier.connect(seller1).registerSeller("https://api1.com", "Seller 1");
-    await verifier.connect(seller2).registerSeller("https://api2.com", "Seller 2");
+    await verifier.connect(seller1).registerSeller("https://api1.com", "Seller 1", 0);
+    await verifier.connect(seller2).registerSeller("https://api2.com", "Seller 2", 0);
 
-    // Offset beyond length returns empty
     let result = await verifier.getActiveSellers(10, 10);
     expect(result.length).to.equal(0);
 
-    // Limit exceeding length is clamped
     result = await verifier.getActiveSellers(0, 1);
     expect(result.length).to.equal(1);
 
@@ -456,160 +720,54 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     expect(result.length).to.equal(1);
   });
 
-  // ─── Refund Tests ───
-
-  it("should allow recipient (seller) to refund", async function () {
-    const tokenAddr = await token.getAddress();
-    const verifierAddr = await verifier.getAddress();
-    const nonce = ethers.id("nonce-refund-001");
-    const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
-
-    const { v, r, s } = await signReceiveAuthorization(
-      payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
-    );
-
-    await verifier.connect(seller1).settle(
-      invoiceId, tokenAddr, payer.address, seller1.address, amount,
-      validAfter, validBefore, nonce, endpoint, v, r, s
-    );
-
-    // Seller1 approves verifier to pull tokens for refund
-    await token.connect(seller1).approve(verifierAddr, amount);
-
-    const payerBalanceBefore = await token.balanceOf(payer.address);
-
-    await expect(verifier.connect(seller1).refund(invoiceId))
-      .to.emit(verifier, "Refunded")
-      .withArgs(invoiceId, payer.address, tokenAddr, amount);
-
-    const payerBalanceAfter = await token.balanceOf(payer.address);
-    expect(payerBalanceAfter - payerBalanceBefore).to.equal(amount);
-  });
-
-  it("should allow refund to alternative address via refundTo", async function () {
-    const tokenAddr = await token.getAddress();
-    const verifierAddr = await verifier.getAddress();
-    const nonce = ethers.id("nonce-refund-alt");
-    const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
-
-    const { v, r, s } = await signReceiveAuthorization(
-      payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
-    );
-
-    await verifier.connect(seller1).settle(
-      invoiceId, tokenAddr, payer.address, seller1.address, amount,
-      validAfter, validBefore, nonce, endpoint, v, r, s
-    );
-
-    await token.connect(seller1).approve(verifierAddr, amount);
-
-    // Refund to seller2's address instead of payer (e.g., if payer is blocklisted)
-    const altBalanceBefore = await token.balanceOf(seller2.address);
-
-    await expect(verifier.connect(seller1).refundTo(invoiceId, seller2.address))
-      .to.emit(verifier, "Refunded")
-      .withArgs(invoiceId, seller2.address, tokenAddr, amount);
-
-    const altBalanceAfter = await token.balanceOf(seller2.address);
-    expect(altBalanceAfter - altBalanceBefore).to.equal(amount);
-  });
-
-  it("should reject refund from non-recipient (including owner)", async function () {
-    const tokenAddr = await token.getAddress();
-    const verifierAddr = await verifier.getAddress();
-    const nonce = ethers.id("nonce-refund-unauth");
-    const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
-
-    const { v, r, s } = await signReceiveAuthorization(
-      payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
-    );
-
-    await verifier.connect(seller1).settle(
-      invoiceId, tokenAddr, payer.address, seller1.address, amount,
-      validAfter, validBefore, nonce, endpoint, v, r, s
-    );
-
-    // Owner cannot refund (removed owner override)
-    await expect(
-      verifier.connect(owner).refund(invoiceId)
-    ).to.be.revertedWith("X402: only recipient can refund");
-
-    // Random party cannot refund
-    await expect(
-      verifier.connect(seller2).refund(invoiceId)
-    ).to.be.revertedWith("X402: only recipient can refund");
-  });
-
-  it("should prevent double-refund", async function () {
-    const tokenAddr = await token.getAddress();
-    const verifierAddr = await verifier.getAddress();
-    const nonce = ethers.id("nonce-refund-double");
-    const validAfter = 0;
-    const validBefore = Math.floor(Date.now() / 1000) + 300;
-
-    const { v, r, s } = await signReceiveAuthorization(
-      payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
-    );
-
-    await verifier.connect(seller1).settle(
-      invoiceId, tokenAddr, payer.address, seller1.address, amount,
-      validAfter, validBefore, nonce, endpoint, v, r, s
-    );
-
-    await token.connect(seller1).approve(verifierAddr, amount * 2n);
-    await verifier.connect(seller1).refund(invoiceId);
-
-    await expect(
-      verifier.connect(seller1).refund(invoiceId)
-    ).to.be.revertedWith("X402: already refunded");
-  });
-
-  it("should reject refund of unpaid invoice", async function () {
-    await expect(
-      verifier.connect(seller1).refund(invoiceId)
-    ).to.be.revertedWith("X402: invoice not paid");
-  });
-
   // ─── Admin Tests ───
 
-  it("should allow owner to add supported tokens (with code)", async function () {
-    // Deploy another token to get a valid address with code
+  it("should allow owner to add supported tokens via propose/activate (with code)", async function () {
     const tokenFactory = await ethers.getContractFactory("MockUSDT0");
     const newToken = await tokenFactory.deploy();
     await newToken.waitForDeployment();
     const newTokenAddr = await newToken.getAddress();
 
-    await expect(verifier.connect(owner).setSupportedToken(newTokenAddr, true))
+    // Propose the token
+    await expect(verifier.connect(owner).proposeToken(newTokenAddr))
+      .to.emit(verifier, "TokenProposed");
+
+    // Cannot activate before timelock
+    await expect(
+      verifier.connect(owner).activateToken(newTokenAddr)
+    ).to.be.revertedWith("X402: timelock active");
+
+    // Fast-forward past 48h timelock
+    await time.increase(48 * 60 * 60 + 1);
+
+    await expect(verifier.connect(owner).activateToken(newTokenAddr))
       .to.emit(verifier, "TokenSupported")
       .withArgs(newTokenAddr, true);
 
     expect(await verifier.supportedTokens(newTokenAddr)).to.be.true;
 
-    // Can remove (no code check on removal)
-    await verifier.connect(owner).setSupportedToken(newTokenAddr, false);
+    // Remove immediately
+    await verifier.connect(owner).removeToken(newTokenAddr);
     expect(await verifier.supportedTokens(newTokenAddr)).to.be.false;
   });
 
-  it("should reject adding token with no code", async function () {
+  it("should reject proposing token with no code", async function () {
     const noCodeAddr = "0x0000000000000000000000000000000000000042";
     await expect(
-      verifier.connect(owner).setSupportedToken(noCodeAddr, true)
+      verifier.connect(owner).proposeToken(noCodeAddr)
     ).to.be.revertedWith("X402: token has no code");
   });
 
-  it("should reject non-owner setting supported tokens", async function () {
+  it("should reject non-owner proposing tokens", async function () {
     const tokenAddr = await token.getAddress();
     await expect(
-      verifier.connect(payer).setSupportedToken(tokenAddr, true)
+      verifier.connect(payer).proposeToken(tokenAddr)
     ).to.be.revertedWithCustomError(verifier, "OwnableUnauthorizedAccount");
   });
 
-  it("should reject zero address for token support", async function () {
+  it("should reject zero address for token proposal", async function () {
     await expect(
-      verifier.connect(owner).setSupportedToken(ethers.ZeroAddress, true)
+      verifier.connect(owner).proposeToken(ethers.ZeroAddress)
     ).to.be.revertedWith("X402: zero token address");
   });
 
@@ -626,9 +784,8 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     await verifier.connect(payer).acceptOwnership();
     expect(await verifier.owner()).to.equal(payer.address);
 
-    const tokenAddr = await token.getAddress();
     await expect(
-      verifier.connect(owner).setSupportedToken(tokenAddr, true)
+      verifier.connect(owner).removeToken(await token.getAddress())
     ).to.be.revertedWithCustomError(verifier, "OwnableUnauthorizedAccount");
   });
 
@@ -636,18 +793,17 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
 
   describe("Adversarial Cases", function () {
     it("should reject a forged signature (signed by wrong private key)", async function () {
+      await ensureSellerRegistered(seller1);
       const tokenAddr = await token.getAddress();
       const verifierAddr = await verifier.getAddress();
       const nonce = ethers.id("nonce-adv-forged");
       const validAfter = 0;
-      const validBefore = Math.floor(Date.now() / 1000) + 300;
+      const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
-      // A random signer (seller2) signs the authorization, but we claim the `from` is payer
       const { v, r, s } = await signReceiveAuthorization(
         seller2, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
       );
 
-      // Settle claims from=payer but signature was made by seller2
       await expect(
         verifier.connect(seller1).settle(
           invoiceId, tokenAddr, payer.address, seller1.address, amount,
@@ -657,17 +813,17 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     });
 
     it("should reject a cross-chain replay (wrong chain ID in domain separator)", async function () {
+      await ensureSellerRegistered(seller1);
       const tokenAddr = await token.getAddress();
       const verifierAddr = await verifier.getAddress();
       const nonce = ethers.id("nonce-adv-crosschain");
       const validAfter = 0;
-      const validBefore = Math.floor(Date.now() / 1000) + 300;
+      const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
-      // Sign with chain ID 1 (mainnet) instead of the test chain's 31337
       const domain = {
         name: "USD Tether 0",
         version: "1",
-        chainId: 1, // mainnet chain ID — wrong for Hardhat's 31337
+        chainId: 1,
         verifyingContract: tokenAddr,
       };
       const types = {
@@ -701,21 +857,20 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     });
 
     it("should reject an amount mismatch (signed for less than settled)", async function () {
+      await ensureSellerRegistered(seller1);
       const tokenAddr = await token.getAddress();
       const verifierAddr = await verifier.getAddress();
       const nonce = ethers.id("nonce-adv-amount");
       const validAfter = 0;
-      const validBefore = Math.floor(Date.now() / 1000) + 300;
+      const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
-      const signedAmount = amount; // 100_000
-      const inflatedAmount = amount * 2n; // 200_000
+      const signedAmount = amount;
+      const inflatedAmount = amount * 2n;
 
-      // Buyer signs authorization for the original (smaller) amount
       const { v, r, s } = await signReceiveAuthorization(
         payer, tokenAddr, verifierAddr, signedAmount, validAfter, validBefore, nonce
       );
 
-      // Seller tries to settle with a higher amount than what was signed
       await expect(
         verifier.connect(seller1).settle(
           invoiceId, tokenAddr, payer.address, seller1.address, inflatedAmount,
@@ -725,17 +880,17 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     });
 
     it("should reject concurrent settle with the same authorization (replay)", async function () {
+      await ensureSellerRegistered(seller1);
       const tokenAddr = await token.getAddress();
       const verifierAddr = await verifier.getAddress();
       const nonce = ethers.id("nonce-adv-concurrent");
       const validAfter = 0;
-      const validBefore = Math.floor(Date.now() / 1000) + 300;
+      const validBefore = (await ethers.provider.getBlock("latest"))!.timestamp + 300;
 
       const { v, r, s } = await signReceiveAuthorization(
         payer, tokenAddr, verifierAddr, amount, validAfter, validBefore, nonce
       );
 
-      // First settle succeeds
       await expect(
         verifier.connect(seller1).settle(
           invoiceId, tokenAddr, payer.address, seller1.address, amount,
@@ -743,7 +898,6 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
         )
       ).to.emit(verifier, "PaymentReceived");
 
-      // Second settle with same nonce but different invoice must revert
       const invoiceId2 = ethers.id("invoice-adv-concurrent-2");
       await expect(
         verifier.connect(seller1).settle(

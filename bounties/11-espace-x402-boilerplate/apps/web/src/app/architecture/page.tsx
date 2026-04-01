@@ -1,21 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { NetworkBadge } from "@/components/NetworkBadge";
+import { Navbar } from "@/components/Navbar";
 
 const COMPONENTS = [
   {
     name: "Web Client",
     tech: "Next.js + wagmi",
-    desc: "Browse endpoints, connect wallet, sign EIP-712 authorizations, view transaction history",
+    desc: "Browse endpoints, connect wallet, sign EIP-712 authorizations, view transaction history. Seller directory (on-chain registry), agent chat with budget tracking, testnet token minting, network switching (testnet/mainnet), seller registration, admin dashboard (analytics, disputes, pricing, API keys, agent controls).",
     color: "from-emerald-500/20 to-emerald-500/5",
     border: "border-emerald-500/20",
   },
   {
     name: "Seller API",
     tech: "Hono + x402 middleware",
-    desc: "Free + premium endpoints, 402 challenges, off-chain signature pre-validation, settlement via facilitator, rate limiting, Prometheus metrics, admin CRUD + agent controls",
+    desc: "Free + premium endpoints, 402 challenges, off-chain signature pre-validation, settlement via facilitator with escrow, rate limiting, Prometheus metrics, admin CRUD + agent controls, dispute resolution, and x402 manifest auto-discovery (/x402/manifest).",
     color: "from-amber-500/20 to-amber-500/5",
     border: "border-amber-500/20",
   },
@@ -27,9 +26,16 @@ const COMPONENTS = [
     border: "border-violet-500/20",
   },
   {
+    name: "Nanobot",
+    tech: "Claude MCP Agent",
+    desc: "x402 Payment Concierge — an LLM-powered assistant with MCP tools for health checks, free/premium data, compute simulations, analytics, and budget tracking. Handles 402 paywalls autonomously.",
+    color: "from-pink-500/20 to-pink-500/5",
+    border: "border-pink-500/20",
+  },
+  {
     name: "Smart Contracts",
     tech: "Solidity on eSpace",
-    desc: "X402PaymentVerifier (multi-tenant settlement + replay protection) + MockUSDT0 (ERC-3009 token)",
+    desc: "X402PaymentVerifier (multi-tenant settlement, escrow with configurable grace period, replay protection, on-chain seller registry, token timelock) + MockUSDT0 (ERC-3009 token).",
     color: "from-conflux-teal/20 to-conflux-teal/5",
     border: "border-conflux-teal/20",
   },
@@ -49,38 +55,7 @@ const X402_HEADERS = [
 export default function ArchitecturePage() {
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="sticky top-0 z-40 glass">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-400 hover:text-white transition-colors">
-              <ArrowLeft size={20} />
-            </Link>
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-conflux-teal to-blue-500 flex items-center justify-center text-white font-bold text-sm">
-              x4
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-white leading-tight">Architecture</h1>
-              <p className="text-xs text-gray-400">x402 Payment Flow on Conflux eSpace</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <NetworkBadge />
-            <Link
-              href="/"
-              className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
-            >
-              Home
-            </Link>
-            <Link
-              href="/admin"
-              className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
-            >
-              Admin
-            </Link>
-          </div>
-        </div>
-      </header>
+      <Navbar />
 
       <main className="max-w-6xl mx-auto px-6 py-12 space-y-20">
 
@@ -92,7 +67,7 @@ export default function ArchitecturePage() {
           </div>
 
           <div className="rounded-2xl border border-gray-700/50 bg-[#0F2744]/60 p-4 sm:p-8 overflow-x-auto">
-            <svg viewBox="0 0 880 520" className="w-full max-w-4xl mx-auto" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 880 620" className="w-full max-w-4xl mx-auto" xmlns="http://www.w3.org/2000/svg">
               {/* Defs: gradients, markers, glow filter */}
               <defs>
                 <linearGradient id="grad-emerald" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -115,6 +90,10 @@ export default function ArchitecturePage() {
                   <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.2" />
                   <stop offset="100%" stopColor="#94a3b8" stopOpacity="0.05" />
                 </linearGradient>
+                <linearGradient id="grad-pink" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#ec4899" stopOpacity="0.25" />
+                  <stop offset="100%" stopColor="#ec4899" stopOpacity="0.05" />
+                </linearGradient>
                 <marker id="arrow-teal" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
                   <path d="M0,0 L8,3 L0,6" fill="#2dd4bf" />
                 </marker>
@@ -126,6 +105,9 @@ export default function ArchitecturePage() {
                 </marker>
                 <marker id="arrow-violet" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
                   <path d="M0,0 L8,3 L0,6" fill="#a78bfa" />
+                </marker>
+                <marker id="arrow-pink" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                  <path d="M0,0 L8,3 L0,6" fill="#ec4899" />
                 </marker>
                 <filter id="glow">
                   <feGaussianBlur stdDeviation="2" result="blur" />
@@ -148,92 +130,109 @@ export default function ArchitecturePage() {
               <text x="385" y="150" textAnchor="middle" fill="#34d399" fontSize="10" fontFamily="monospace" opacity="0.8">POST /settle + EIP-712 sig</text>
 
               {/* API → Blockchain */}
-              <line x1="660" y1="190" x2="660" y2="280" stroke="#2dd4bf" strokeWidth="2" markerEnd="url(#arrow-teal)" opacity="0.6" />
-              <text x="670" y="240" fill="#94a3b8" fontSize="9" fontFamily="monospace">settle on-chain</text>
-              <text x="670" y="252" fill="#94a3b8" fontSize="9" fontFamily="monospace">(facilitator pays gas)</text>
+              <line x1="660" y1="220" x2="660" y2="310" stroke="#2dd4bf" strokeWidth="2" markerEnd="url(#arrow-teal)" opacity="0.6" />
+              <text x="670" y="268" fill="#94a3b8" fontSize="9" fontFamily="monospace">settle on-chain</text>
+              <text x="670" y="280" fill="#94a3b8" fontSize="9" fontFamily="monospace">(facilitator pays gas)</text>
 
               {/* API → DB */}
-              <line x1="660" y1="190" x2="820" y2="280" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="4 3" markerEnd="url(#arrow-amber)" opacity="0.5" />
-              <text x="756" y="230" fill="#94a3b8" fontSize="9" fontFamily="monospace" transform="rotate(22 756 230)">invoices DB</text>
+              <line x1="660" y1="220" x2="820" y2="310" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="4 3" markerEnd="url(#arrow-amber)" opacity="0.5" />
+              <text x="756" y="260" fill="#94a3b8" fontSize="9" fontFamily="monospace" transform="rotate(22 756 260)">invoices DB</text>
 
               {/* Client → Blockchain (wallet interaction) */}
-              <line x1="130" y1="190" x2="130" y2="280" stroke="#34d399" strokeWidth="1.5" strokeDasharray="4 3" markerEnd="url(#arrow-emerald)" opacity="0.4" />
-              <text x="80" y="240" fill="#94a3b8" fontSize="9" fontFamily="monospace">read chain</text>
+              <line x1="130" y1="220" x2="130" y2="310" stroke="#34d399" strokeWidth="1.5" strokeDasharray="4 3" markerEnd="url(#arrow-emerald)" opacity="0.4" />
+              <text x="80" y="268" fill="#94a3b8" fontSize="9" fontFamily="monospace">read chain</text>
 
               {/* AI Agent → API */}
-              <line x1="310" y1="430" x2="560" y2="190" stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="5 3" markerEnd="url(#arrow-violet)" opacity="0.5" />
-              <text x="395" y="330" fill="#a78bfa" fontSize="9" fontFamily="monospace" opacity="0.7" transform="rotate(-34 395 330)">autonomous 402 handling</text>
+              <line x1="310" y1="460" x2="560" y2="220" stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="5 3" markerEnd="url(#arrow-violet)" opacity="0.5" />
+              <text x="395" y="360" fill="#a78bfa" fontSize="9" fontFamily="monospace" opacity="0.7" transform="rotate(-34 395 360)">autonomous 402 handling</text>
 
               {/* AI Agent → Blockchain */}
-              <line x1="240" y1="430" x2="200" y2="380" stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="5 3" markerEnd="url(#arrow-violet)" opacity="0.4" />
+              <line x1="240" y1="460" x2="200" y2="410" stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="5 3" markerEnd="url(#arrow-violet)" opacity="0.4" />
+
+              {/* Nanobot → API */}
+              <line x1="620" y1="530" x2="620" y2="220" stroke="#ec4899" strokeWidth="1.5" strokeDasharray="5 3" markerEnd="url(#arrow-pink)" opacity="0.5" />
+              <text x="630" y="480" fill="#ec4899" fontSize="9" fontFamily="monospace" opacity="0.7">MCP tools → 402 handling</text>
 
               {/* ── Node: Web Client ── */}
               <g>
-                <rect x="30" y="40" width="235" height="150" rx="16" fill="url(#grad-emerald)" stroke="#34d399" strokeWidth="1.2" strokeOpacity="0.4" />
+                <rect x="30" y="40" width="235" height="180" rx="16" fill="url(#grad-emerald)" stroke="#34d399" strokeWidth="1.2" strokeOpacity="0.4" />
                 <text x="147" y="70" textAnchor="middle" fill="#34d399" fontSize="14" fontWeight="600">Web Client</text>
                 <text x="147" y="88" textAnchor="middle" fill="#6b7280" fontSize="11" fontFamily="monospace">Next.js + wagmi</text>
                 <line x1="60" y1="100" x2="235" y2="100" stroke="#34d399" strokeOpacity="0.15" strokeWidth="1" />
-                <text x="60" y="120" fill="#94a3b8" fontSize="10">• Connect wallet</text>
+                <text x="60" y="120" fill="#94a3b8" fontSize="10">• Connect wallet + network switch</text>
                 <text x="60" y="136" fill="#94a3b8" fontSize="10">• EIP-712 sign (gasless)</text>
-                <text x="60" y="152" fill="#94a3b8" fontSize="10">• Browse endpoints</text>
-                <text x="60" y="168" fill="#94a3b8" fontSize="10">• Transaction history</text>
+                <text x="60" y="152" fill="#94a3b8" fontSize="10">• Browse endpoints + seller directory</text>
+                <text x="60" y="168" fill="#94a3b8" fontSize="10">• Transaction history + disputes</text>
+                <text x="60" y="184" fill="#94a3b8" fontSize="10">• Agent chat + admin dashboard</text>
+                <text x="60" y="200" fill="#94a3b8" fontSize="10">• Seller registration + token minting</text>
               </g>
 
               {/* ── Node: Seller API ── */}
               <g>
-                <rect x="505" y="40" width="260" height="150" rx="16" fill="url(#grad-amber)" stroke="#fbbf24" strokeWidth="1.2" strokeOpacity="0.4" />
+                <rect x="505" y="40" width="260" height="180" rx="16" fill="url(#grad-amber)" stroke="#fbbf24" strokeWidth="1.2" strokeOpacity="0.4" />
                 <text x="635" y="70" textAnchor="middle" fill="#fbbf24" fontSize="14" fontWeight="600">Seller API</text>
                 <text x="635" y="88" textAnchor="middle" fill="#6b7280" fontSize="11" fontFamily="monospace">Hono + x402 middleware</text>
                 <line x1="535" y1="100" x2="735" y2="100" stroke="#fbbf24" strokeOpacity="0.15" strokeWidth="1" />
                 <text x="535" y="120" fill="#94a3b8" fontSize="10">• x402 paywall + sig pre-validation</text>
-                <text x="535" y="136" fill="#94a3b8" fontSize="10">• Facilitator settlement</text>
-                <text x="535" y="152" fill="#94a3b8" fontSize="10">• Prometheus /metrics</text>
-                <text x="535" y="168" fill="#94a3b8" fontSize="10">• Rate limiter + agent controls</text>
+                <text x="535" y="136" fill="#94a3b8" fontSize="10">• Facilitator settlement + escrow</text>
+                <text x="535" y="152" fill="#94a3b8" fontSize="10">• Disputes + manifest auto-discovery</text>
+                <text x="535" y="168" fill="#94a3b8" fontSize="10">• Prometheus /metrics</text>
+                <text x="535" y="184" fill="#94a3b8" fontSize="10">• Rate limiter + agent controls</text>
+                <text x="535" y="200" fill="#94a3b8" fontSize="10">• Admin CRUD + analytics export</text>
               </g>
 
               {/* ── Node: Conflux eSpace ── */}
               <g>
-                <rect x="30" y="280" width="310" height="100" rx="16" fill="url(#grad-teal)" stroke="#2dd4bf" strokeWidth="1.2" strokeOpacity="0.4" />
-                <text x="185" y="310" textAnchor="middle" fill="#2dd4bf" fontSize="14" fontWeight="600">Conflux eSpace Testnet</text>
-                <text x="185" y="328" textAnchor="middle" fill="#6b7280" fontSize="11" fontFamily="monospace">Chain ID: 71</text>
-                <line x1="60" y1="338" x2="310" y2="338" stroke="#2dd4bf" strokeOpacity="0.15" strokeWidth="1" />
-                <text x="60" y="358" fill="#94a3b8" fontSize="10">📄 X402PaymentVerifier — settle, verify, refund</text>
-                <text x="60" y="374" fill="#94a3b8" fontSize="10">🪙 MockUSDT0 — ERC-20 + ERC-3009 (6 decimals)</text>
+                <rect x="30" y="310" width="310" height="100" rx="16" fill="url(#grad-teal)" stroke="#2dd4bf" strokeWidth="1.2" strokeOpacity="0.4" />
+                <text x="185" y="340" textAnchor="middle" fill="#2dd4bf" fontSize="14" fontWeight="600">Conflux eSpace Testnet</text>
+                <text x="185" y="358" textAnchor="middle" fill="#6b7280" fontSize="11" fontFamily="monospace">Chain ID: 71</text>
+                <line x1="60" y1="368" x2="310" y2="368" stroke="#2dd4bf" strokeOpacity="0.15" strokeWidth="1" />
+                <text x="60" y="388" fill="#94a3b8" fontSize="10">📄 X402PaymentVerifier — settle, escrow, release, refund</text>
+                <text x="60" y="404" fill="#94a3b8" fontSize="10">🪙 MockUSDT0 — ERC-20 + ERC-3009 (6 decimals)</text>
               </g>
 
               {/* ── Node: Database ── */}
               <g>
-                <rect x="640" y="280" width="220" height="100" rx="16" fill="url(#grad-slate)" stroke="#94a3b8" strokeWidth="1" strokeOpacity="0.3" />
-                <text x="750" y="310" textAnchor="middle" fill="#94a3b8" fontSize="14" fontWeight="600">PostgreSQL + Redis</text>
-                <line x1="660" y1="322" x2="840" y2="322" stroke="#94a3b8" strokeOpacity="0.15" strokeWidth="1" />
-                <text x="660" y="342" fill="#6b7280" fontSize="10">invoices · endpoint_pricing · agent_controls</text>
-                <text x="660" y="358" fill="#6b7280" fontSize="10">usage_logs · audit_logs · api_keys</text>
-                <text x="660" y="374" fill="#6b7280" fontSize="10">BullMQ jobs (Redis)</text>
+                <rect x="640" y="310" width="220" height="100" rx="16" fill="url(#grad-slate)" stroke="#94a3b8" strokeWidth="1" strokeOpacity="0.3" />
+                <text x="750" y="340" textAnchor="middle" fill="#94a3b8" fontSize="14" fontWeight="600">PostgreSQL + Redis</text>
+                <line x1="660" y1="352" x2="840" y2="352" stroke="#94a3b8" strokeOpacity="0.15" strokeWidth="1" />
+                <text x="660" y="372" fill="#6b7280" fontSize="10">invoices · endpoint_pricing · agent_controls</text>
+                <text x="660" y="388" fill="#6b7280" fontSize="10">usage_logs · audit_logs · api_keys</text>
+                <text x="660" y="404" fill="#6b7280" fontSize="10">BullMQ jobs (Redis)</text>
               </g>
 
               {/* ── Node: AI Agent ── */}
               <g>
-                <rect x="120" y="420" width="310" height="90" rx="16" fill="url(#grad-violet)" stroke="#a78bfa" strokeWidth="1.2" strokeOpacity="0.4" />
-                <text x="275" y="450" textAnchor="middle" fill="#a78bfa" fontSize="14" fontWeight="600">AI Agent</text>
-                <text x="275" y="468" textAnchor="middle" fill="#6b7280" fontSize="11" fontFamily="monospace">TypeScript + LangChain</text>
-                <line x1="150" y1="478" x2="400" y2="478" stroke="#a78bfa" strokeOpacity="0.15" strokeWidth="1" />
-                <text x="150" y="498" fill="#94a3b8" fontSize="10">detects 402 → signs auth → settles → retries • spend caps • daily budgets</text>
+                <rect x="30" y="450" width="310" height="90" rx="16" fill="url(#grad-violet)" stroke="#a78bfa" strokeWidth="1.2" strokeOpacity="0.4" />
+                <text x="185" y="480" textAnchor="middle" fill="#a78bfa" fontSize="14" fontWeight="600">AI Agent</text>
+                <text x="185" y="498" textAnchor="middle" fill="#6b7280" fontSize="11" fontFamily="monospace">TypeScript + LangChain</text>
+                <line x1="60" y1="508" x2="310" y2="508" stroke="#a78bfa" strokeOpacity="0.15" strokeWidth="1" />
+                <text x="60" y="528" fill="#94a3b8" fontSize="10">detects 402 → signs auth → settles → retries • spend caps • daily budgets</text>
+              </g>
+
+              {/* ── Node: Nanobot ── */}
+              <g>
+                <rect x="500" y="450" width="310" height="90" rx="16" fill="url(#grad-pink)" stroke="#ec4899" strokeWidth="1.2" strokeOpacity="0.4" />
+                <text x="655" y="480" textAnchor="middle" fill="#ec4899" fontSize="14" fontWeight="600">Nanobot</text>
+                <text x="655" y="498" textAnchor="middle" fill="#6b7280" fontSize="11" fontFamily="monospace">Claude MCP Agent</text>
+                <line x1="530" y1="508" x2="780" y2="508" stroke="#ec4899" strokeOpacity="0.15" strokeWidth="1" />
+                <text x="530" y="528" fill="#94a3b8" fontSize="10">x402 Payment Concierge • MCP tools • autonomous 402 handling</text>
               </g>
 
               {/* ── Legend ── */}
-              <g transform="translate(540, 430)">
-                <rect x="0" y="0" width="320" height="80" rx="10" fill="#0F2744" fillOpacity="0.8" stroke="#374151" strokeWidth="0.5" />
-                <text x="16" y="20" fill="#6b7280" fontSize="10" fontWeight="600">LEGEND</text>
-                <line x1="16" y1="32" x2="40" y2="32" stroke="#2dd4bf" strokeWidth="2" strokeDasharray="6 3" />
-                <text x="48" y="36" fill="#94a3b8" fontSize="9">HTTP request/response</text>
-                <line x1="170" y1="32" x2="194" y2="32" stroke="#34d399" strokeWidth="2" />
-                <text x="202" y="36" fill="#94a3b8" fontSize="9">Settlement flow</text>
-                <line x1="16" y1="52" x2="40" y2="52" stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="5 3" />
-                <text x="48" y="56" fill="#94a3b8" fontSize="9">Agent automation</text>
-                <line x1="170" y1="52" x2="194" y2="52" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="4 3" />
-                <text x="202" y="56" fill="#94a3b8" fontSize="9">DB persistence</text>
-                <circle cx="28" y="70" cy="70" r="4" fill="#34d399" fillOpacity="0.3" stroke="#34d399" strokeWidth="0.8" />
-                <text x="48" y="74" fill="#94a3b8" fontSize="9">Color = component owner</text>
+              <g transform="translate(30, 560)">
+                <rect x="0" y="0" width="830" height="48" rx="10" fill="#0F2744" fillOpacity="0.8" stroke="#374151" strokeWidth="0.5" />
+                <text x="16" y="18" fill="#6b7280" fontSize="10" fontWeight="600">LEGEND</text>
+                <line x1="16" y1="34" x2="40" y2="34" stroke="#2dd4bf" strokeWidth="2" strokeDasharray="6 3" />
+                <text x="48" y="38" fill="#94a3b8" fontSize="9">HTTP request/response</text>
+                <line x1="200" y1="34" x2="224" y2="34" stroke="#34d399" strokeWidth="2" />
+                <text x="232" y="38" fill="#94a3b8" fontSize="9">Settlement flow</text>
+                <line x1="370" y1="34" x2="394" y2="34" stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="5 3" />
+                <text x="402" y="38" fill="#94a3b8" fontSize="9">Agent automation</text>
+                <line x1="540" y1="34" x2="564" y2="34" stroke="#ec4899" strokeWidth="1.5" strokeDasharray="5 3" />
+                <text x="572" y="38" fill="#94a3b8" fontSize="9">Nanobot MCP</text>
+                <line x1="680" y1="34" x2="704" y2="34" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="4 3" />
+                <text x="712" y="38" fill="#94a3b8" fontSize="9">DB persistence</text>
               </g>
             </svg>
           </div>
@@ -438,7 +437,7 @@ export default function ArchitecturePage() {
           </div>
           <p className="text-gray-400 mb-8">
             The settlement is multi-tenant: the buyer signs a ReceiveWithAuthorization where <code className="text-conflux-teal text-xs">to</code> is
-            the verifier contract. The contract receives funds first, then forwards to the seller — preventing front-running.
+            the verifier contract. The contract receives funds into escrow (default 24h, configurable per seller up to 30 days), then releases to the seller after the grace period — preventing front-running and enabling dispute-based refunds.
           </p>
 
           {/* X402PaymentVerifier — full function reference */}
@@ -448,8 +447,8 @@ export default function ArchitecturePage() {
               <span className="text-xs px-2 py-0.5 rounded-full bg-conflux-teal/15 text-conflux-teal border border-conflux-teal/20">On-chain Registry + Facilitator</span>
             </div>
             <p className="text-xs text-gray-500 mb-5">
-              Dual-purpose: settlement facilitator (accepts ERC-3009 signed auth, transfers tokens) and on-chain seller registry (anyone can register).
-              CEI pattern + ReentrancyGuard + Ownable2Step.
+              Dual-purpose: settlement facilitator (accepts ERC-3009 signed auth, holds funds in escrow with configurable grace period, then releases to seller) and on-chain seller registry (anyone can register).
+              Token whitelist uses a 48-hour timelock for additions. CEI pattern + ReentrancyGuard + Ownable2Step.
             </p>
 
             {/* Write Functions */}
@@ -467,12 +466,22 @@ export default function ArchitecturePage() {
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">settle(invoiceId, token, from, recipient, value, validAfter, validBefore, nonce, endpoint, v, r, s)</code></td>
                     <td className="py-2.5 px-4 whitespace-nowrap">Facilitator</td>
-                    <td className="py-2.5 px-4">Submits buyer&apos;s ERC-3009 signed auth. Calls <code className="text-conflux-teal text-xs">receiveWithAuthorization</code> on the token, records payment, prevents replay.</td>
+                    <td className="py-2.5 px-4">Submits buyer&apos;s ERC-3009 signed auth. Calls <code className="text-conflux-teal text-xs">receiveWithAuthorization</code> on the token, records payment in escrow, prevents replay.</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">release(invoiceId)</code></td>
+                    <td className="py-2.5 px-4 whitespace-nowrap">Permissionless</td>
+                    <td className="py-2.5 px-4">Releases escrowed funds to the seller after the escrow grace period has elapsed.</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">releaseTo(invoiceId, recipient)</code></td>
+                    <td className="py-2.5 px-4 whitespace-nowrap">Seller only</td>
+                    <td className="py-2.5 px-4">Releases escrowed funds to an alternative address (e.g., a different wallet controlled by the seller).</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">refund(invoiceId)</code></td>
                     <td className="py-2.5 px-4 whitespace-nowrap">Seller only</td>
-                    <td className="py-2.5 px-4">Refunds a paid invoice back to the original payer. Requires seller to have approved the contract via ERC-20 <code className="text-xs text-conflux-teal">approve()</code>.</td>
+                    <td className="py-2.5 px-4">Refunds a paid invoice back to the original payer during the escrow period.</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">refundTo(invoiceId, refundRecipient)</code></td>
@@ -500,9 +509,29 @@ export default function ArchitecturePage() {
                     <td className="py-2.5 px-4">Re-registers a previously deactivated seller with a new profile.</td>
                   </tr>
                   <tr>
-                    <td className="py-2.5 px-4"><code className="text-white text-xs">setSupportedToken(token, supported)</code></td>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">proposeToken(token)</code></td>
                     <td className="py-2.5 px-4 whitespace-nowrap">Owner only</td>
-                    <td className="py-2.5 px-4">Adds or removes ERC-3009 tokens from the settlement whitelist.</td>
+                    <td className="py-2.5 px-4">Proposes an ERC-3009 token for settlement. Starts a 48-hour timelock before activation.</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">activateToken(token)</code></td>
+                    <td className="py-2.5 px-4 whitespace-nowrap">Owner only</td>
+                    <td className="py-2.5 px-4">Activates a proposed token after the 48-hour timelock has elapsed.</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">removeToken(token)</code></td>
+                    <td className="py-2.5 px-4 whitespace-nowrap">Owner only</td>
+                    <td className="py-2.5 px-4">Removes a token from the settlement whitelist immediately.</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">setRegistrationFee(fee)</code></td>
+                    <td className="py-2.5 px-4 whitespace-nowrap">Owner only</td>
+                    <td className="py-2.5 px-4">Sets the native token fee required for seller registration.</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">withdrawFees()</code></td>
+                    <td className="py-2.5 px-4 whitespace-nowrap">Owner only</td>
+                    <td className="py-2.5 px-4">Withdraws accumulated registration fees to the contract owner.</td>
                   </tr>
                 </tbody>
               </table>
@@ -554,7 +583,7 @@ export default function ArchitecturePage() {
             {/* Events */}
             <h4 className="text-sm font-semibold text-violet-400 uppercase tracking-wider mb-3">Events</h4>
             <div className="flex flex-wrap gap-2">
-              {["PaymentReceived", "Refunded", "SellerRegistered", "SellerUpdated", "SellerDeactivated", "TokenSupported"].map((ev) => (
+              {["PaymentReceived", "PaymentReleased", "Refunded", "SellerRegistered", "SellerUpdated", "SellerDeactivated", "TokenProposed", "TokenSupported", "RegistrationFeeUpdated"].map((ev) => (
                 <code key={ev} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20">{ev}</code>
               ))}
             </div>
@@ -622,6 +651,26 @@ export default function ArchitecturePage() {
                 </p>
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* ─── Escrow Model ─── */}
+        <section>
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6">
+            <h3 className="text-white font-semibold mb-2">Escrow Model</h3>
+            <p className="text-sm text-gray-400 leading-relaxed mb-3">
+              After settlement, funds are held in escrow inside the verifier contract for a configurable grace period
+              (default <code className="text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded text-xs font-mono">24 hours</code>,
+              min <code className="text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded text-xs font-mono">0</code>,
+              max <code className="text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded text-xs font-mono">30 days</code>).
+              Each seller can set their own escrow duration at registration.
+            </p>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              During the escrow period, the seller can issue a refund (<code className="text-amber-400 text-xs">refund()</code> / <code className="text-amber-400 text-xs">refundTo()</code>).
+              After the period elapses, anyone can call <code className="text-amber-400 text-xs">release()</code> to transfer
+              funds to the seller. This enables dispute resolution: if a buyer files a dispute and the admin approves it,
+              the seller&apos;s API triggers a refund before the escrow expires.
+            </p>
           </div>
         </section>
 

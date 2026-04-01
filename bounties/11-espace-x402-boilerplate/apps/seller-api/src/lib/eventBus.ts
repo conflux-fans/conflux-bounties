@@ -28,6 +28,7 @@ export type InvoiceEvent =
   | "invoice.paid"
   | "invoice.expired"
   | "invoice.refunded"
+  | "invoice.released"
   | "dispute.opened"
   | "dispute.resolved";
 

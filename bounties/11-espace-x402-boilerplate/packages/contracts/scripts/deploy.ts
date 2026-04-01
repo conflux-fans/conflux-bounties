@@ -49,7 +49,7 @@ async function main() {
   // Register the deployer as the first seller
   console.log("\n--- Registering deployer as seller ---");
   const apiBaseUrl = process.env.API_BASE_URL || "http://localhost:4000";
-  const tx = await verifier.registerSeller(apiBaseUrl, "x402 Seller API boilerplate");
+  const tx = await verifier.registerSeller(apiBaseUrl, "x402 Seller API boilerplate", 0);
   await tx.wait();
   console.log("Seller registered:", serviceWallet, "->", apiBaseUrl);
 

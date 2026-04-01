@@ -45,12 +45,31 @@ export function resetSettleRateLimit() {
 
 export const invoiceRoutes = new Hono();
 
+const ESCROW_HOURS = 24;
+
+/** Enrich an invoice record with escrow timing fields. */
+function withEscrowTiming(invoice: Record<string, any>) {
+  if (invoice.status === "paid" && invoice.updated_at) {
+    const paidAt = new Date(invoice.updated_at).getTime();
+    const releaseAt = paidAt + ESCROW_HOURS * 60 * 60 * 1000;
+    const now = Date.now();
+    return {
+      ...invoice,
+      paid_at: new Date(paidAt).toISOString(),
+      release_at: new Date(releaseAt).toISOString(),
+      escrow_remaining_ms: Math.max(0, releaseAt - now),
+      escrow_released: now >= releaseAt,
+    };
+  }
+  return invoice;
+}
+
 // Get invoice status
 invoiceRoutes.get("/:id", async (c) => {
   const id = c.req.param("id");
   const [invoice] = await sql`SELECT * FROM invoices WHERE id = ${id}`;
   if (!invoice) return c.json({ error: "Invoice not found" }, 404);
-  return c.json({ invoice });
+  return c.json({ invoice: withEscrowTiming(invoice) });
 });
 
 // Settle: accept a signed ERC-3009 authorization and submit on-chain via facilitator
@@ -185,6 +204,41 @@ invoiceRoutes.post("/:id/settle", settleRateLimit, async (c) => {
   }
 });
 
+// Release escrowed funds to the seller after the 24h grace period
+invoiceRoutes.post("/:id/release", adminAuth, async (c) => {
+  const id = c.req.param("id");
+  const [invoice] = await sql`SELECT * FROM invoices WHERE id = ${id}`;
+  if (!invoice) return c.json({ error: "Invoice not found" }, 404);
+  if (invoice.status !== "paid") {
+    return c.json({ error: `Cannot release invoice with status '${invoice.status}'` }, 400);
+  }
+
+  try {
+    const txHash = await verifier.release(id);
+    await verifier.waitForTx(txHash);
+
+    await sql`
+      UPDATE invoices SET status = 'released', tx_hash = ${txHash}, updated_at = NOW()
+      WHERE id = ${id}
+    `;
+
+    logger.info({ invoiceId: id, txHash }, "Escrow released to seller");
+    publish("invoice.released", { invoiceId: id, txHash });
+    return c.json({
+      invoice: { ...invoice, status: "released", tx_hash: txHash },
+      txHash,
+    });
+  } catch (err) {
+    logger.error({ err, invoiceId: id }, "Release failed");
+    sendAlert("release_failed", { invoiceId: id, error: String(err) });
+    const isDev = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
+    return c.json({
+      error: "Release failed",
+      ...(isDev ? { details: String(err) } : {}),
+    }, 500);
+  }
+});
+
 // Refund a paid invoice (admin only — requires authentication)
 invoiceRoutes.post("/:id/refund", adminAuth, async (c) => {
   const id = c.req.param("id");
@@ -260,9 +314,10 @@ invoiceRoutes.get("/", async (c) => {
   const status = c.req.query("status");
   const limit = Math.min(Number(c.req.query("limit")) || 50, 200);
 
-  const invoices = status
+  const rows = status
     ? await sql`SELECT * FROM invoices WHERE status = ${status} ORDER BY created_at DESC LIMIT ${limit}`
     : await sql`SELECT * FROM invoices ORDER BY created_at DESC LIMIT ${limit}`;
 
+  const invoices = rows.map(withEscrowTiming);
   return c.json({ invoices, count: invoices.length });
 });

@@ -7,7 +7,7 @@ export function adminHeaders(): Record<string, string> {
 
 export async function apiFetch<T = unknown>(
   path: string,
-  options?: RequestInit & { invoiceId?: string; payer?: string }
+  options?: RequestInit & { invoiceId?: string; payer?: string; preferredToken?: string; chainId?: number }
 ): Promise<{ data?: T; paymentRequired?: PaymentChallenge; error?: string; status: number }> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -20,6 +20,12 @@ export async function apiFetch<T = unknown>(
   }
   if (options?.payer) {
     headers["x-payment-payer"] = options.payer;
+  }
+  if (options?.preferredToken) {
+    headers["x-preferred-token"] = options.preferredToken;
+  }
+  if (options?.chainId) {
+    headers["x-chain-id"] = String(options.chainId);
   }
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
@@ -38,6 +44,7 @@ export async function apiFetch<T = unknown>(
         description: res.headers.get("x-payment-description") || body["x-payment-description"],
         recipient: res.headers.get("x-payment-recipient") || body["x-payment-recipient"],
         verifierAddress: res.headers.get("x-payment-verifier") || body["x-payment-verifier"],
+        ...(body.supportedTokens && { supportedTokens: body.supportedTokens }),
       },
     };
   }
@@ -57,6 +64,7 @@ export interface PaymentChallenge {
   description?: string;
   recipient?: string;
   verifierAddress?: string;
+  supportedTokens?: { address: string; symbol: string; price: string; priceRaw: string }[];
 }
 
 export async function submitDispute(invoiceId: string, requester: string, reason: string) {

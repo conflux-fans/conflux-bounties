@@ -1,35 +1,35 @@
 "use client";
 
 import { useChainId, useSwitchChain, useAccount } from "wagmi";
+import { useNetwork } from "@/components/NetworkContext";
 
 export function NetworkBadge() {
   const chainId = useChainId();
   const { isConnected } = useAccount();
   const { switchChain, isPending } = useSwitchChain();
-  const mainnet = chainId === 1030;
+  const { isTestnet } = useNetwork();
+  const mainnet = !isTestnet;
 
   const targetChainId = mainnet ? 71 : 1030;
 
   return (
     <button
       onClick={() => {
-        if (isConnected && !isPending) {
+        if (!isPending) {
           switchChain({ chainId: targetChainId });
         }
       }}
-      disabled={!isConnected || isPending}
+      disabled={isPending}
       title={
-        !isConnected
-          ? "Connect wallet to switch network"
-          : isPending
-            ? "Switching…"
-            : `Switch to ${mainnet ? "Testnet" : "Mainnet"}`
+        isPending
+          ? "Switching…"
+          : `Switch to ${mainnet ? "Testnet" : "Mainnet"}`
       }
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase transition-opacity ${
         mainnet
           ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
           : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-      } ${isConnected && !isPending ? "cursor-pointer hover:opacity-80" : "cursor-default opacity-70"}`}
+      } ${!isPending ? "cursor-pointer hover:opacity-80" : "cursor-default opacity-70"}`}
     >
       <span
         className={`w-1.5 h-1.5 rounded-full ${
@@ -38,7 +38,7 @@ export function NetworkBadge() {
       />
       {isPending ? "Switching…" : mainnet ? "Mainnet" : "Testnet"}
       <span className="text-[10px] opacity-60">({chainId})</span>
-      {isConnected && !isPending && (
+      {!isPending && (
         <svg
           className="w-3 h-3 opacity-60"
           fill="none"

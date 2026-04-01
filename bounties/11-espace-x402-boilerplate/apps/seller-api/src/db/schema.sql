@@ -92,6 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);
 -- API start via USDT0_ADDRESS env var, or manually via PUT /admin/pricing.
 INSERT INTO endpoint_pricing (endpoint, price, token, description, tier)
 VALUES
+  ('/data/instant', '10000', '0x0000000000000000000000000000000000000000', 'Instant lookup (no escrow)', 'premium'),
   ('/data/premium', '100000', '0x0000000000000000000000000000000000000000', 'Premium data feed', 'premium'),
   ('/compute/simulate', '500000', '0x0000000000000000000000000000000000000000', 'Compute simulation', 'premium')
 ON CONFLICT (endpoint) DO NOTHING;

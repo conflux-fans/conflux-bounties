@@ -37,9 +37,14 @@ const confluxMainnetChain = {
 const defaultIsMainnet = process.env.NEXT_PUBLIC_NETWORK === "mainnet";
 const defaultChain = defaultIsMainnet ? confluxMainnetChain : confluxTestnetChain;
 
+// Put the default chain first — wagmi's useChainId() returns chains[0] when no wallet is connected
+const chains = defaultIsMainnet
+  ? [confluxMainnetChain, confluxTestnetChain] as const
+  : [confluxTestnetChain, confluxMainnetChain] as const;
+
 export const wagmiConfig = createConfig(
   getDefaultConfig({
-    chains: [confluxTestnetChain, confluxMainnetChain],
+    chains,
     transports: {
       [confluxTestnetChain.id]: http(),
       [confluxMainnetChain.id]: http(),

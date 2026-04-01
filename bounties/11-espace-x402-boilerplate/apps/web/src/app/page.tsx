@@ -1,53 +1,17 @@
 "use client";
 
-import { ConnectKitButton } from "connectkit";
 import { EndpointCatalog } from "@/components/EndpointCatalog";
+import { SellerDirectory } from "@/components/SellerDirectory";
 import { SupportedTokens } from "@/components/SupportedTokens";
 import { TransactionHistory } from "@/components/TransactionHistory";
 import { MintTestTokens } from "@/components/MintTestTokens";
 import AgentChat from "@/components/AgentChat";
-import Link from "next/link";
-import { NetworkBadge } from "@/components/NetworkBadge";
+import { Navbar } from "@/components/Navbar";
 
 export default function Home() {
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="sticky top-0 z-40 glass">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-conflux-teal to-blue-500 flex items-center justify-center text-white font-bold text-sm">
-              x4
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-white leading-tight">x402 Boilerplate</h1>
-              <p className="text-xs text-gray-400">Pay-per-request APIs on Conflux eSpace</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <NetworkBadge />
-            <Link
-              href="/architecture"
-              className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
-            >
-              Architecture
-            </Link>
-            <Link
-              href="/register"
-              className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
-            >
-              Register
-            </Link>
-            <Link
-              href="/admin"
-              className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
-            >
-              Admin
-            </Link>
-            <ConnectKitButton />
-          </div>
-        </div>
-      </header>
+      <Navbar />
 
       {/* Hero */}
       <div className="relative overflow-hidden">
@@ -71,6 +35,14 @@ export default function Home() {
             <h2 className="text-xl font-semibold text-white">API Endpoints</h2>
           </div>
           <EndpointCatalog />
+        </section>
+
+        <section className="mb-16">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-1 h-6 bg-conflux-teal rounded-full" />
+            <h2 className="text-xl font-semibold text-white">Registered APIs</h2>
+          </div>
+          <SellerDirectory />
         </section>
 
         <section className="mb-16">

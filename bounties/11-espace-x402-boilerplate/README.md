@@ -31,7 +31,7 @@ End-to-end reference for **x402 pay-per-request payments** on Conflux eSpace usi
 ```
 ┌──────────────┐     HTTP 402      ┌──────────────────┐
 │  Web Client  │ ◄───────────────► │   Seller API     │
-│  (Next.js)   │                   │   (Hono + x402)  │
+│  (Next.js)   │  x-chain-id hdr  │   (Hono + x402)  │
 └──────┬───────┘                   └────────┬─────────┘
        │  EIP-712 sign                      │ settle on-chain
        │  (gasless)                          │ (facilitator pays gas)
@@ -39,8 +39,9 @@ End-to-end reference for **x402 pay-per-request payments** on Conflux eSpace usi
 ┌──────────────┐                   ┌──────────────────┐
 │   Conflux    │                   │  In-memory store  │
 │   eSpace     │                   │  (dev mode) or    │
-│   Testnet    │                   │  Postgres + Redis │
-└──────┬───────┘                   └──────────────────┘
+│  Testnet(71) │                   │  Postgres + Redis │
+│ Mainnet(1030)│                   └──────────────────┘
+└──────┬───────┘
        │
 ┌──────┴───────┐
 │   AI Agent   │  detects 402 → signs auth → settles → retries
@@ -122,14 +123,19 @@ This deploys two contracts:
 Copy the output addresses into your `.env`:
 ```
 USDT0_ADDRESS=0x<deployed-mock-usdt0-address>
+USDT0_ADDRESS_TESTNET=0x<same-address>
 X402_CONTRACT_ADDRESS=0x<deployed-verifier-address>
+X402_CONTRACT_ADDRESS_TESTNET=0x<same-address>
 ```
 
 Also set the same values for the frontend:
 ```
 NEXT_PUBLIC_USDT0_ADDRESS=0x<same-as-USDT0_ADDRESS>
 NEXT_PUBLIC_X402_CONTRACT_ADDRESS=0x<same-as-X402_CONTRACT_ADDRESS>
+NEXT_PUBLIC_X402_CONTRACT_ADDRESS_TESTNET=0x<same-address>
 ```
+
+> **Multi-network:** The backend supports both testnet and mainnet simultaneously. The frontend sends an `x-chain-id` header to select which network to use per request. Set `_TESTNET` and `_MAINNET` suffixed vars for each network's contracts. See [Environment Variables Reference](#environment-variables-reference).
 
 ### Step 6: (Optional) Set up additional env vars
 
@@ -164,12 +170,14 @@ npm run dev:agent
 ### Step 9: Test the full payment flow
 
 1. Open [http://localhost:3000](http://localhost:3000) in your browser
-2. Connect your wallet (MetaMask or similar)
-3. Switch to **Conflux eSpace Testnet** (chain ID 71)
-4. Click "Mint Test Tokens" to get MockUSDT0 from the faucet contract
-5. Click a premium endpoint (e.g. "Premium Data")
-6. The paywall modal appears — sign the EIP-712 authorization (gasless, no transaction fee for you)
-7. The facilitator settles the payment on-chain and you receive the premium data
+2. Verify the network badge shows **TESTNET (71)** in the header (click it to toggle between testnet and mainnet)
+3. Connect your wallet (MetaMask or similar)
+4. Switch your wallet to **Conflux eSpace Testnet** (chain ID 71)
+5. Click "Mint Test USDT0" to get MockUSDT0 tokens (testnet only)
+6. Click a premium endpoint (e.g. "Premium Data")
+7. The paywall modal appears showing the price, token, and network. Sign the EIP-712 authorization (gasless, no transaction fee for you)
+8. The facilitator settles the payment on-chain and you receive the premium data
+9. Check the **Admin** page to see analytics, escrowed funds, and transaction history
 
 You can also run the **preflight check** to verify your configuration:
 ```bash
@@ -281,12 +289,12 @@ See [`docs/sequence.md`](docs/sequence.md) for detailed Mermaid sequence diagram
 
 ## Supported Tokens
 
-| Token | Peg | Mainnet Address | Standard |
-|-------|-----|-----------------|----------|
-| **USDT0** | USD | `0xfe97E85d13ABD9c1c33384E796F10B73905637cE` | OFT (LayerZero) |
-| **CNHT0** | CNH | `0xdEd1660192D4D82E7c0b628BA556861eDbb5caDa` | OFT (LayerZero) |
+| Token | Peg | Testnet Address | Mainnet Address | Standard |
+|-------|-----|-----------------|-----------------|----------|
+| **USDT0** | USD | `0x91de8a02c4E85b4b7cAB8c13F71a5272E4EF9b11` (MockUSDT0) | `0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff` | OFT (LayerZero) |
+| **CNHT0** | CNH | — | `0x70bfd7f7eadf9b9827541272589a6b2bb760ae2e` | OFT (LayerZero) |
 
-Both tokens support ERC-3009 (`transferWithAuthorization` / `receiveWithAuthorization`) for gasless payment signing on Conflux eSpace (chain 1030). For testnet development, a `MockUSDT0` contract is provided with the same ERC-3009 interface.
+Both tokens support ERC-3009 (`transferWithAuthorization` / `receiveWithAuthorization`) for gasless payment signing on Conflux eSpace. For testnet development (chain 71), a `MockUSDT0` contract is provided with the same ERC-3009 interface and a public `mint()` function. On mainnet (chain 1030), both USDT0 and CNHT0 are available as payment options.
 
 ---
 
@@ -301,6 +309,9 @@ Facilitator contract that settles ERC-3009 payments. The `settle()` function:
 - Calls `receiveWithAuthorization()` on the token (transfers from buyer → verifier contract)
 - Records invoice metadata (payer, amount, endpoint, nonce)
 - Enforces replay protection via nonce tracking
+- Holds funds in escrow for a **24-hour grace period** before release to the seller
+- `release()` is permissionless (anyone can call it after escrow expires)
+- `refund()` is seller-only during the escrow period, enabling buyer protection
 
 Deploy both contracts:
 ```bash
@@ -321,6 +332,7 @@ npm run contracts:test
 |---|---|---|---|
 | `/health` | GET | Free | — |
 | `/data/free` | GET | Free | — |
+| `/data/instant` | GET | Premium | 0.01 USDT0 |
 | `/data/premium` | GET | Premium | 0.10 USDT0 |
 | `/compute/simulate` | POST | Premium | 0.50 USDT0 |
 
@@ -350,6 +362,7 @@ npm run contracts:test
 | `/admin/agent/:address/status` | GET | Check agent pause status |
 | `/admin/agent/:address/pause` | POST | Pause an agent's spending |
 | `/admin/agent/:address/resume` | POST | Resume a paused agent |
+| `/admin/invoices/:id/release` | POST | Release escrowed funds after 24h grace period |
 
 ### Disputes
 | Endpoint | Method | Description |
@@ -373,8 +386,10 @@ A [Postman collection](postman/x402-collection.json) is included for manual API 
 
 The frontend at `http://localhost:3000` includes:
 
-- **Home page** — Endpoint catalog, wallet connection (ConnectKit), paywall modal with EIP-712 signing, transaction history with dispute submission, MockUSDT0 faucet with contract address display
-- **Admin dashboard** (`/admin`) — Analytics cards, endpoint pricing table with add/edit form, dispute review panel (approve refund / reject), agent chat panel, agent controls (pause/resume by wallet address), CSV export
+- **Network switching** — Click the badge in the header to toggle between **Testnet (71)** and **Mainnet (1030)**. All API calls, contract addresses, token addresses, and explorer links update automatically. No `.env` changes needed.
+- **Home page** — Endpoint catalog with live pricing, wallet connection (ConnectKit), paywall modal with EIP-712 signing, multi-token support (USDT0 + CNHT0 on mainnet), transaction history with dispute submission, MockUSDT0 mint button (testnet only)
+- **Seller directory** — Browse registered API sellers, search by wallet/URL/endpoint, view endpoint details and pricing per network
+- **Admin dashboard** (`/admin`) — Analytics cards, endpoint pricing table with add/edit form, escrowed funds management with release confirmation modal, dispute review panel (approve refund / reject), agent chat panel, agent controls (pause/resume by wallet address), CSV export
 - **Architecture page** (`/architecture`) — Interactive system diagram
 
 ---
@@ -418,20 +433,36 @@ See [`.env.example`](.env.example) for a copy-pasteable template with comments.
 
 | Variable | Description | Example |
 |----------|-------------|---------|
+| `CHAIN_ID` | Default chain ID (`71` = testnet, `1030` = mainnet) | `71` |
 | `NETWORK` | `testnet` or `mainnet` | `testnet` |
 | `SERVICE_WALLET_KEY` | Facilitator private key (pays gas for settlements) | `0x...` |
 | `SERVICE_WALLET_ADDRESS` | Facilitator public address | `0x...` |
-| `X402_CONTRACT_ADDRESS` | Deployed X402PaymentVerifier address | `0x...` |
-| `USDT0_ADDRESS` | Deployed MockUSDT0 address (testnet) or real USDT0 (mainnet) | `0x...` |
+| `X402_CONTRACT_ADDRESS` | Default X402PaymentVerifier address (legacy fallback) | `0x...` |
+| `USDT0_ADDRESS` | Default token address (legacy fallback) | `0x...` |
+
+### Per-network contracts (multi-network support)
+
+The backend supports both chains simultaneously. The frontend sends `x-chain-id` to select the network per request.
+
+| Variable | Description |
+|----------|-------------|
+| `X402_CONTRACT_ADDRESS_TESTNET` | Verifier contract on testnet (chain 71) |
+| `X402_CONTRACT_ADDRESS_MAINNET` | Verifier contract on mainnet (chain 1030) |
+| `USDT0_ADDRESS_TESTNET` | MockUSDT0 on testnet |
+| `USDT0_ADDRESS_MAINNET` | Real USDT0 on mainnet |
+| `CNHT0_ADDRESS` | CNHT0 on mainnet (additional payment token) |
 
 ### Frontend
 
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `NEXT_PUBLIC_API_BASE` | Seller API URL | `http://localhost:4000` |
-| `NEXT_PUBLIC_USDT0_ADDRESS` | Same as `USDT0_ADDRESS` | `0x...` |
-| `NEXT_PUBLIC_X402_CONTRACT_ADDRESS` | Same as `X402_CONTRACT_ADDRESS` | `0x...` |
-| `NEXT_PUBLIC_NETWORK` | `testnet` or `mainnet` | `testnet` |
+| `NEXT_PUBLIC_USDT0_ADDRESS` | Testnet MockUSDT0 address (for mint button) | `0x...` |
+| `NEXT_PUBLIC_X402_CONTRACT_ADDRESS` | Default verifier address | `0x...` |
+| `NEXT_PUBLIC_X402_CONTRACT_ADDRESS_TESTNET` | Testnet verifier address | `0x...` |
+| `NEXT_PUBLIC_X402_CONTRACT_ADDRESS_MAINNET` | Mainnet verifier address | `0x...` |
+| `NEXT_PUBLIC_NETWORK` | Default network shown before wallet connects | `testnet` |
+| `NEXT_PUBLIC_SERVICE_WALLET_ADDRESS` | Facilitator/seller wallet address | `0x...` |
 | `NEXT_PUBLIC_WC_PROJECT_ID` | WalletConnect project ID ([get one free](https://cloud.walletconnect.com/)) | `abc123...` |
 | `NEXT_PUBLIC_ADMIN_API_KEY` | Must match `ADMIN_API_KEY` for admin dashboard access | `uuid` |
 
@@ -492,6 +523,8 @@ npm run test -w apps/web
 | Agent errors on startup | Verify `OPENAI_API_KEY` and `AGENT_PRIVATE_KEY` are set in `.env`. |
 | "Cannot find module" errors | Run `npm install` from the project root — this is an npm workspaces monorepo. |
 | Port already in use | Another process is using port 4000 or 3000. Kill it or change `API_PORT` in `.env`. |
+| Wrong token address on paywall | Click the network badge in the header to switch between testnet/mainnet. The backend routes to the correct contracts per chain automatically. |
+| Escrow release fails | The smart contract enforces a 24h grace period. There is no admin bypass. Wait for the period to expire, then release from the Admin page. |
 
 Run the **preflight check** to diagnose configuration issues:
 ```bash

@@ -11,8 +11,9 @@ This project is an npm workspaces monorepo with three applications (`apps/`) and
 3. The client **signs an EIP-712 authorization off-chain** (gasless for the buyer)
 4. The client submits the signed authorization to the API's `/invoices/:id/settle` endpoint
 5. The **facilitator** (seller's service wallet) submits the authorization on-chain via `X402PaymentVerifier.settle()`, paying gas
-6. The smart contract executes the token transfer (buyer → service wallet) and records the payment
+6. The smart contract executes the token transfer (buyer → contract escrow) and records the payment
 7. The API verifies the on-chain settlement and returns the premium data
+8. After the escrow grace period (default 24h, configurable per seller), funds can be released to the seller via `release()`
 
 > Key insight: **buyers never pay gas**. The seller's facilitator wallet pays for on-chain settlement. Buyers only sign an off-chain EIP-712 message.
 
@@ -25,12 +26,14 @@ graph TB
     subgraph "Clients"
         WEB["Web Frontend<br/>(Next.js + wagmi)"]
         AGENT["AI Agent<br/>(TypeScript + LangChain)"]
+        NANOBOT["Nanobot<br/>(Claude MCP Agent)"]
     end
 
     subgraph "Seller API (Hono)"
         MW["x402 Middleware"]
-        ROUTES["Routes<br/>/health /data /compute<br/>/invoices /admin"]
+        ROUTES["Routes<br/>/health /data /compute<br/>/invoices /admin /disputes"]
         SETTLE["Settlement Endpoint<br/>POST /invoices/:id/settle"]
+        MANIFEST["Manifest Auto-Discovery<br/>GET /x402/manifest"]
         RL["Rate Limiter<br/>(per-IP / per-API-key)"]
         JOBS["BullMQ<br/>Invoice Expiry Jobs"]
     end
@@ -42,7 +45,7 @@ graph TB
     end
 
     subgraph "Conflux eSpace"
-        VERIFIER["X402PaymentVerifier<br/>settle() / refund() / verifyPayment()"]
+        VERIFIER["X402PaymentVerifier<br/>settle() / escrow / release()<br/>refund() / seller registry"]
         TOKEN["MockUSDT0 (testnet)<br/>or USDT0 (mainnet)<br/>ERC-20 + ERC-3009"]
     end
 
@@ -53,15 +56,18 @@ graph TB
 
     WEB -->|"1. HTTP request"| MW
     AGENT -->|"1. HTTP request"| MW
+    NANOBOT -->|"1. HTTP request (MCP)"| MW
     MW -->|"free"| ROUTES
     MW -->|"402 challenge"| WEB
     MW -->|"402 challenge"| AGENT
+    MW -->|"402 challenge"| NANOBOT
 
     WEB -->|"3. POST signed auth"| SETTLE
     AGENT -->|"3. POST signed auth"| SETTLE
-    SETTLE -->|"4. settle()"| VERIFIER
-    VERIFIER -->|"5. transferWithAuthorization()"| TOKEN
-    TOKEN -->|"tokens: buyer → service wallet"| VERIFIER
+    NANOBOT -->|"3. POST signed auth"| SETTLE
+    SETTLE -->|"4. settle() → escrow"| VERIFIER
+    VERIFIER -->|"5. receiveWithAuthorization()"| TOKEN
+    TOKEN -->|"tokens: buyer → contract (escrow)"| VERIFIER
 
     ROUTES --> PG
     ROUTES -.->|"dev mode"| MEM
@@ -72,17 +78,20 @@ graph TB
 
     SDK -.-> WEB
     SDK -.-> AGENT
+    SDK -.-> NANOBOT
     SDK -.-> SETTLE
     SHARED -.-> SDK
     SHARED -.-> ROUTES
 
     style WEB fill:#1a365d,stroke:#4299e1,color:#fff
     style AGENT fill:#1a365d,stroke:#4299e1,color:#fff
+    style NANOBOT fill:#4a1942,stroke:#ec4899,color:#fff
     style VERIFIER fill:#134e4a,stroke:#2dd4bf,color:#fff
     style TOKEN fill:#134e4a,stroke:#2dd4bf,color:#fff
     style PG fill:#3b1f2b,stroke:#f472b6,color:#fff
     style REDIS fill:#3b1f2b,stroke:#f472b6,color:#fff
     style MEM fill:#3b1f2b,stroke:#f472b6,color:#fff
+    style MANIFEST fill:#3b2f1f,stroke:#fbbf24,color:#fff
 ```
 
 ---
@@ -91,13 +100,14 @@ graph TB
 
 | Component | Tech | Purpose | Key files |
 |-----------|------|---------|-----------|
-| **Web Frontend** | Next.js 14, React 18, Tailwind, wagmi, ConnectKit | Wallet connect, endpoint catalog, paywall UI, admin dashboard | `apps/web/src/` |
+| **Web Frontend** | Next.js 14, React 18, Tailwind, wagmi, ConnectKit | Wallet connect, endpoint catalog, paywall UI, seller directory, agent chat, admin dashboard, seller registration, token minting, network switching | `apps/web/src/` |
 | **AI Agent** | TypeScript, LangChain, better-sqlite3, viem | Autonomous 402 detection, ERC-3009 signing, spend tracking | `apps/agent/src/` |
-| **Seller API** | Hono, pino, BullMQ | x402 middleware, settlement, rate limiting, admin CRUD, disputes | `apps/seller-api/src/` |
+| **Nanobot** | Claude MCP Agent | x402 Payment Concierge — LLM-powered assistant with MCP tools for autonomous 402 paywall handling | `apps/nanobot/` |
+| **Seller API** | Hono, pino, BullMQ | x402 middleware, settlement with escrow, rate limiting, admin CRUD, disputes, manifest auto-discovery | `apps/seller-api/src/` |
 | **PostgreSQL** | postgres:16 | Invoices, usage logs, API keys, endpoint pricing (production mode) | `apps/seller-api/src/db/` |
 | **Redis** | redis:7 | BullMQ job queue for invoice expiration (production mode) | `apps/seller-api/src/jobs/` |
 | **In-Memory Store** | TypeScript Map/Array | Dev-mode replacement for Postgres — no setup required | `apps/seller-api/src/db/memory.ts` |
-| **X402PaymentVerifier** | Solidity ^0.8.24, OpenZeppelin | On-chain settlement, replay protection, refunds, seller registry | `packages/contracts/contracts/` |
+| **X402PaymentVerifier** | Solidity ^0.8.24, OpenZeppelin | On-chain settlement with escrow, replay protection, refunds, release, seller registry, token timelock | `packages/contracts/contracts/` |
 | **MockUSDT0** | Solidity ^0.8.24 | ERC-20 + ERC-3009 test token (anyone can mint on testnet) | `packages/contracts/contracts/` |
 | **@x402/sdk** | TypeScript, viem | EIP-712 signing client + on-chain settlement verifier | `packages/x402-sdk/src/` |
 | **@x402/shared** | TypeScript | Shared types, constants, x402 header builders | `packages/shared/src/` |
@@ -127,7 +137,7 @@ graph TB
 │   │   │   ├── dev.ts           # Dev entry (in-memory store)
 │   │   │   ├── app.ts           # Hono app + route registration
 │   │   │   ├── middleware/      # x402, rate limiter, logging, admin auth
-│   │   │   ├── routes/          # health, data, compute, invoices, admin, disputes, sellers
+│   │   │   ├── routes/          # health, data, compute, invoices, admin, disputes, manifest
 │   │   │   ├── db/              # Postgres client, in-memory store, migrations
 │   │   │   ├── lib/             # Config, logger, verifier, metrics, alerts
 │   │   │   └── jobs/            # BullMQ workers (invoice expiry, event logger)
@@ -135,10 +145,15 @@ graph TB
 │   │
 │   ├── web/                 # Next.js frontend
 │   │   ├── src/
-│   │   │   ├── app/             # Next.js pages (home, admin, architecture)
-│   │   │   ├── components/      # EndpointCatalog, PaywallModal, TransactionHistory, etc.
+│   │   │   ├── app/             # Next.js pages (home, admin, architecture, register)
+│   │   │   ├── components/      # EndpointCatalog, PaywallModal, SellerDirectory, AgentChat, etc.
 │   │   │   └── lib/             # API client, wagmi config
 │   │   └── Dockerfile
+│   │
+│   ├── nanobot/             # Claude MCP agent (x402 Payment Concierge)
+│   │   ├── config.json          # MCP server + provider config
+│   │   └── workspace/
+│   │       └── SOUL.md          # Agent personality + capabilities
 │   │
 │   └── agent/               # AI agent
 │       ├── src/

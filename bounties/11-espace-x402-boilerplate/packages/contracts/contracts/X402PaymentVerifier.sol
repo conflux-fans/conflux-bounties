@@ -30,22 +30,31 @@ interface IERC3009 {
 
 /**
  * @title X402PaymentVerifier
- * @notice Multi-tenant x402 facilitator for Conflux eSpace. Any seller can register
- *         their wallet and API, then settle ERC-3009 payments through this shared contract.
+ * @notice Multi-tenant x402 facilitator for Conflux eSpace with escrow-based refunds.
  *
  *         The buyer signs an off-chain EIP-712 ReceiveWithAuthorization where `to` is
- *         this contract. The seller calls settle() to execute the authorization, receive
- *         funds into this contract, and forward them to the seller. This prevents
- *         front-running and ensures all payments are recorded.
+ *         this contract. The seller calls settle() to execute the authorization. Funds
+ *         are held in escrow for a grace period during which the seller can issue refunds.
+ *         After the grace period, the seller (or anyone) can call release() to transfer
+ *         funds to the seller.
  *
- *         Only the recipient (seller) can call settle(), binding the invoiceId to the
- *         payment. This prevents third parties from misbinding payments.
+ *         Escrow eliminates the need for ERC-20 approval for refunds: since the contract
+ *         holds the tokens, refunds use safeTransfer (not safeTransferFrom).
  */
 contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     /// @notice Maximum time an authorization can be valid into the future (7 days)
     uint256 public constant MAX_AUTH_DURATION = 7 days;
+
+    /// @notice Default escrow duration when seller doesn't specify one
+    uint256 public constant DEFAULT_ESCROW_DURATION = 24 hours;
+
+    /// @notice Minimum escrow duration (0 = immediate release, no escrow)
+    uint256 public constant MIN_ESCROW_DURATION = 0;
+
+    /// @notice Maximum escrow duration (30 days)
+    uint256 public constant MAX_ESCROW_DURATION = 30 days;
 
     struct Payment {
         address payer;
@@ -56,6 +65,9 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         bytes32 nonce;
         uint256 expiry;
         uint256 paidAt;
+        uint256 releaseAt;  // Timestamp when funds can be released to seller
+        bool released;      // True after funds have been sent to seller
+        bool refunded;      // True after funds have been refunded to payer
     }
 
     struct Seller {
@@ -64,6 +76,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         string description;
         bool active;
         uint256 registeredAt;
+        uint256 escrowDuration; // Per-seller escrow period in seconds
     }
 
     /// @notice Supported ERC-3009 tokens (managed by contract owner)
@@ -73,7 +86,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
     /// @notice invoiceId => Payment record
     mapping(bytes32 => Payment) public payments;
 
-    /// @notice Track used authorization nonces
+    /// @notice Track used authorization nonces, scoped by (authorizer, nonce)
     mapping(bytes32 => bool) public usedNonces;
 
     /// @notice Seller registry: wallet address => Seller
@@ -85,6 +98,15 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
     /// @dev Index tracking for O(1) swap-and-pop removal
     mapping(address => uint256) private _sellerIndex;
 
+    /// @notice Registration fee to prevent seller spam (payable in native CFX)
+    uint256 public registrationFee;
+
+    /// @notice Pending token activations (timelock for adding new tokens)
+    mapping(address => uint256) public pendingTokenActivation;
+
+    /// @notice Timelock delay for adding new supported tokens
+    uint256 public constant TOKEN_ACTIVATION_DELAY = 48 hours;
+
     event PaymentReceived(
         bytes32 indexed invoiceId,
         address indexed payer,
@@ -92,20 +114,31 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         address token,
         uint256 amount,
         string endpoint,
-        bytes32 nonce
+        bytes32 nonce,
+        uint256 chainId
+    );
+
+    event PaymentReleased(
+        bytes32 indexed invoiceId,
+        address indexed recipient,
+        address token,
+        uint256 amount
     );
 
     event Refunded(
         bytes32 indexed invoiceId,
-        address indexed payer,
+        address indexed originalPayer,
         address indexed token,
-        uint256 amount
+        uint256 amount,
+        address refundRecipient
     );
 
-    event SellerRegistered(address indexed wallet, string apiBaseUrl);
-    event SellerUpdated(address indexed wallet, string apiBaseUrl);
+    event SellerRegistered(address indexed wallet, string apiBaseUrl, uint256 escrowDuration);
+    event SellerUpdated(address indexed wallet, string apiBaseUrl, uint256 escrowDuration);
     event SellerDeactivated(address indexed wallet);
     event TokenSupported(address indexed token, bool supported);
+    event TokenProposed(address indexed token, uint256 activationTime);
+    event RegistrationFeeUpdated(uint256 newFee);
 
     /// @param _tokens Initial supported ERC-3009 token addresses
     constructor(address[] memory _tokens) Ownable(msg.sender) {
@@ -127,52 +160,68 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
     /**
      * @notice Register as a seller. Each address can only register once.
      *         Use reactivateSeller() after deactivation.
+     * @param escrowDuration Escrow hold period in seconds (0 = use default 24h).
+     *        Must be between MIN_ESCROW_DURATION and MAX_ESCROW_DURATION if non-zero.
      */
-    function registerSeller(string calldata apiBaseUrl, string calldata description) external {
+    function registerSeller(string calldata apiBaseUrl, string calldata description, uint256 escrowDuration) external payable {
         require(bytes(apiBaseUrl).length > 0, "X402: empty API URL");
         require(sellers[msg.sender].registeredAt == 0, "X402: already registered");
+        require(msg.value >= registrationFee, "X402: insufficient registration fee");
+
+        uint256 escrow = _validateEscrowDuration(escrowDuration);
 
         sellers[msg.sender] = Seller({
             wallet: msg.sender,
             apiBaseUrl: apiBaseUrl,
             description: description,
             active: true,
-            registeredAt: block.timestamp
+            registeredAt: block.timestamp,
+            escrowDuration: escrow
         });
         _sellerIndex[msg.sender] = sellerList.length;
         sellerList.push(msg.sender);
 
-        emit SellerRegistered(msg.sender, apiBaseUrl);
+        emit SellerRegistered(msg.sender, apiBaseUrl, escrow);
     }
 
     /**
      * @notice Reactivate a previously deactivated seller registration.
+     * @param escrowDuration Escrow hold period in seconds (0 = keep previous value).
      */
-    function reactivateSeller(string calldata apiBaseUrl, string calldata description) external {
+    function reactivateSeller(string calldata apiBaseUrl, string calldata description, uint256 escrowDuration) external payable {
+        require(bytes(apiBaseUrl).length > 0, "X402: empty API URL");
         require(sellers[msg.sender].registeredAt > 0, "X402: not registered");
         require(!sellers[msg.sender].active, "X402: already active");
+        require(msg.value >= registrationFee, "X402: insufficient registration fee");
 
         sellers[msg.sender].apiBaseUrl = apiBaseUrl;
         sellers[msg.sender].description = description;
         sellers[msg.sender].active = true;
+        if (escrowDuration > 0) {
+            sellers[msg.sender].escrowDuration = _validateEscrowDuration(escrowDuration);
+        }
 
         _sellerIndex[msg.sender] = sellerList.length;
         sellerList.push(msg.sender);
 
-        emit SellerRegistered(msg.sender, apiBaseUrl);
+        emit SellerRegistered(msg.sender, apiBaseUrl, sellers[msg.sender].escrowDuration);
     }
 
     /**
      * @notice Update seller profile. Only the seller themselves.
+     * @param escrowDuration Escrow hold period in seconds (0 = keep current value).
      */
-    function updateSeller(string calldata apiBaseUrl, string calldata description) external {
+    function updateSeller(string calldata apiBaseUrl, string calldata description, uint256 escrowDuration) external {
         require(sellers[msg.sender].active, "X402: not registered");
         require(bytes(apiBaseUrl).length > 0, "X402: empty API URL");
 
         sellers[msg.sender].apiBaseUrl = apiBaseUrl;
         sellers[msg.sender].description = description;
+        if (escrowDuration > 0) {
+            sellers[msg.sender].escrowDuration = _validateEscrowDuration(escrowDuration);
+        }
 
-        emit SellerUpdated(msg.sender, apiBaseUrl);
+        emit SellerUpdated(msg.sender, apiBaseUrl, sellers[msg.sender].escrowDuration);
     }
 
     /**
@@ -208,13 +257,14 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
      *         Only the recipient (seller) can call this, preventing front-running and
      *         ensuring the invoiceId binding is controlled by the intended payee.
      *
-     *         The buyer signs a ReceiveWithAuthorization where `to` = address(this).
-     *         This contract receives the funds, then forwards them to the recipient.
+     *         Funds are held in escrow for ESCROW_DURATION. During this period, the
+     *         seller can issue a refund. After the period, anyone can call release()
+     *         to transfer funds to the seller.
      *
      * @param invoiceId   Unique invoice identifier (bound by the recipient/seller)
      * @param token       ERC-3009 token address
      * @param from        The payer (signer of the authorization)
-     * @param recipient   The payment recipient — must equal msg.sender
+     * @param recipient   The payment recipient, must equal msg.sender
      * @param value       Nominal amount in token units
      * @param validAfter  ERC-3009 validity start timestamp
      * @param validBefore ERC-3009 validity end timestamp (must be within MAX_AUTH_DURATION)
@@ -243,8 +293,9 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         require(recipient != address(0), "X402: zero recipient");
         require(from != recipient, "X402: self-payment");
         require(payments[invoiceId].paidAt == 0, "X402: already paid");
-        require(!usedNonces[nonce], "X402: nonce already used");
+        require(!usedNonces[keccak256(abi.encode(from, nonce))], "X402: nonce already used");
         require(msg.sender == recipient, "X402: only recipient can settle");
+        require(sellers[recipient].active, "X402: seller not active");
         require(validBefore > validAfter, "X402: invalid time window");
         require(
             validBefore <= block.timestamp + MAX_AUTH_DURATION,
@@ -253,9 +304,10 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         require(block.timestamp < validBefore, "X402: authorization expired");
 
         // Effects before interactions (CEI)
-        usedNonces[nonce] = true;
+        bytes32 nonceKey = keccak256(abi.encode(from, nonce));
+        usedNonces[nonceKey] = true;
 
-        // Receive into this contract first (prevents front-running via receiveWithAuthorization)
+        // Receive into this contract (prevents front-running via receiveWithAuthorization)
         uint256 balBefore = IERC20(token).balanceOf(address(this));
         IERC3009(token).receiveWithAuthorization(
             from,
@@ -269,7 +321,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         uint256 received = IERC20(token).balanceOf(address(this)) - balBefore;
         require(received > 0, "X402: no tokens received");
 
-        // Store actual received amount (handles fee-on-transfer edge case)
+        // Store payment in escrow (funds remain in contract until released)
         payments[invoiceId] = Payment({
             payer: from,
             recipient: recipient,
@@ -278,13 +330,61 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
             endpoint: endpoint,
             nonce: nonce,
             expiry: validBefore,
-            paidAt: block.timestamp
+            paidAt: block.timestamp,
+            releaseAt: block.timestamp + (sellers[recipient].escrowDuration > 0 ? sellers[recipient].escrowDuration : DEFAULT_ESCROW_DURATION),
+            released: false,
+            refunded: false
         });
 
-        // Forward funds to the recipient
-        IERC20(token).safeTransfer(recipient, received);
+        emit PaymentReceived(invoiceId, from, recipient, token, received, endpoint, nonce, block.chainid);
+    }
 
-        emit PaymentReceived(invoiceId, from, recipient, token, received, endpoint, nonce);
+    // ─── Escrow Release ───
+
+    /**
+     * @notice Release escrowed funds to the seller after the grace period.
+     *         Anyone can call this (permissionless) since it only sends to the
+     *         recorded recipient. This allows batch release by third parties.
+     */
+    function release(bytes32 invoiceId) external nonReentrant {
+        Payment storage p = payments[invoiceId];
+        require(p.paidAt > 0, "X402: invoice not paid");
+        require(!p.released, "X402: already released");
+        require(!p.refunded, "X402: already refunded");
+        require(block.timestamp >= p.releaseAt, "X402: escrow period active");
+
+        uint256 amount = p.amount;
+        address token = p.token;
+        address recipient = p.recipient;
+
+        // Mark as released before transfer (CEI)
+        p.released = true;
+
+        IERC20(token).safeTransfer(recipient, amount);
+        emit PaymentReleased(invoiceId, recipient, token, amount);
+    }
+
+    /**
+     * @notice Release escrowed funds to an alternative address (e.g., if the seller's
+     *         primary address is blocklisted by the token). Only the original recipient
+     *         (seller) can redirect the release.
+     */
+    function releaseTo(bytes32 invoiceId, address to) external nonReentrant {
+        Payment storage p = payments[invoiceId];
+        require(p.paidAt > 0, "X402: invoice not paid");
+        require(!p.released, "X402: already released");
+        require(!p.refunded, "X402: already refunded");
+        require(block.timestamp >= p.releaseAt, "X402: escrow period active");
+        require(msg.sender == p.recipient, "X402: only recipient can redirect");
+        require(to != address(0), "X402: zero address");
+
+        uint256 amount = p.amount;
+        address token = p.token;
+
+        p.released = true;
+
+        IERC20(token).safeTransfer(to, amount);
+        emit PaymentReleased(invoiceId, to, token, amount);
     }
 
     // ─── Verification ───
@@ -300,6 +400,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
     ) external view returns (bool valid, address payer) {
         Payment storage p = payments[invoiceId];
         if (p.paidAt == 0) return (false, address(0));
+        if (p.refunded) return (false, address(0));
         if (p.amount < expectedAmount) return (false, address(0));
         if (keccak256(bytes(p.endpoint)) != keccak256(bytes(expectedEndpoint))) {
             return (false, address(0));
@@ -311,8 +412,9 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
 
     /**
      * @notice Refund a paid invoice back to the original payer.
-     *         Only the payment recipient (seller) can initiate.
-     *         Requires the recipient to have approved this contract via ERC-20 approve().
+     *         Only the payment recipient (seller) can initiate, and only
+     *         during the escrow period (before release).
+     *         No ERC-20 approval needed: funds are held in this contract.
      */
     function refund(bytes32 invoiceId) external nonReentrant {
         _refundTo(invoiceId, payments[invoiceId].payer);
@@ -324,40 +426,81 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
      */
     function refundTo(bytes32 invoiceId, address refundRecipient) external nonReentrant {
         require(refundRecipient != address(0), "X402: zero refund recipient");
+        require(refundRecipient != payments[invoiceId].recipient, "X402: cannot refund to seller");
         _refundTo(invoiceId, refundRecipient);
     }
 
     function _refundTo(bytes32 invoiceId, address refundRecipient) internal {
         Payment storage p = payments[invoiceId];
         require(p.paidAt > 0, "X402: invoice not paid");
-        require(p.amount > 0, "X402: already refunded");
+        require(!p.released, "X402: already released");
+        require(!p.refunded, "X402: already refunded");
+        require(block.timestamp < p.releaseAt, "X402: escrow period ended");
         require(msg.sender == p.recipient, "X402: only recipient can refund");
 
         uint256 amount = p.amount;
         address token = p.token;
-        address recipient = p.recipient;
+        address originalPayer = p.payer;
 
-        // Zero out amount to prevent double-refund (effect before interaction)
-        p.amount = 0;
+        // Mark as refunded before transfer (CEI)
+        p.refunded = true;
 
-        IERC20(token).safeTransferFrom(recipient, refundRecipient, amount);
-        emit Refunded(invoiceId, refundRecipient, token, amount);
+        IERC20(token).safeTransfer(refundRecipient, amount);
+        emit Refunded(invoiceId, originalPayer, token, amount, refundRecipient);
     }
 
     // ─── Admin (Contract Owner) ───
 
     /**
-     * @notice Add or remove a supported token. Only add ERC-3009 compliant tokens.
-     * @dev Only non-fee-on-transfer, non-rebasing tokens should be added.
-     *      Use a multisig as owner for production deployments.
+     * @notice Propose adding a new supported token. Activation after TOKEN_ACTIVATION_DELAY.
+     * @dev Only non-fee-on-transfer, non-rebasing, ERC-3009 tokens with dynamic
+     *      DOMAIN_SEPARATOR (using block.chainid) should be added.
      */
-    function setSupportedToken(address token, bool supported) external onlyOwner {
+    function proposeToken(address token) external onlyOwner {
         require(token != address(0), "X402: zero token address");
-        if (supported) {
-            require(token.code.length > 0, "X402: token has no code");
-        }
-        supportedTokens[token] = supported;
-        emit TokenSupported(token, supported);
+        require(token.code.length > 0, "X402: token has no code");
+        require(!supportedTokens[token], "X402: already supported");
+        pendingTokenActivation[token] = block.timestamp + TOKEN_ACTIVATION_DELAY;
+        emit TokenProposed(token, pendingTokenActivation[token]);
+    }
+
+    /**
+     * @notice Activate a previously proposed token after the timelock expires.
+     */
+    function activateToken(address token) external onlyOwner {
+        require(pendingTokenActivation[token] > 0, "X402: not proposed");
+        require(block.timestamp >= pendingTokenActivation[token], "X402: timelock active");
+        delete pendingTokenActivation[token];
+        supportedTokens[token] = true;
+        emit TokenSupported(token, true);
+    }
+
+    /**
+     * @notice Remove a supported token immediately. Does not affect existing escrows.
+     */
+    function removeToken(address token) external onlyOwner {
+        require(token != address(0), "X402: zero token address");
+        supportedTokens[token] = false;
+        delete pendingTokenActivation[token];
+        emit TokenSupported(token, false);
+    }
+
+    /**
+     * @notice Update registration fee. Set to 0 to disable.
+     */
+    function setRegistrationFee(uint256 fee) external onlyOwner {
+        registrationFee = fee;
+        emit RegistrationFeeUpdated(fee);
+    }
+
+    /**
+     * @notice Withdraw collected registration fees to owner.
+     */
+    function withdrawFees() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "X402: no fees to withdraw");
+        (bool sent, ) = owner().call{value: balance}("");
+        require(sent, "X402: fee withdrawal failed");
     }
 
     // ─── View Functions ───
@@ -393,5 +536,19 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
             result[i] = sellers[sellerList[offset + i]];
         }
         return result;
+    }
+
+    // ─── Internal Helpers ───
+
+    /**
+     * @notice Validate and normalize escrow duration.
+     * @param duration Requested duration in seconds (0 = use default).
+     * @return Validated duration within [MIN_ESCROW_DURATION, MAX_ESCROW_DURATION].
+     */
+    function _validateEscrowDuration(uint256 duration) internal pure returns (uint256) {
+        if (duration == 0) return DEFAULT_ESCROW_DURATION;
+        require(duration >= MIN_ESCROW_DURATION, "X402: escrow too short");
+        require(duration <= MAX_ESCROW_DURATION, "X402: escrow too long");
+        return duration;
     }
 }

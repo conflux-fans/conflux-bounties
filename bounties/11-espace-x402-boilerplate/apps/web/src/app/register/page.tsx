@@ -2,19 +2,31 @@
 
 import { useState } from "react";
 import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi";
-import { ConnectKitButton } from "connectkit";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle, Loader2, AlertTriangle, ExternalLink, Search, Edit3, UserMinus, Shield, Coins, Hash, Users, BookOpen, PenTool } from "lucide-react";
-import { NetworkBadge } from "@/components/NetworkBadge";
+import { CheckCircle, Loader2, AlertTriangle, ExternalLink, Search, Edit3, UserMinus, Shield, Coins, Hash, Users, BookOpen, PenTool, Unlock, RefreshCw, ArrowRightLeft } from "lucide-react";
+import { Navbar } from "@/components/Navbar";
 import { getContractAddress, getChainById } from "@/lib/wagmi";
 
 const verifierAbi = [
+  // ─── Write Functions ───
   {
     type: "function",
     name: "registerSeller",
     inputs: [
       { name: "apiBaseUrl", type: "string" },
       { name: "description", type: "string" },
+      { name: "escrowDuration", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "reactivateSeller",
+    inputs: [
+      { name: "apiBaseUrl", type: "string" },
+      { name: "description", type: "string" },
+      { name: "escrowDuration", type: "uint256" },
     ],
     outputs: [],
     stateMutability: "nonpayable",
@@ -25,6 +37,7 @@ const verifierAbi = [
     inputs: [
       { name: "apiBaseUrl", type: "string" },
       { name: "description", type: "string" },
+      { name: "escrowDuration", type: "uint256" },
     ],
     outputs: [],
     stateMutability: "nonpayable",
@@ -38,8 +51,45 @@ const verifierAbi = [
   },
   {
     type: "function",
+    name: "settle",
+    inputs: [
+      { name: "invoiceId", type: "bytes32" },
+      { name: "token", type: "address" },
+      { name: "from", type: "address" },
+      { name: "recipient", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "validAfter", type: "uint256" },
+      { name: "validBefore", type: "uint256" },
+      { name: "nonce", type: "bytes32" },
+      { name: "endpoint", type: "string" },
+      { name: "v", type: "uint8" },
+      { name: "r", type: "bytes32" },
+      { name: "s", type: "bytes32" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "release",
+    inputs: [{ name: "invoiceId", type: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "refund",
     inputs: [{ name: "invoiceId", type: "bytes32" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "refundTo",
+    inputs: [
+      { name: "invoiceId", type: "bytes32" },
+      { name: "refundRecipient", type: "address" },
+    ],
     outputs: [],
     stateMutability: "nonpayable",
   },
@@ -53,6 +103,7 @@ const verifierAbi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  // ─── Read Functions ───
   {
     type: "function",
     name: "getSeller",
@@ -67,6 +118,7 @@ const verifierAbi = [
           { name: "description", type: "string" },
           { name: "active", type: "bool" },
           { name: "registeredAt", type: "uint256" },
+          { name: "escrowDuration", type: "uint256" },
         ],
       },
     ],
@@ -82,7 +134,10 @@ const verifierAbi = [
   {
     type: "function",
     name: "getActiveSellers",
-    inputs: [],
+    inputs: [
+      { name: "offset", type: "uint256" },
+      { name: "limit", type: "uint256" },
+    ],
     outputs: [
       {
         name: "",
@@ -93,6 +148,7 @@ const verifierAbi = [
           { name: "description", type: "string" },
           { name: "active", type: "bool" },
           { name: "registeredAt", type: "uint256" },
+          { name: "escrowDuration", type: "uint256" },
         ],
       },
     ],
@@ -129,6 +185,9 @@ const verifierAbi = [
           { name: "nonce", type: "bytes32" },
           { name: "expiry", type: "uint256" },
           { name: "paidAt", type: "uint256" },
+          { name: "releaseAt", type: "uint256" },
+          { name: "released", type: "bool" },
+          { name: "refunded", type: "bool" },
         ],
       },
     ],
@@ -146,6 +205,27 @@ const verifierAbi = [
     name: "supportedTokens",
     inputs: [{ name: "", type: "address" }],
     outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "ESCROW_DURATION",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "MAX_AUTH_DURATION",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "owner",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
     stateMutability: "view",
   },
 ] as const;
@@ -284,6 +364,7 @@ export default function RegisterPage() {
   // ─── Register form state ───
   const [regUrl, setRegUrl] = useState("");
   const [regDesc, setRegDesc] = useState("");
+  const [regEscrowHours, setRegEscrowHours] = useState("24");
 
   // ─── My seller status ───
   const { data: sellerData } = useReadContract({
@@ -293,7 +374,7 @@ export default function RegisterPage() {
     args: address ? [address] : undefined,
     query: { enabled: !!address && !!contractAddress },
   });
-  const seller = sellerData as { wallet: string; apiBaseUrl: string; description: string; active: boolean; registeredAt: bigint } | undefined;
+  const seller = sellerData as { wallet: string; apiBaseUrl: string; description: string; active: boolean; registeredAt: bigint; escrowDuration: bigint } | undefined;
   const isAlreadyRegistered = seller && seller.wallet !== ZERO_ADDRESS && seller.active;
 
   // ─── Write contract hooks (one per function) ───
@@ -304,6 +385,7 @@ export default function RegisterPage() {
   const updateReceipt = useWaitForTransactionReceipt({ hash: updateWrite.data });
   const [updateUrl, setUpdateUrl] = useState("");
   const [updateDesc, setUpdateDesc] = useState("");
+  const [updateEscrowHours, setUpdateEscrowHours] = useState("");
 
   const deactivateWrite = useWriteContract();
   const deactivateReceipt = useWaitForTransactionReceipt({ hash: deactivateWrite.data });
@@ -312,6 +394,21 @@ export default function RegisterPage() {
   const refundWrite = useWriteContract();
   const refundReceipt = useWaitForTransactionReceipt({ hash: refundWrite.data });
   const [refundInvoiceId, setRefundInvoiceId] = useState("");
+
+  const reactivateWrite = useWriteContract();
+  const reactivateReceipt = useWaitForTransactionReceipt({ hash: reactivateWrite.data });
+  const [reactivateUrl, setReactivateUrl] = useState("");
+  const [reactivateDesc, setReactivateDesc] = useState("");
+  const [reactivateEscrowHours, setReactivateEscrowHours] = useState("24");
+
+  const releaseWrite = useWriteContract();
+  const releaseReceipt = useWaitForTransactionReceipt({ hash: releaseWrite.data });
+  const [releaseInvoiceId, setReleaseInvoiceId] = useState("");
+
+  const refundToWrite = useWriteContract();
+  const refundToReceipt = useWaitForTransactionReceipt({ hash: refundToWrite.data });
+  const [refundToInvoiceId, setRefundToInvoiceId] = useState("");
+  const [refundToAddr, setRefundToAddr] = useState("");
 
   const setTokenWrite = useWriteContract();
   const setTokenReceipt = useWaitForTransactionReceipt({ hash: setTokenWrite.data });
@@ -354,6 +451,21 @@ export default function RegisterPage() {
   const [checkTokenError, setCheckTokenError] = useState("");
   const [checkTokenLoading, setCheckTokenLoading] = useState(false);
 
+  const [activeSellersOffset, setActiveSellersOffset] = useState("0");
+  const [activeSellersLimit, setActiveSellersLimit] = useState("20");
+
+  const [escrowDurationResult, setEscrowDurationResult] = useState<unknown>(undefined);
+  const [escrowDurationError, setEscrowDurationError] = useState("");
+  const [escrowDurationLoading, setEscrowDurationLoading] = useState(false);
+
+  const [maxAuthResult, setMaxAuthResult] = useState<unknown>(undefined);
+  const [maxAuthError, setMaxAuthError] = useState("");
+  const [maxAuthLoading, setMaxAuthLoading] = useState(false);
+
+  const [ownerResult, setOwnerResult] = useState<unknown>(undefined);
+  const [ownerError, setOwnerError] = useState("");
+  const [ownerLoading, setOwnerLoading] = useState(false);
+
   // ─── Generic read helper ───
   async function readContract(functionName: string, args: unknown[], setResult: (v: unknown) => void, setError: (v: string) => void, setLoading: (v: boolean) => void) {
     if (!contractAddress) return;
@@ -388,35 +500,30 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-40 glass">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Link href="/" className="flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition-colors px-2 py-1 -ml-2 rounded-lg hover:bg-white/5">
-            <ArrowLeft size={16} /> Back
-          </Link>
-          <div className="h-5 w-px bg-gray-700" />
-          <h1 className="text-lg font-bold text-white">X402PaymentVerifier</h1>
-          <div className="flex-1" />
-          {contractAddress && (
-            <a
-              href={`${explorerUrl}/address/${contractAddress}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-gray-500 hover:text-conflux-teal font-mono flex items-center gap-1 transition-colors"
-            >
-              {contractAddress.slice(0, 6)}...{contractAddress.slice(-4)} <ExternalLink size={10} />
-            </a>
-          )}
-          <NetworkBadge />
-          <ConnectKitButton />
-        </div>
-      </header>
+      <Navbar />
 
       <main className="max-w-4xl mx-auto px-6 py-8">
-        {/* Description */}
-        <div className="mb-6">
+        {/* Contract info header */}
+        <div className="mb-6 space-y-3">
           <p className="text-gray-400 text-sm">
             On-chain registry + settlement facilitator. Dual-purpose: settlement facilitator (accepts ERC-3009 signed auth, transfers tokens) and on-chain seller registry. CEI pattern + ReentrancyGuard + Ownable2Step.
           </p>
+          {contractAddress && explorerUrl && (
+            <div className="rounded-xl bg-black/20 border border-gray-700/30 p-3 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">Facilitator Contract</span>
+                <a
+                  href={`${explorerUrl}/address/${contractAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-conflux-teal hover:underline flex items-center gap-1"
+                >
+                  View on ConfluxScan <ExternalLink size={10} />
+                </a>
+              </div>
+              <code className="text-conflux-teal font-mono text-[11px] break-all block">{contractAddress}</code>
+            </div>
+          )}
         </div>
 
         {/* Tabs */}
@@ -435,6 +542,20 @@ export default function RegisterPage() {
             </button>
           ))}
         </div>
+
+        {/* Manifest info — always visible on Register tab */}
+        {activeTab === "register" && (
+          <div className="rounded-xl border border-conflux-teal/20 bg-conflux-teal/5 p-4 text-sm mb-6">
+            <h4 className="text-conflux-teal font-semibold text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <BookOpen size={13} /> API Discovery via Manifest
+            </h4>
+            <p className="text-gray-300 leading-relaxed">
+              Serve a manifest at <code className="text-conflux-teal bg-black/20 px-1.5 py-0.5 rounded text-xs">{"{your-api-url}"}/x402/manifest</code> so buyers can auto-discover your endpoints, pricing, and required parameters.
+              The boilerplate includes this route by default. APIs with a manifest show full endpoint details in the{" "}
+              <Link href="/" className="text-conflux-teal hover:underline">Registered APIs directory</Link>.
+            </p>
+          </div>
+        )}
 
         {!isConnected && activeTab !== "read" ? (
           <div className="glass-card p-12 flex flex-col items-center justify-center text-center">
@@ -486,6 +607,10 @@ export default function RegisterPage() {
                         <span className="text-gray-300 text-xs">{new Date(Number(seller!.registeredAt) * 1000).toLocaleDateString()}</span>
                       </div>
                       <div className="flex justify-between">
+                        <span className="text-gray-400">Escrow Period</span>
+                        <span className="text-white text-xs">{Number(seller!.escrowDuration) / 3600}h</span>
+                      </div>
+                      <div className="flex justify-between">
                         <span className="text-gray-400">Status</span>
                         <span className="text-emerald-400 text-xs font-medium">Active</span>
                       </div>
@@ -501,11 +626,13 @@ export default function RegisterPage() {
                     icon={<PenTool size={16} />}
                     onSubmit={() => {
                       if (!contractAddress || !regUrl.trim()) return;
+                      const hours = regEscrowHours.trim() === "" ? 24 : parseFloat(regEscrowHours);
+                      const escrowSeconds = hours === 0 ? BigInt(1) : BigInt(Math.round(hours * 3600));
                       regWrite.writeContract({
                         address: contractAddress,
                         abi: verifierAbi,
                         functionName: "registerSeller",
-                        args: [regUrl.trim(), regDesc.trim()],
+                        args: [regUrl.trim(), regDesc.trim(), escrowSeconds],
                       });
                     }}
                     isPending={regWrite.isPending}
@@ -515,8 +642,9 @@ export default function RegisterPage() {
                     explorerUrl={explorerUrl}
                     error={regWrite.error?.message}
                   >
-                    <FormField label="API Base URL" placeholder="https://api.example.com" value={regUrl} onChange={setRegUrl} type="url" required hint="The public URL of your API server" />
+                    <FormField label="API Base URL" placeholder="https://api.example.com" value={regUrl} onChange={setRegUrl} type="url" required hint="The public URL of your API server. Serve a manifest at /x402/manifest so buyers can discover your endpoints, pricing, and parameters." />
                     <FormField label="Description" placeholder="My premium API service" value={regDesc} onChange={setRegDesc} hint="Stored on-chain for discoverability" />
+                    <FormField label="Escrow Period (hours)" placeholder="24" value={regEscrowHours} onChange={setRegEscrowHours} type="number" hint="How long payments are held before release (0–720 hours, 0 = no escrow, default 24)" />
                   </WriteCard>
                 )}
 
@@ -528,11 +656,13 @@ export default function RegisterPage() {
                     icon={<Edit3 size={16} />}
                     onSubmit={() => {
                       if (!contractAddress || !updateUrl.trim()) return;
+                      const uHours = updateEscrowHours.trim() === "" ? null : parseFloat(updateEscrowHours);
+                      const escrowSeconds = uHours === null ? BigInt(0) : uHours === 0 ? BigInt(1) : BigInt(Math.round(uHours * 3600));
                       updateWrite.writeContract({
                         address: contractAddress,
                         abi: verifierAbi,
                         functionName: "updateSeller",
-                        args: [updateUrl.trim(), updateDesc.trim()],
+                        args: [updateUrl.trim(), updateDesc.trim(), escrowSeconds],
                       });
                     }}
                     isPending={updateWrite.isPending}
@@ -544,6 +674,7 @@ export default function RegisterPage() {
                   >
                     <FormField label="New API Base URL" placeholder="https://api.example.com" value={updateUrl} onChange={setUpdateUrl} type="url" required />
                     <FormField label="New Description" placeholder="Updated description" value={updateDesc} onChange={setUpdateDesc} />
+                    <FormField label="Escrow Period (hours)" placeholder="Leave empty to keep current" value={updateEscrowHours} onChange={setUpdateEscrowHours} type="number" hint="0 or empty = keep current value" />
                   </WriteCard>
                 )}
               </div>
@@ -559,11 +690,13 @@ export default function RegisterPage() {
                   icon={<PenTool size={16} />}
                   onSubmit={() => {
                     if (!contractAddress || !regUrl.trim()) return;
+                    const hours = regEscrowHours.trim() === "" ? 24 : parseFloat(regEscrowHours);
+                      const escrowSeconds = hours === 0 ? BigInt(1) : BigInt(Math.round(hours * 3600));
                     regWrite.writeContract({
                       address: contractAddress,
                       abi: verifierAbi,
                       functionName: "registerSeller",
-                      args: [regUrl.trim(), regDesc.trim()],
+                      args: [regUrl.trim(), regDesc.trim(), escrowSeconds],
                     });
                   }}
                   isPending={regWrite.isPending}
@@ -575,6 +708,7 @@ export default function RegisterPage() {
                 >
                   <FormField label="apiBaseUrl" placeholder="https://api.example.com" value={regUrl} onChange={setRegUrl} type="url" required />
                   <FormField label="description" placeholder="My premium API service" value={regDesc} onChange={setRegDesc} />
+                  <FormField label="escrowDuration (hours)" placeholder="24" value={regEscrowHours} onChange={setRegEscrowHours} type="number" hint="0–720 hours (0 = no escrow, default 24)" />
                 </WriteCard>
 
                 {/* updateSeller */}
@@ -584,11 +718,13 @@ export default function RegisterPage() {
                   icon={<Edit3 size={16} />}
                   onSubmit={() => {
                     if (!contractAddress || !updateUrl.trim()) return;
+                    const uHours = updateEscrowHours.trim() === "" ? null : parseFloat(updateEscrowHours);
+                      const escrowSeconds = uHours === null ? BigInt(0) : uHours === 0 ? BigInt(1) : BigInt(Math.round(uHours * 3600));
                     updateWrite.writeContract({
                       address: contractAddress,
                       abi: verifierAbi,
                       functionName: "updateSeller",
-                      args: [updateUrl.trim(), updateDesc.trim()],
+                      args: [updateUrl.trim(), updateDesc.trim(), escrowSeconds],
                     });
                   }}
                   isPending={updateWrite.isPending}
@@ -600,6 +736,7 @@ export default function RegisterPage() {
                 >
                   <FormField label="apiBaseUrl" placeholder="https://api.example.com" value={updateUrl} onChange={setUpdateUrl} type="url" required />
                   <FormField label="description" placeholder="Updated description" value={updateDesc} onChange={setUpdateDesc} />
+                  <FormField label="escrowDuration (hours)" placeholder="0 = keep current" value={updateEscrowHours} onChange={setUpdateEscrowHours} type="number" hint="0 or empty = keep current value" />
                 </WriteCard>
 
                 {/* deactivateSeller */}
@@ -648,6 +785,107 @@ export default function RegisterPage() {
                   error={refundWrite.error?.message}
                 >
                   <FormField label="invoiceId" placeholder="0x..." value={refundInvoiceId} onChange={setRefundInvoiceId} required hint="bytes32 invoice ID" />
+                </WriteCard>
+
+                {/* reactivateSeller */}
+                <WriteCard
+                  title="reactivateSeller"
+                  description="Previously deactivated seller — Reactivates registration"
+                  icon={<RefreshCw size={16} />}
+                  onSubmit={() => {
+                    if (!contractAddress || !reactivateUrl.trim()) return;
+                    const rHours = reactivateEscrowHours.trim() === "" ? 24 : parseFloat(reactivateEscrowHours);
+                    const escrowSeconds = rHours === 0 ? BigInt(1) : BigInt(Math.round(rHours * 3600));
+                    reactivateWrite.writeContract({
+                      address: contractAddress,
+                      abi: verifierAbi,
+                      functionName: "reactivateSeller",
+                      args: [reactivateUrl.trim(), reactivateDesc.trim(), escrowSeconds],
+                    });
+                  }}
+                  isPending={reactivateWrite.isPending}
+                  isConfirming={reactivateReceipt.isLoading}
+                  isSuccess={reactivateReceipt.isSuccess}
+                  txHash={reactivateWrite.data}
+                  explorerUrl={explorerUrl}
+                  error={reactivateWrite.error?.message}
+                >
+                  <FormField label="apiBaseUrl" placeholder="https://api.example.com" value={reactivateUrl} onChange={setReactivateUrl} type="url" required />
+                  <FormField label="description" placeholder="My premium API service" value={reactivateDesc} onChange={setReactivateDesc} />
+                  <FormField label="escrowDuration (hours)" placeholder="24" value={reactivateEscrowHours} onChange={setReactivateEscrowHours} type="number" hint="0–720 hours (0 = no escrow, default 24)" />
+                </WriteCard>
+
+                {/* release */}
+                <WriteCard
+                  title="release"
+                  description="Anyone — Releases escrowed funds to seller after 24h grace period"
+                  icon={<Unlock size={16} />}
+                  onSubmit={() => {
+                    if (!contractAddress || !releaseInvoiceId.trim()) return;
+                    releaseWrite.writeContract({
+                      address: contractAddress,
+                      abi: verifierAbi,
+                      functionName: "release",
+                      args: [releaseInvoiceId.trim() as `0x${string}`],
+                    });
+                  }}
+                  isPending={releaseWrite.isPending}
+                  isConfirming={releaseReceipt.isLoading}
+                  isSuccess={releaseReceipt.isSuccess}
+                  txHash={releaseWrite.data}
+                  explorerUrl={explorerUrl}
+                  error={releaseWrite.error?.message}
+                >
+                  <FormField label="invoiceId" placeholder="0x..." value={releaseInvoiceId} onChange={setReleaseInvoiceId} required hint="bytes32 invoice ID — escrow must have expired" />
+                </WriteCard>
+
+                {/* refund */}
+                <WriteCard
+                  title="refund"
+                  description="Seller — Refunds a paid invoice back to the original payer"
+                  icon={<Shield size={16} />}
+                  onSubmit={() => {
+                    if (!contractAddress || !refundInvoiceId.trim()) return;
+                    refundWrite.writeContract({
+                      address: contractAddress,
+                      abi: verifierAbi,
+                      functionName: "refund",
+                      args: [refundInvoiceId.trim() as `0x${string}`],
+                    });
+                  }}
+                  isPending={refundWrite.isPending}
+                  isConfirming={refundReceipt.isLoading}
+                  isSuccess={refundReceipt.isSuccess}
+                  txHash={refundWrite.data}
+                  explorerUrl={explorerUrl}
+                  error={refundWrite.error?.message}
+                >
+                  <FormField label="invoiceId" placeholder="0x..." value={refundInvoiceId} onChange={setRefundInvoiceId} required hint="bytes32 invoice ID" />
+                </WriteCard>
+
+                {/* refundTo */}
+                <WriteCard
+                  title="refundTo"
+                  description="Seller — Refunds to an alternative address (e.g. if payer is blocklisted)"
+                  icon={<ArrowRightLeft size={16} />}
+                  onSubmit={() => {
+                    if (!contractAddress || !refundToInvoiceId.trim() || !refundToAddr.trim()) return;
+                    refundToWrite.writeContract({
+                      address: contractAddress,
+                      abi: verifierAbi,
+                      functionName: "refundTo",
+                      args: [refundToInvoiceId.trim() as `0x${string}`, refundToAddr.trim() as `0x${string}`],
+                    });
+                  }}
+                  isPending={refundToWrite.isPending}
+                  isConfirming={refundToReceipt.isLoading}
+                  isSuccess={refundToReceipt.isSuccess}
+                  txHash={refundToWrite.data}
+                  explorerUrl={explorerUrl}
+                  error={refundToWrite.error?.message}
+                >
+                  <FormField label="invoiceId" placeholder="0x..." value={refundToInvoiceId} onChange={setRefundToInvoiceId} required hint="bytes32 invoice ID" />
+                  <FormField label="refundRecipient" placeholder="0x..." value={refundToAddr} onChange={setRefundToAddr} required hint="Alternative address to receive the refund" />
                 </WriteCard>
 
                 {/* setSupportedToken */}
@@ -725,13 +963,16 @@ export default function RegisterPage() {
                 {/* getActiveSellers */}
                 <ReadCard
                   title="getActiveSellers"
-                  description="Array of all active seller profiles"
+                  description="Paginated array of active seller profiles"
                   icon={<Users size={16} />}
-                  onQuery={() => readContract("getActiveSellers", [], setActiveSellersResult, setActiveSellersError, setActiveSellersLoading)}
+                  onQuery={() => readContract("getActiveSellers", [BigInt(activeSellersOffset || "0"), BigInt(activeSellersLimit || "20")], setActiveSellersResult, setActiveSellersError, setActiveSellersLoading)}
                   isLoading={activeSellersLoading}
                   result={activeSellersResult}
                   error={activeSellersError}
-                />
+                >
+                  <FormField label="offset" placeholder="0" value={activeSellersOffset} onChange={setActiveSellersOffset} hint="Starting index" />
+                  <FormField label="limit" placeholder="20" value={activeSellersLimit} onChange={setActiveSellersLimit} hint="Max results" />
+                </ReadCard>
 
                 {/* verifyPayment */}
                 <ReadCard
@@ -786,6 +1027,39 @@ export default function RegisterPage() {
                 >
                   <FormField label="token address" placeholder="0x..." value={checkTokenAddr} onChange={setCheckTokenAddr} required />
                 </ReadCard>
+
+                {/* ESCROW_DURATION */}
+                <ReadCard
+                  title="ESCROW_DURATION"
+                  description="Time (seconds) funds are held in escrow before release"
+                  icon={<Shield size={16} />}
+                  onQuery={() => readContract("ESCROW_DURATION", [], setEscrowDurationResult, setEscrowDurationError, setEscrowDurationLoading)}
+                  isLoading={escrowDurationLoading}
+                  result={escrowDurationResult}
+                  error={escrowDurationError}
+                />
+
+                {/* MAX_AUTH_DURATION */}
+                <ReadCard
+                  title="MAX_AUTH_DURATION"
+                  description="Maximum time (seconds) an ERC-3009 authorization can be valid"
+                  icon={<Hash size={16} />}
+                  onQuery={() => readContract("MAX_AUTH_DURATION", [], setMaxAuthResult, setMaxAuthError, setMaxAuthLoading)}
+                  isLoading={maxAuthLoading}
+                  result={maxAuthResult}
+                  error={maxAuthError}
+                />
+
+                {/* owner */}
+                <ReadCard
+                  title="owner"
+                  description="Contract owner address (admin functions)"
+                  icon={<Users size={16} />}
+                  onQuery={() => readContract("owner", [], setOwnerResult, setOwnerError, setOwnerLoading)}
+                  isLoading={ownerLoading}
+                  result={ownerResult}
+                  error={ownerError}
+                />
               </div>
             )}
           </>

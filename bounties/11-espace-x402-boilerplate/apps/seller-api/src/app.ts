@@ -5,6 +5,7 @@ import { dataRoutes } from "./routes/data.js";
 import { computeRoutes } from "./routes/compute.js";
 import { invoiceRoutes } from "./routes/invoices.js";
 import { disputeRoutes } from "./routes/disputes.js";
+import { manifestRoutes } from "./routes/manifest.js";
 import { adminRoutes } from "./routes/admin.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { rateLimiter } from "./middleware/rateLimiter.js";
@@ -41,6 +42,7 @@ app.route("/data", dataRoutes);
 app.route("/compute", computeRoutes);
 app.route("/invoices", invoiceRoutes);
 app.route("/disputes", disputeRoutes);
+app.route("/x402/manifest", manifestRoutes);
 
 // Public agent status check (no auth required — agents need to self-check)
 app.get("/agent/:address/status", async (c) => {

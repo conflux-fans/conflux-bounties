@@ -18,6 +18,23 @@ dataRoutes.get("/free", (c) => {
   });
 });
 
+// Instant endpoint — x402 paywall, designed for no-escrow sellers
+dataRoutes.get("/instant", x402Paywall, (c) => {
+  return c.json({
+    data: {
+      message: "Instant access data — no escrow hold on this payment",
+      lookup: {
+        cfxPrice: (Math.random() * 0.5 + 0.1).toFixed(4),
+        gasPrice: Math.floor(Math.random() * 30 + 1),
+        blockHeight: Math.floor(Math.random() * 1_000_000),
+        epoch: Math.floor(Math.random() * 500_000),
+        networkStatus: "healthy",
+      },
+      timestamp: Date.now(),
+    },
+  });
+});
+
 // Premium endpoint — x402 paywall
 dataRoutes.get("/premium", x402Paywall, (c) => {
   return c.json({
