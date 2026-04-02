@@ -15,6 +15,8 @@ import {
   Zap,
 } from "lucide-react";
 
+import { useNetwork } from "@/components/NetworkContext";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
 
 interface ChatMessage {
@@ -40,6 +42,7 @@ interface AgentBudget {
 }
 
 export default function AgentChat() {
+  const { chainId: networkChainId, isTestnet } = useNetwork();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -59,10 +62,12 @@ export default function AgentChat() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // Fetch budget on mount
+  // Fetch budget on mount and when network changes
   const fetchBudget = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/agent/budget`);
+      const res = await fetch(`${API_BASE}/agent/budget`, {
+        headers: { "x-chain-id": String(networkChainId) },
+      });
       if (res.ok) {
         const data = await res.json();
         setBudget(data);
@@ -72,7 +77,7 @@ export default function AgentChat() {
     } finally {
       setBudgetLoading(false);
     }
-  }, []);
+  }, [networkChainId]);
 
   useEffect(() => {
     fetchBudget();
@@ -89,7 +94,7 @@ export default function AgentChat() {
     try {
       const res = await fetch(`${API_BASE}/agent/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-chain-id": String(networkChainId) },
         body: JSON.stringify({ message: text, sessionId }),
       });
       const data = await res.json();
@@ -191,15 +196,13 @@ export default function AgentChat() {
           <div className="flex items-center gap-1.5">
             <Wallet size={12} />
             <span>Agent Wallet</span>
-            {budget?.network && (
-              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase ${
-                budget.network === "mainnet"
-                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
-                  : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-              }`}>
-                {budget.network} ({budget.chainId || (budget.network === "mainnet" ? 1030 : 71)})
-              </span>
-            )}
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase ${
+              !isTestnet
+                ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+            }`}>
+              {isTestnet ? "testnet" : "mainnet"} ({networkChainId})
+            </span>
           </div>
           {budgetOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
