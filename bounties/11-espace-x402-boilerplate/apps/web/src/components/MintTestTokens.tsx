@@ -6,7 +6,7 @@ import { parseUnits } from "viem";
 import { Coins } from "lucide-react";
 import { useNetwork } from "@/components/NetworkContext";
 
-const TESTNET_USDT0 = process.env.NEXT_PUBLIC_USDT0_ADDRESS || "0x91de8a02c4E85b4b7cAB8c13F71a5272E4EF9b11";
+const TESTNET_USDT0 = process.env.NEXT_PUBLIC_USDT0_ADDRESS || "";
 
 const mintAbi = [
   {

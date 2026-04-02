@@ -56,7 +56,7 @@ const NETWORKS: Record<number, NetworkConfig> = {
     chainId: 71,
     name: "Conflux eSpace Testnet",
     rpcUrl: "https://evmtestnet.confluxrpc.com",
-    tokenAddress: process.env.USDT0_ADDRESS_TESTNET || "0xC6889F2838425955E3a58aD335c30bFa23B7AF98",
+    tokenAddress: process.env.USDT0_ADDRESS_TESTNET || "",
     contractAddress: (process.env.X402_CONTRACT_ADDRESS_TESTNET || process.env.X402_CONTRACT_ADDRESS || undefined) as `0x${string}` | undefined,
   },
   1030: {
@@ -564,7 +564,7 @@ app.post("/invoices/:id/settle", async (c) => {
   }
 
   try {
-    console.log(`  Settling invoice ${id} on chain ${invoiceChainId} (recipient: ${auth.to})...`);
+    console.log(`  Settling invoice ${id} on chain ${invoiceChainId} (facilitator: ${invoiceVerifier?.account?.address})...`);
     const invoiceTokenAddr = (inv.token as string) || TOKEN_ADDRESS;
     // Pass per-endpoint escrow duration to the contract (0 = use seller default)
     const escrowDuration = inv.escrow_duration != null ? Number(inv.escrow_duration) : undefined;
@@ -1037,6 +1037,7 @@ async function agentCallEndpoint(
     endpoint: headersObj["x-payment-endpoint"] || resBody["x-payment-endpoint"],
     invoiceId: headersObj["x-payment-invoice-id"] || resBody["x-payment-invoice-id"],
     recipient: headersObj["x-payment-recipient"] || resBody["x-payment-recipient"],
+    verifierAddress: headersObj["x-payment-verifier"] || resBody["x-payment-verifier"],
   };
 
   // Check spend limits

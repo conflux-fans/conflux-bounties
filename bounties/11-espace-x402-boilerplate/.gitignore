@@ -13,3 +13,4 @@ cache/
 *.db-wal
 __pycache__/
 .config.runtime.json
+deploy-manifest.json

@@ -76,6 +76,26 @@ async function main() {
   await tx2.wait();
   console.log("Seller 2 registered:", seller2);
 
+  // Write deploy manifest for post-deploy.sh to consume
+  const fs = await import("fs");
+  const path = await import("path");
+  const manifest = {
+    network: isMainnet ? "mainnet" : "testnet",
+    chainId: isMainnet ? 1030 : 71,
+    verifierAddress,
+    tokenAddress: isMainnet ? undefined : tokenAddress,
+    tokenAddresses,
+    deployer: deployer.address,
+    sellers: [
+      { address: seller1, escrow: 0, label: "primary" },
+      { address: seller2, escrow: 0, label: "instant" },
+    ],
+    timestamp: new Date().toISOString(),
+  };
+  const manifestPath = path.resolve(__dirname, "../../../deploy-manifest.json");
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  console.log(`\nDeploy manifest written to: deploy-manifest.json`);
+
   // Summary
   console.log("\n═══════════════════════════════════════");
   console.log("          DEPLOYMENT SUMMARY           ");
@@ -89,16 +109,7 @@ async function main() {
   console.log("Deployer:             ", deployer.address);
   console.log("Seller 1:             ", seller1, "(0 escrow)");
   console.log("Seller 2:             ", seller2, "(0 escrow)");
-  console.log("\nUpdate your .env:");
-  if (isMainnet) {
-    console.log(`X402_CONTRACT_ADDRESS_MAINNET=${verifierAddress}`);
-    console.log(`NEXT_PUBLIC_X402_CONTRACT_ADDRESS_MAINNET=${verifierAddress}`);
-  } else {
-    console.log(`USDT0_ADDRESS_TESTNET=${tokenAddress}`);
-    console.log(`NEXT_PUBLIC_USDT0_ADDRESS=${tokenAddress}`);
-    console.log(`X402_CONTRACT_ADDRESS_TESTNET=${verifierAddress}`);
-    console.log(`NEXT_PUBLIC_X402_CONTRACT_ADDRESS_TESTNET=${verifierAddress}`);
-  }
+  console.log("\nRun 'bash scripts/post-deploy.sh' to propagate addresses to all .env files and sync ABI.");
 }
 
 main().catch((error) => {

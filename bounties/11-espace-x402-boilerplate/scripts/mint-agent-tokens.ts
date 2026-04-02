@@ -7,7 +7,8 @@ config({ path: ".env" });
 import { createWalletClient, createPublicClient, http, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-const USDT0 = process.env.USDT0_ADDRESS_TESTNET || "0x91de8a02c4E85b4b7cAB8c13F71a5272E4EF9b11";
+const USDT0 = process.env.USDT0_ADDRESS_TESTNET;
+if (!USDT0) throw new Error("USDT0_ADDRESS_TESTNET not set in .env");
 const serviceKey = process.env.SERVICE_WALLET_KEY as `0x${string}`;
 const agentKey = process.env.AGENT_PRIVATE_KEY as `0x${string}`;
 

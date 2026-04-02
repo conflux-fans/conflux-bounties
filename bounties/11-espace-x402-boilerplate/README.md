@@ -112,32 +112,33 @@ The facilitator wallet pays gas to settle on-chain payments. Get free testnet CF
 2. Paste your `SERVICE_WALLET_ADDRESS`
 3. Request testnet CFX (you only need a small amount — ~1 CFX is plenty)
 
-### Step 5: Deploy contracts to testnet
+### Step 5: Deploy contracts and wire everything
+
+One command deploys contracts, propagates addresses, syncs ABI, rebuilds the SDK, and mints agent tokens:
 
 ```bash
-npm run contracts:deploy
+# Testnet (deploys MockUSDT0 + X402PaymentVerifier, registers sellers, mints agent tokens)
+npm run deploy:full
+
+# Mainnet (deploys X402PaymentVerifier only, registers sellers)
+npm run deploy:full:mainnet
 ```
 
-This deploys two contracts:
-- **MockUSDT0** — ERC-20 test token with ERC-3009 support
-- **X402PaymentVerifier** — Settlement facilitator contract
+This runs `contracts:deploy` followed by `scripts/post-deploy.sh`, which automatically:
 
-Copy the output addresses into your `.env`:
-```
-USDT0_ADDRESS=0x<deployed-mock-usdt0-address>
-USDT0_ADDRESS_TESTNET=0x<same-address>
-X402_CONTRACT_ADDRESS=0x<deployed-verifier-address>
-X402_CONTRACT_ADDRESS_TESTNET=0x<same-address>
-```
+1. **Reads** the deploy manifest (`deploy-manifest.json`) written by the deploy script
+2. **Updates** root `.env` with the new contract and token addresses (testnet or mainnet)
+3. **Regenerates** `apps/web/.env.local` from root `.env` (all `NEXT_PUBLIC_*` vars)
+4. **Syncs** the ABI from compiled Hardhat artifacts to `packages/x402-sdk/src/abi.ts`
+5. **Rebuilds** the x402-sdk (`dist/`) so all apps pick up the new ABI immediately
+6. **Mints** 100 USDT0 to the agent wallet (testnet only, if `AGENT_PRIVATE_KEY` is set)
+7. **Validates** that all addresses are consistent across `.env`, `apps/web/.env.local`, and the deploy manifest
 
-Also set the same values for the frontend:
-```
-NEXT_PUBLIC_USDT0_ADDRESS=0x<same-as-USDT0_ADDRESS>
-NEXT_PUBLIC_X402_CONTRACT_ADDRESS=0x<same-as-X402_CONTRACT_ADDRESS>
-NEXT_PUBLIC_X402_CONTRACT_ADDRESS_TESTNET=0x<same-address>
-```
+No manual address copying needed. The deploy output shows exactly what was deployed and where.
 
-> **Multi-network:** The backend supports both testnet and mainnet simultaneously. The frontend sends an `x-chain-id` header to select which network to use per request. Set `_TESTNET` and `_MAINNET` suffixed vars for each network's contracts. See [Environment Variables Reference](#environment-variables-reference).
+> **Multi-network:** The backend supports both chains simultaneously. The frontend sends an `x-chain-id` header to select which network to use per request. Deploy to each network separately. The `_TESTNET` and `_MAINNET` suffixed env vars coexist in the same `.env` file. See [Environment Variables Reference](#environment-variables-reference).
+
+> **Re-deploying:** Just run `npm run deploy:full` again. It overwrites the previous addresses everywhere. Restart dev servers after re-deploying.
 
 ### Step 6: (Optional) Set up additional env vars
 
@@ -269,6 +270,8 @@ npm run dev:web
 ├── monitoring/          # Prometheus + Grafana configs & dashboards
 ├── postman/             # Postman API collection for manual testing
 ├── scripts/
+│   ├── post-deploy.sh   # Auto-wires addresses, ABI, SDK after contract deploy
+│   ├── mint-agent-tokens.ts # Mints test USDT0 to agent wallet (testnet)
 │   └── preflight.sh     # Pre-deployment config verification
 ├── docker-compose.yml
 └── .github/workflows/   # CI pipeline
@@ -318,9 +321,10 @@ Facilitator contract that settles ERC-3009 payments. The `settle()` function:
 - `release()` is permissionless (anyone can call it after escrow expires)
 - `refund()` is seller-only during the escrow period, enabling buyer protection
 
-Deploy both contracts:
+Deploy contracts and wire everything (addresses, ABI, SDK, agent tokens):
 ```bash
-npm run contracts:deploy
+npm run deploy:full          # testnet
+npm run deploy:full:mainnet  # mainnet
 ```
 
 Run contract tests:
@@ -574,7 +578,7 @@ All acceptance criteria from the [bounty spec](spec.md) are met:
 | Agent errors on startup | Verify `OPENAI_API_KEY` and `AGENT_PRIVATE_KEY` are set in `.env`. |
 | "Cannot find module" errors | Run `npm install` from the project root — this is an npm workspaces monorepo. |
 | Port already in use | Another process is using port 4000 or 3000. Kill it or change `API_PORT` in `.env`. |
-| Wrong token address on paywall | Click the network badge in the header to switch between testnet/mainnet. The backend routes to the correct contracts per chain automatically. |
+| Wrong token address on paywall | Re-run `npm run deploy:full` to re-sync all addresses, then restart dev servers. If you edited `apps/web/.env.local` manually, delete it and re-run `deploy:full` (it's auto-generated). |
 | Escrow release fails | The smart contract enforces a configurable escrow period (default 24h, can be 0-30 days per endpoint). There is no admin bypass. Wait for the period to expire, then release from the Admin page. |
 
 Run the **preflight check** to diagnose configuration issues:
