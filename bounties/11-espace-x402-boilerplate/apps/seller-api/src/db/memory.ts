@@ -24,6 +24,7 @@ store.endpoint_pricing.set("/data/instant", {
   token: "0x0000000000000000000000000000000000000000",
   description: "Instant lookup (no escrow)",
   tier: "premium",
+  escrow_duration: 0,
 });
 store.endpoint_pricing.set("/data/premium", {
   endpoint: "/data/premium",
@@ -31,6 +32,7 @@ store.endpoint_pricing.set("/data/premium", {
   token: "0x0000000000000000000000000000000000000000",
   description: "Premium data feed",
   tier: "premium",
+  escrow_duration: 3600,
 });
 store.endpoint_pricing.set("/compute/simulate", {
   endpoint: "/compute/simulate",
@@ -38,6 +40,7 @@ store.endpoint_pricing.set("/compute/simulate", {
   token: "0x0000000000000000000000000000000000000000",
   description: "Compute simulation",
   tier: "premium",
+  escrow_duration: 86400,
 });
 
 export function getStore() {

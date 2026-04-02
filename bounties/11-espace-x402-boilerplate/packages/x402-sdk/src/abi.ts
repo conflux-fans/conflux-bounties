@@ -130,6 +130,12 @@ export const verifierAbi = [
         "internalType": "bytes32",
         "name": "nonce",
         "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "chainId",
+        "type": "uint256"
       }
     ],
     "name": "PaymentReceived",
@@ -207,6 +213,19 @@ export const verifierAbi = [
     "anonymous": false,
     "inputs": [
       {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "newFee",
+        "type": "uint256"
+      }
+    ],
+    "name": "RegistrationFeeUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
         "indexed": true,
         "internalType": "address",
         "name": "wallet",
@@ -230,6 +249,12 @@ export const verifierAbi = [
         "internalType": "string",
         "name": "apiBaseUrl",
         "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "escrowDuration",
+        "type": "uint256"
       }
     ],
     "name": "SellerRegistered",
@@ -249,9 +274,34 @@ export const verifierAbi = [
         "internalType": "string",
         "name": "apiBaseUrl",
         "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "escrowDuration",
+        "type": "uint256"
       }
     ],
     "name": "SellerUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "activationTime",
+        "type": "uint256"
+      }
+    ],
+    "name": "TokenProposed",
     "type": "event"
   },
   {
@@ -275,7 +325,20 @@ export const verifierAbi = [
   },
   {
     "inputs": [],
-    "name": "ESCROW_DURATION",
+    "name": "DEFAULT_ESCROW_DURATION",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "DEPLOYMENT_CHAIN_ID",
     "outputs": [
       {
         "internalType": "uint256",
@@ -301,7 +364,59 @@ export const verifierAbi = [
   },
   {
     "inputs": [],
+    "name": "MAX_ESCROW_DURATION",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_ESCROW_DURATION",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "TOKEN_ACTIVATION_DELAY",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "acceptOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "activateToken",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -613,6 +728,38 @@ export const verifierAbi = [
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "pendingTokenActivation",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "proposeToken",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "string",
         "name": "apiBaseUrl",
         "type": "string"
@@ -630,7 +777,7 @@ export const verifierAbi = [
     ],
     "name": "reactivateSeller",
     "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "payable",
     "type": "function"
   },
   {
@@ -684,7 +831,20 @@ export const verifierAbi = [
     ],
     "name": "registerSeller",
     "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "registrationFee",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -696,6 +856,37 @@ export const verifierAbi = [
       }
     ],
     "name": "release",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "invoiceId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      }
+    ],
+    "name": "releaseTo",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "removeToken",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -773,17 +964,12 @@ export const verifierAbi = [
   {
     "inputs": [
       {
-        "internalType": "address",
-        "name": "token",
-        "type": "address"
-      },
-      {
-        "internalType": "bool",
-        "name": "supported",
-        "type": "bool"
+        "internalType": "uint256",
+        "name": "fee",
+        "type": "uint256"
       }
     ],
-    "name": "setSupportedToken",
+    "name": "setRegistrationFee",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -829,6 +1015,11 @@ export const verifierAbi = [
         "internalType": "string",
         "name": "endpoint",
         "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "escrowDuration",
+        "type": "uint256"
       },
       {
         "internalType": "uint8",
@@ -957,6 +1148,13 @@ export const verifierAbi = [
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "withdrawFees",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   }
 ] as const;

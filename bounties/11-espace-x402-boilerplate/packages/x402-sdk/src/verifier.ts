@@ -67,7 +67,8 @@ export class X402Verifier {
     tokenAddress: `0x${string}`,
     endpoint: string,
     auth: SignedAuthorization,
-    recipient?: `0x${string}`
+    recipient?: `0x${string}`,
+    escrowDuration?: number
   ): Promise<Hash> {
     if (!this.walletClient || !this.account) {
       throw new Error("Facilitator wallet not configured — provide facilitatorKey");
@@ -85,6 +86,7 @@ export class X402Verifier {
       BigInt(auth.validBefore),
       auth.nonce as `0x${string}`,
       endpoint,
+      BigInt(escrowDuration ?? 0),
       auth.v,
       auth.r as `0x${string}`,
       auth.s as `0x${string}`,
@@ -122,9 +124,9 @@ export class X402Verifier {
    */
   deriveInvoiceId(
     from: `0x${string}`,
+    recipient: `0x${string}` | undefined,
     token: `0x${string}`,
-    nonce: `0x${string}`,
-    recipient?: `0x${string}`
+    nonce: `0x${string}`
   ): `0x${string}` {
     const recipientAddr = recipient ?? this.account?.address;
     if (!recipientAddr) throw new Error("Recipient address required");
@@ -221,9 +223,9 @@ export class X402Verifier {
 
   /**
    * Update seller profile.
-   * @param escrowDurationSeconds 0 = keep current value.
+   * @param escrowDurationSeconds Pass 2^256-1 (type(uint256).max) to keep current value. 0 = instant release.
    */
-  async updateSeller(apiBaseUrl: string, description: string, escrowDurationSeconds: bigint = BigInt(0)): Promise<Hash> {
+  async updateSeller(apiBaseUrl: string, description: string, escrowDurationSeconds: bigint = 2n ** 256n - 1n): Promise<Hash> {
     if (!this.walletClient || !this.account) {
       throw new Error("Facilitator wallet not configured — provide facilitatorKey");
     }

@@ -32,8 +32,13 @@ import {
 import { verifyTypedData } from "viem";
 
 import { X402Verifier, confluxESpaceTestnet, confluxESpaceMainnet } from "@x402/sdk";
+// Dynamically imported after dotenv loads (ES module hoisting would otherwise
+// cause config.ts to read process.env before dotenv runs).
+const { adminAuthRoutes } = await import("./routes/adminAuth.js");
+const { adminAuth } = await import("./middleware/adminAuth.js");
 
 const SERVICE_WALLET = process.env.SERVICE_WALLET_ADDRESS || "0xFF1D35e04d9F336283046fA464Be11B675B0e5aF";
+const INSTANT_SELLER_WALLET = process.env.SERVICE_WALLET_ADDRESS_2 || SERVICE_WALLET;
 const FACILITATOR_KEY = process.env.SERVICE_WALLET_KEY as `0x${string}` | undefined;
 
 // ─── Per-network configuration ───
@@ -119,7 +124,14 @@ function withEscrowTiming(inv: Record<string, unknown>) {
 }
 
 const app = new Hono();
-app.use("*", cors());
+app.use("*", cors({
+  origin: "*",
+  exposeHeaders: [
+    "x-payment-amount", "x-payment-token", "x-payment-nonce", "x-payment-expiry",
+    "x-payment-endpoint", "x-payment-invoice-id", "x-payment-description",
+    "x-payment-recipient", "x-payment-verifier",
+  ],
+}));
 
 // ─── In-memory state ───
 const invoices = new Map<string, Record<string, unknown>>();
@@ -129,10 +141,10 @@ const CNHT0_ADDRESS = NETWORKS[1030]?.cnht0Address || "0x70bfd7f7eadf9b982754127
 /** Build pricing map for a given chain */
 function getPricing(chainId: number) {
   const net = NETWORKS[chainId] || NETWORKS[DEFAULT_CHAIN_ID];
-  return new Map<string, { price: string; token: string; description: string; tier: string }>([
-    ["/data/instant", { price: "10000", token: net.tokenAddress, description: "Quick price and network lookup (0.01 USDT0)", tier: "premium" }],
-    ["/data/premium", { price: "100000", token: net.tokenAddress, description: "Premium data feed (0.10 USDT0)", tier: "premium" }],
-    ["/compute/simulate", { price: "500000", token: net.tokenAddress, description: "Compute simulation (0.50 USDT0)", tier: "premium" }],
+  return new Map<string, { price: string; token: string; description: string; tier: string; escrow_duration: number }>([
+    ["/data/instant", { price: "10000", token: net.tokenAddress, description: "Quick price and network lookup (0.01 USDT0)", tier: "premium", escrow_duration: 0 }],
+    ["/data/premium", { price: "100000", token: net.tokenAddress, description: "Premium data feed (0.10 USDT0)", tier: "premium", escrow_duration: 3600 }],
+    ["/compute/simulate", { price: "500000", token: net.tokenAddress, description: "Compute simulation (0.50 USDT0)", tier: "premium", escrow_duration: 86400 }],
   ]);
 }
 
@@ -342,15 +354,18 @@ function paywall(endpoint: string, c: any) {
   const nonce = newInvoiceId;
   const expiry = Math.floor(Date.now() / 1000) + INVOICE_EXPIRY_SECONDS;
 
+  const invoiceRecipient = endpoint === "/data/instant" ? INSTANT_SELLER_WALLET : SERVICE_WALLET;
+
   invoices.set(newInvoiceId, {
     id: newInvoiceId, endpoint, amount: invoiceAmount, token: invoiceToken,
     chainId, nonce, expiry, status: "pending", created_at: new Date().toISOString(),
+    recipient: invoiceRecipient,
+    escrow_duration: p.escrow_duration,
   });
-
   const headers = buildPaymentHeaders({
     amount: invoiceAmount, token: invoiceToken, nonce, expiry, endpoint,
     invoiceId: newInvoiceId, description: p.description,
-    recipient: SERVICE_WALLET,
+    recipient: invoiceRecipient,
     verifierAddress: net.contractAddress,
   });
 
@@ -438,23 +453,24 @@ app.post("/invoices/:id/verify", async (c) => {
   if (!inv) return c.json({ error: "Invoice not found" }, 404);
   if (inv.status === "paid") return c.json({ invoice: inv, verified: true });
 
-  // Check on-chain if verifier is available
-  if (verifier) {
+  // Check on-chain if verifier is available and we have the on-chain invoiceId
+  const onChainId = inv.onchain_invoice_id as `0x${string}` | undefined;
+  if (verifier && onChainId) {
     try {
       const { valid, payer } = await verifier.isInvoicePaid(
-        id,
+        onChainId,
         BigInt(inv.amount as string),
         inv.endpoint as string
       );
       if (valid) {
         const paidAt = new Date().toISOString();
-        // Read actual on-chain releaseAt instead of assuming 24h
+        // Read actual on-chain releaseAt (reflects seller's registered escrow duration)
         let releaseAt: string;
         try {
-          const payment = await invoiceVerifier.getPayment(id);
+          const payment = await verifier.getPayment(onChainId);
           releaseAt = new Date(Number(payment.releaseAt) * 1000).toISOString();
         } catch {
-          releaseAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          releaseAt = paidAt;
         }
         inv.status = "paid";
         inv.payer = payer;
@@ -550,31 +566,73 @@ app.post("/invoices/:id/settle", async (c) => {
   try {
     console.log(`  Settling invoice ${id} on chain ${invoiceChainId} (recipient: ${auth.to})...`);
     const invoiceTokenAddr = (inv.token as string) || TOKEN_ADDRESS;
+    // Pass per-endpoint escrow duration to the contract (0 = use seller default)
+    const escrowDuration = inv.escrow_duration != null ? Number(inv.escrow_duration) : undefined;
     const txHash = await invoiceVerifier.settle(
       id,
       invoiceTokenAddr as `0x${string}`,
       inv.endpoint as string,
-      auth
+      auth,
+      undefined,
+      escrowDuration
     );
     console.log(`  Waiting for tx confirmation: ${txHash}`);
     await invoiceVerifier.waitForTx(txHash);
 
     const paidAt = new Date().toISOString();
-    // Read actual on-chain releaseAt instead of assuming 24h
+
+    // Derive on-chain invoiceId: keccak256(from, recipient, token, nonce)
+    // recipient = msg.sender of settle() = the facilitator wallet (NOT auth.to which is the contract)
+    const onChainInvoiceId = invoiceVerifier.deriveInvoiceId(
+      auth.from as `0x${string}`,
+      invoiceVerifier.account!.address,
+      (inv.token as string || TOKEN_ADDRESS) as `0x${string}`,
+      auth.nonce as `0x${string}`,
+    );
+
+    // Read actual on-chain releaseAt (reflects per-settlement escrow duration)
     let releaseAt: string;
     try {
-      const payment = await invoiceVerifier.getPayment(id);
+      const payment = await invoiceVerifier.getPayment(onChainInvoiceId);
       releaseAt = new Date(Number(payment.releaseAt) * 1000).toISOString();
     } catch {
-      releaseAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      // Fallback: use endpoint escrow_duration
+      const fallbackMs = (escrowDuration ?? 0) * 1000;
+      releaseAt = new Date(Date.now() + fallbackMs).toISOString();
     }
     inv.status = "paid";
     inv.payer = auth.from;
     inv.tx_hash = txHash;
     inv.paid_at = paidAt;
     inv.release_at = releaseAt;
+    inv.onchain_invoice_id = onChainInvoiceId;
 
     console.log(`  Invoice ${id} settled on chain ${invoiceChainId}. Tx: ${txHash}`);
+
+    // Schedule auto-release based on actual escrow period
+    const releaseDelayMs = new Date(releaseAt).getTime() - Date.now();
+    const releaseBufferMs = 5_000; // 5s buffer to ensure on-chain period has passed
+    const totalDelayMs = Math.max(0, releaseDelayMs + releaseBufferMs);
+
+    setTimeout(async () => {
+      try {
+        console.log(`  Auto-releasing invoice ${id} (on-chain id: ${onChainInvoiceId})...`);
+        const releaseTx = await invoiceVerifier.release(onChainInvoiceId);
+        await invoiceVerifier.waitForTx(releaseTx);
+        inv.status = "released";
+        console.log(`  Auto-released invoice ${id}. Tx: ${releaseTx}`);
+      } catch (releaseErr) {
+        const msg = String(releaseErr);
+        if (msg.includes("already released")) {
+          inv.status = "released";
+          console.log(`  Invoice ${id} already released on-chain.`);
+        } else {
+          console.warn(`  Auto-release failed for ${id}: ${msg.slice(0, 150)}`);
+        }
+      }
+    }, totalDelayMs);
+    console.log(`  Scheduled auto-release for ${id} in ${(totalDelayMs / 1000).toFixed(0)}s`);
+
     return c.json({ invoice: inv, verified: true, txHash });
   } catch (err) {
     console.error(`  Settlement failed for invoice ${id}:`, err);
@@ -591,9 +649,14 @@ app.post("/invoices/:id/release", async (c) => {
 
   const invChainId = (inv.chainId as number) || DEFAULT_CHAIN_ID;
   const releaseVerifier = verifiers[invChainId] || verifier;
-  if (releaseVerifier) {
+  // Use the stored on-chain invoiceId (set during settlement).
+  // The on-chain recipient is always the facilitator wallet (msg.sender of settle()),
+  // NOT inv.recipient which may differ (e.g. INSTANT_SELLER_WALLET).
+  const onChainInvoiceId = inv.onchain_invoice_id as `0x${string}` | undefined;
+  if (releaseVerifier && onChainInvoiceId) {
     try {
-      const txHash = await releaseVerifier.release(id);
+      console.log(`  Releasing invoice ${id} (on-chain id: ${onChainInvoiceId})...`);
+      const txHash = await releaseVerifier.release(onChainInvoiceId);
       await releaseVerifier.waitForTx(txHash);
       inv.status = "released";
       inv.tx_hash = txHash;
@@ -603,10 +666,12 @@ app.post("/invoices/:id/release", async (c) => {
       const errMsg = String(err);
       console.log(`  On-chain release failed: ${errMsg.slice(0, 120)}`);
       if (errMsg.includes("escrow period active")) {
-        return c.json({ error: "Escrow period still active. The 24h grace period must pass before funds can be released on-chain.", details: errMsg.slice(0, 200) }, 400);
+        return c.json({ error: "Escrow period still active. The escrow grace period must pass before funds can be released on-chain.", details: errMsg.slice(0, 200) }, 400);
       }
       return c.json({ error: "On-chain release failed", details: errMsg.slice(0, 200) }, 500);
     }
+  } else if (releaseVerifier && !onChainInvoiceId) {
+    return c.json({ error: "Missing on-chain invoice ID — invoice may not have been settled on-chain" }, 400);
   } else {
     // No verifier configured — simulate release for local dev only
     inv.status = "released";
@@ -622,8 +687,9 @@ app.post("/invoices/:id/dev-pay", async (c) => {
   if (!inv) return c.json({ error: "Invoice not found" }, 404);
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
   const paidAt = new Date().toISOString();
-  // Use instant release (no escrow) for /data/instant, 24h for others
-  const escrowMs = (inv.endpoint as string) === "/data/instant" ? 0 : 24 * 60 * 60 * 1000;
+  // Use per-endpoint escrow_duration from invoice (set during paywall)
+  const escrowSec = inv.escrow_duration != null ? Number(inv.escrow_duration) : 0;
+  const escrowMs = escrowSec * 1000;
   const releaseAt = new Date(Date.now() + escrowMs).toISOString();
   inv.status = "paid";
   inv.payer = (body as Record<string, unknown>).payer as string || agentClient?.address || SERVICE_WALLET;
@@ -667,19 +733,26 @@ app.get("/sellers/:address", async (c) => {
   }
 });
 
-// ─── Admin ───
+// ─── Admin Auth (public — issues session tokens) ───
+app.route("/admin/auth", adminAuthRoutes);
+
+// ─── Admin (protected) ───
+app.use("/admin/*", adminAuth);
+
 app.get("/admin/pricing", (c) => {
-  return c.json({ pricing: Array.from(pricing.entries()).map(([endpoint, p]) => ({ endpoint, ...p })) });
+  return c.json({ pricing: Array.from(pricing.entries()).map(([endpoint, p]) => ({ endpoint, ...p, escrow_duration: p.escrow_duration ?? 0 })) });
 });
 
 app.put("/admin/pricing/:endpoint{.+}", async (c) => {
   const endpoint = "/" + c.req.param("endpoint");
   const body = await c.req.json();
+  const escrowDuration = body.escrow_duration != null ? Number(body.escrow_duration) : 0;
   pricing.set(endpoint, {
     price: body.price, token: body.token || TOKEN_ADDRESS,
     description: body.description || "", tier: body.tier || "premium",
+    escrow_duration: escrowDuration,
   });
-  return c.json({ success: true, endpoint, price: body.price });
+  return c.json({ success: true, endpoint, price: body.price, escrow_duration: escrowDuration });
 });
 
 app.get("/admin/analytics", (c) => {
@@ -808,7 +881,7 @@ app.post("/admin/agent/:address/resume", (c) => {
 // authorizations and pay for premium endpoints. Otherwise runs in read-only mode.
 
 const AGENT_PRIVATE_KEY = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined;
-const AGENT_CONTRACT = process.env.X402_CONTRACT_ADDRESS as `0x${string}` | undefined;
+const AGENT_CONTRACT = CONTRACT_ADDRESS || process.env.X402_CONTRACT_ADDRESS as `0x${string}` | undefined;
 const AGENT_RPC = process.env.CONFLUX_RPC_URL || "https://evmtestnet.confluxrpc.com";
 const AGENT_SPEND_CAP = process.env.AGENT_SPEND_CAP || "10000000";   // 10 USDT0
 const AGENT_DAILY_BUDGET = process.env.AGENT_DAILY_BUDGET || "5000000"; // 5 USDT0
@@ -1358,9 +1431,10 @@ app.post("/disputes/:id/resolve", async (c) => {
   if (resolution === "approved") {
     const inv = invoices.get(dispute.invoice_id as string);
     if (!inv || inv.status !== "paid") return c.json({ error: "Invoice is no longer in paid status" }, 400);
-    if (verifier) {
+    const onChainId = inv.onchain_invoice_id as `0x${string}` | undefined;
+    if (verifier && onChainId) {
       try {
-        const txHash = await verifier.refund(dispute.invoice_id as string);
+        const txHash = await verifier.refund(onChainId);
         await verifier.waitForTx(txHash);
         refundTxHash = txHash;
         inv.status = "refunded";

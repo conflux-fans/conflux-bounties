@@ -9,15 +9,15 @@ import { scheduleInvoiceExpiry } from "../jobs/invoiceExpiry.js";
 import { invoicesCreatedTotal } from "../lib/metrics.js";
 
 // In-memory pricing cache with 60s TTL — avoids DB hit on every request
-const pricingCache = new Map<string, { price: string; token: string; description: string; expiresAt: number }>();
+const pricingCache = new Map<string, { price: string; token: string; description: string; escrow_duration: number | null; expiresAt: number }>();
 const PRICING_CACHE_TTL_MS = 60_000;
 
-async function getPricing(endpoint: string): Promise<{ price: string; token: string; description: string } | undefined> {
+async function getPricing(endpoint: string): Promise<{ price: string; token: string; description: string; escrow_duration: number | null } | undefined> {
   const cached = pricingCache.get(endpoint);
   if (cached && Date.now() < cached.expiresAt) return cached;
 
   const [row] = await sql`
-    SELECT price, token, description FROM endpoint_pricing WHERE endpoint = ${endpoint}
+    SELECT price, token, description, escrow_duration FROM endpoint_pricing WHERE endpoint = ${endpoint}
   `;
   if (row) {
     pricingCache.set(endpoint, { ...row, expiresAt: Date.now() + PRICING_CACHE_TTL_MS });
@@ -79,8 +79,8 @@ export const x402Paywall = createMiddleware(async (c, next) => {
   const expiry = Math.floor(Date.now() / 1000) + INVOICE_EXPIRY_SECONDS;
 
   await sql`
-    INSERT INTO invoices (id, endpoint, amount, token, nonce, expiry, status)
-    VALUES (${newInvoiceId}, ${endpoint}, ${pricing.price}, ${pricing.token}, ${nonce}, ${expiry}, 'pending')
+    INSERT INTO invoices (id, endpoint, amount, token, nonce, expiry, status, escrow_duration)
+    VALUES (${newInvoiceId}, ${endpoint}, ${pricing.price}, ${pricing.token}, ${nonce}, ${expiry}, 'pending', ${pricing.escrow_duration})
   `;
   invoicesCreatedTotal.inc({ endpoint });
 

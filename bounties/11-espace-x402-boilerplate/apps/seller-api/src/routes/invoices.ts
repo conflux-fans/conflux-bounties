@@ -154,11 +154,15 @@ invoiceRoutes.post("/:id/settle", settleRateLimit, async (c) => {
 
   try {
     // Submit on-chain via facilitator wallet
+    // Pass per-endpoint escrow duration (0 = use seller default on-chain)
+    const escrowDuration = invoice.escrow_duration != null ? Number(invoice.escrow_duration) : undefined;
     const txHash = await verifier.settle(
       id,
       config.tokenAddress,
       invoice.endpoint,
-      auth
+      auth,
+      undefined,
+      escrowDuration
     );
 
     // Wait for on-chain confirmation before updating DB

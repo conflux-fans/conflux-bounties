@@ -53,8 +53,6 @@ export function startEscrowReleaseWorker() {
     },
     {
       connection: { url: config.redisUrl },
-      attempts: 3,
-      backoff: { type: "exponential", delay: 10_000 },
     }
   );
 
@@ -68,6 +66,10 @@ export function startEscrowReleaseWorker() {
 export async function scheduleEscrowRelease(invoiceId: string, delayMs: number) {
   // Add a small buffer (5s) to ensure the on-chain escrow period has definitely passed
   const delay = Math.max(0, delayMs + 5_000);
-  await escrowReleaseQueue.add("release", { invoiceId }, { delay });
+  await escrowReleaseQueue.add("release", { invoiceId }, {
+    delay,
+    attempts: 3,
+    backoff: { type: "exponential", delay: 10_000 },
+  });
   logger.info({ invoiceId, delayMs: delay }, "Scheduled escrow auto-release");
 }

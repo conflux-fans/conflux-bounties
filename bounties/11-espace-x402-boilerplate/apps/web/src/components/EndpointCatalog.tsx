@@ -17,6 +17,7 @@ interface EndpointDef {
   icon: typeof Unlock;
   color: string;
   escrowHours: number | null; // null = free endpoint, 0 = no escrow, >0 = hours
+  sellerOverride?: string; // optional per-endpoint seller address
 }
 
 const DEFAULT_ENDPOINTS: EndpointDef[] = [
@@ -39,6 +40,7 @@ const DEFAULT_ENDPOINTS: EndpointDef[] = [
     icon: BoltIcon,
     color: "cyan",
     escrowHours: 0,
+    sellerOverride: process.env.NEXT_PUBLIC_SERVICE_WALLET_ADDRESS_2 || undefined,
   },
   {
     path: "/data/premium",
@@ -169,7 +171,7 @@ export function EndpointCatalog() {
     <>
       {/* Top row: free + instant (wider cards) */}
       <div className="grid gap-4 md:grid-cols-2 mb-4">
-        {endpoints.filter(ep => ep.tier === "free" || ep.escrowHours === 0).map((ep) => {
+        {endpoints.filter(ep => ep.tier === "free").map((ep) => {
           const Icon = ep.icon;
           const isFree = ep.tier === "free";
           const isLocked = ep.tier === "premium" && !isConnected;
@@ -268,7 +270,7 @@ export function EndpointCatalog() {
 
       {/* Bottom row: premium endpoints (with full payment details) */}
       <div className="grid gap-4 md:grid-cols-2">
-        {endpoints.filter(ep => ep.tier === "premium" && ep.escrowHours !== 0).map((ep) => {
+        {endpoints.filter(ep => ep.tier === "premium").map((ep) => {
           const Icon = ep.icon;
           const isLocked = !isConnected;
           const colors = COLOR_MAP[ep.color] || COLOR_MAP.amber;
@@ -325,10 +327,10 @@ export function EndpointCatalog() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500">Seller</span>
-                  {sellerAddress ? (
-                    <a href={`${explorerUrl}/address/${sellerAddress}`} target="_blank" rel="noopener noreferrer"
+                  {(ep.sellerOverride || sellerAddress) ? (
+                    <a href={`${explorerUrl}/address/${ep.sellerOverride || sellerAddress}`} target="_blank" rel="noopener noreferrer"
                       className="text-conflux-teal hover:underline font-mono flex items-center gap-0.5">
-                      {truncateAddr(sellerAddress)} <ExternalLink size={8} />
+                      {truncateAddr(ep.sellerOverride || sellerAddress)} <ExternalLink size={8} />
                     </a>
                   ) : <span className="text-gray-500">—</span>}
                 </div>

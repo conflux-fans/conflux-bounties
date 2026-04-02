@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   tx_hash TEXT,
   onchain_invoice_id TEXT UNIQUE,
   release_at TIMESTAMPTZ,
+  escrow_duration INTEGER DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -39,7 +40,8 @@ CREATE TABLE IF NOT EXISTS endpoint_pricing (
   price TEXT NOT NULL,
   token TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  tier TEXT NOT NULL DEFAULT 'premium'
+  tier TEXT NOT NULL DEFAULT 'premium',
+  escrow_duration INTEGER DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS agent_sessions (
@@ -92,9 +94,9 @@ CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);
 -- Seed default pricing (USDT0 uses 6 decimals: 1 USDT0 = 1_000_000)
 -- Token address '0x00..00' is a placeholder — updated automatically on first
 -- API start via USDT0_ADDRESS env var, or manually via PUT /admin/pricing.
-INSERT INTO endpoint_pricing (endpoint, price, token, description, tier)
+INSERT INTO endpoint_pricing (endpoint, price, token, description, tier, escrow_duration)
 VALUES
-  ('/data/instant', '10000', '0x0000000000000000000000000000000000000000', 'Instant lookup (no escrow)', 'premium'),
-  ('/data/premium', '100000', '0x0000000000000000000000000000000000000000', 'Premium data feed', 'premium'),
-  ('/compute/simulate', '500000', '0x0000000000000000000000000000000000000000', 'Compute simulation', 'premium')
+  ('/data/instant', '10000', '0x0000000000000000000000000000000000000000', 'Instant lookup (no escrow)', 'premium', 0),
+  ('/data/premium', '100000', '0x0000000000000000000000000000000000000000', 'Premium data feed', 'premium', 3600),
+  ('/compute/simulate', '500000', '0x0000000000000000000000000000000000000000', 'Compute simulation', 'premium', 86400)
 ON CONFLICT (endpoint) DO NOTHING;

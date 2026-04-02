@@ -64,10 +64,16 @@ export function verifySessionToken(token: string): string | null {
 }
 
 /**
- * Check if a wallet address is the authorized seller/admin.
+ * Check if a wallet address is an authorized seller/admin.
+ * Both registered seller wallets can access the admin dashboard.
  */
 function isAdminWallet(wallet: string): boolean {
-  return wallet.toLowerCase() === config.serviceWalletAddress.toLowerCase();
+  const addr = wallet.toLowerCase();
+  const admins = [
+    config.serviceWalletAddress,
+    process.env.SERVICE_WALLET_ADDRESS_2,
+  ].filter(Boolean).map(a => a!.toLowerCase());
+  return admins.includes(addr);
 }
 
 // ─── Routes ───

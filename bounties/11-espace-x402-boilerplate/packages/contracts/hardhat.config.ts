@@ -16,17 +16,17 @@ const config: HardhatUserConfig = {
   },
   networks: {
     confluxTestnet: {
-      url: process.env.CONFLUX_RPC_URL || "https://evmtestnet.confluxrpc.com",
+      url: "https://evmtestnet.confluxrpc.com",
       chainId: 71,
-      accounts: process.env.SERVICE_WALLET_KEY
-        ? [process.env.SERVICE_WALLET_KEY]
+      accounts: process.env.DEPLOYER_WALLET_KEY
+        ? [process.env.DEPLOYER_WALLET_KEY]
         : [],
     },
     confluxMainnet: {
-      url: process.env.CONFLUX_RPC_URL || "https://evm.confluxrpc.com",
+      url: "https://evm.confluxrpc.com",
       chainId: 1030,
-      accounts: process.env.SERVICE_WALLET_KEY
-        ? [process.env.SERVICE_WALLET_KEY]
+      accounts: process.env.DEPLOYER_WALLET_KEY
+        ? [process.env.DEPLOYER_WALLET_KEY]
         : [],
     },
   },

@@ -190,7 +190,8 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
 
     /**
      * @notice Reactivate a previously deactivated seller registration.
-     * @param escrowDuration Escrow hold period in seconds (0 = keep previous value).
+     * @param escrowDuration Escrow hold period in seconds. Pass type(uint256).max to keep previous value.
+     *        0 = immediate release (no escrow).
      */
     function reactivateSeller(string calldata apiBaseUrl, string calldata description, uint256 escrowDuration) external payable {
         require(bytes(apiBaseUrl).length > 0, "X402: empty API URL");
@@ -201,7 +202,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         sellers[msg.sender].apiBaseUrl = apiBaseUrl;
         sellers[msg.sender].description = description;
         sellers[msg.sender].active = true;
-        if (escrowDuration > 0) {
+        if (escrowDuration != type(uint256).max) {
             sellers[msg.sender].escrowDuration = _validateEscrowDuration(escrowDuration);
         }
 
@@ -213,7 +214,8 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
 
     /**
      * @notice Update seller profile. Only the seller themselves.
-     * @param escrowDuration Escrow hold period in seconds (0 = keep current value).
+     * @param escrowDuration Escrow hold period in seconds. Pass type(uint256).max to keep current value.
+     *        0 = immediate release (no escrow).
      */
     function updateSeller(string calldata apiBaseUrl, string calldata description, uint256 escrowDuration) external {
         require(sellers[msg.sender].active, "X402: not registered");
@@ -221,7 +223,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
 
         sellers[msg.sender].apiBaseUrl = apiBaseUrl;
         sellers[msg.sender].description = description;
-        if (escrowDuration > 0) {
+        if (escrowDuration != type(uint256).max) {
             sellers[msg.sender].escrowDuration = _validateEscrowDuration(escrowDuration);
         }
 
@@ -266,21 +268,23 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
      *         payment to the authorization's unique parameters and preventing
      *         misattribution or front-running by other sellers.
      *
-     *         Funds are held in escrow for ESCROW_DURATION. During this period, the
-     *         seller can issue a refund. After the period, anyone can call release()
+     *         Funds are held in escrow for the specified duration. During this period,
+     *         the seller can issue a refund. After the period, anyone can call release()
      *         to transfer funds to the seller.
      *
-     * @param token       ERC-3009 token address
-     * @param from        The payer (signer of the authorization)
-     * @param recipient   The payment recipient, must equal msg.sender
-     * @param value       Nominal amount in token units
-     * @param validAfter  ERC-3009 validity start timestamp
-     * @param validBefore ERC-3009 validity end timestamp (must be within MAX_AUTH_DURATION)
-     * @param nonce       ERC-3009 authorization nonce (bytes32)
-     * @param endpoint    API endpoint this payment covers
-     * @param v           Signature v
-     * @param r           Signature r
-     * @param s           Signature s
+     * @param token           ERC-3009 token address
+     * @param from            The payer (signer of the authorization)
+     * @param recipient       The payment recipient, must equal msg.sender
+     * @param value           Nominal amount in token units
+     * @param validAfter      ERC-3009 validity start timestamp
+     * @param validBefore     ERC-3009 validity end timestamp (must be within MAX_AUTH_DURATION)
+     * @param nonce           ERC-3009 authorization nonce (bytes32)
+     * @param endpoint        API endpoint this payment covers
+     * @param escrowDuration  Per-settlement escrow override in seconds.
+     *                        Pass 0 to use the seller's registered default.
+     * @param v               Signature v
+     * @param r               Signature r
+     * @param s               Signature s
      */
     function settle(
         address token,
@@ -291,6 +295,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         uint256 validBefore,
         bytes32 nonce,
         string calldata endpoint,
+        uint256 escrowDuration,
         uint8 v,
         bytes32 r,
         bytes32 s
@@ -333,6 +338,11 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         uint256 received = IERC20(token).balanceOf(address(this)) - balBefore;
         require(received > 0, "X402: no tokens received");
 
+        // Determine escrow period: per-settlement override or seller's default
+        uint256 escrow = escrowDuration > 0
+            ? _validateEscrowDuration(escrowDuration)
+            : sellers[recipient].escrowDuration;
+
         // Store payment in escrow (funds remain in contract until released)
         payments[invoiceId] = Payment({
             payer: from,
@@ -343,7 +353,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
             nonce: nonce,
             expiry: validBefore,
             paidAt: block.timestamp,
-            releaseAt: block.timestamp + sellers[recipient].escrowDuration,
+            releaseAt: block.timestamp + escrow,
             released: false,
             refunded: false
         });

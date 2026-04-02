@@ -294,9 +294,11 @@ See [`docs/sequence.md`](docs/sequence.md) for detailed Mermaid sequence diagram
 | Token | Peg | Testnet Address | Mainnet Address | Standard |
 |-------|-----|-----------------|-----------------|----------|
 | **USDT0** | USD | `0x91de8a02c4E85b4b7cAB8c13F71a5272E4EF9b11` (MockUSDT0) | `0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff` | OFT (LayerZero) |
-| **CNHT0** | CNH | — | `0x70bfd7f7eadf9b9827541272589a6b2bb760ae2e` | OFT (LayerZero) |
+| **CNHT0 (AxCNH)** | CNH | — | `0x70bfd7f7eadf9b9827541272589a6b2bb760ae2e` | OFT (LayerZero) |
 
 Both tokens support ERC-3009 (`transferWithAuthorization` / `receiveWithAuthorization`) for gasless payment signing on Conflux eSpace. For testnet development (chain 71), a `MockUSDT0` contract is provided with the same ERC-3009 interface and a public `mint()` function. On mainnet (chain 1030), both USDT0 and CNHT0 are available as payment options.
+
+> **Note:** The CNHT0 token's on-chain EIP-712 domain name is `"AxCNH"` (version `"2"`). The SDK auto-detects the correct domain via `getERC3009Domain()`.
 
 ---
 
@@ -435,7 +437,6 @@ See [`.env.example`](.env.example) for a copy-pasteable template with comments.
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `CHAIN_ID` | Default chain ID (`71` = testnet, `1030` = mainnet) | `71` |
 | `NETWORK` | `testnet` or `mainnet` | `testnet` |
 | `SERVICE_WALLET_KEY` | Facilitator private key (pays gas for settlements) | `0x...` |
 | `SERVICE_WALLET_ADDRESS` | Facilitator public address | `0x...` |
@@ -482,6 +483,7 @@ The backend supports both chains simultaneously. The frontend sends `x-chain-id`
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `CHAIN_ID` | Fallback chain ID when requests omit `x-chain-id` header (frontend always sends it) | `71` |
 | `API_PORT` | Seller API port | `4000` |
 | `ADMIN_API_KEY` | API key for programmatic admin access (dashboard uses wallet auth) | _(empty)_ |
 | `DATABASE_URL` | PostgreSQL connection string (production mode only) | _(in-memory in dev)_ |

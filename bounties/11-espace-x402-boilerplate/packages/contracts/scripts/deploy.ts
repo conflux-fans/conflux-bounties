@@ -15,7 +15,18 @@ async function main() {
   console.log(`Deploying to ${isMainnet ? "MAINNET (chain 1030)" : "TESTNET (chain 71)"}`);
   console.log("Deploying with account:", deployer.address);
 
-  const serviceWallet = process.env.SERVICE_WALLET_ADDRESS || deployer.address;
+  // Seller wallets — read from env
+  const seller1 = process.env.SERVICE_WALLET_ADDRESS;
+  const seller1Key = process.env.SERVICE_WALLET_KEY;
+  const seller2 = process.env.SERVICE_WALLET_ADDRESS_2;
+  const seller2Key = process.env.SERVICE_WALLET_KEY_2;
+
+  if (!seller1 || !seller1Key) {
+    throw new Error("SERVICE_WALLET_ADDRESS and SERVICE_WALLET_KEY must be set in .env");
+  }
+  if (!seller2 || !seller2Key) {
+    throw new Error("SERVICE_WALLET_ADDRESS_2 and SERVICE_WALLET_KEY_2 must be set in .env");
+  }
 
   let tokenAddress: string;
   let tokenAddresses: string[];
@@ -46,30 +57,47 @@ async function main() {
   const verifierAddress = await verifier.getAddress();
   console.log("X402PaymentVerifier deployed to:", verifierAddress);
 
-  // Register the deployer as the first seller
-  console.log("\n--- Registering deployer as seller ---");
+  // Register both sellers with 0 escrow (instant release)
   const apiBaseUrl = process.env.API_BASE_URL || "http://localhost:4000";
-  const tx = await verifier.registerSeller(apiBaseUrl, "x402 Seller API boilerplate", 0);
-  await tx.wait();
-  console.log("Seller registered:", serviceWallet, "->", apiBaseUrl);
+
+  // --- Seller 1 ---
+  console.log(`\n--- Registering Seller 1: ${seller1} (0 escrow) ---`);
+  const seller1Wallet = new ethers.Wallet(seller1Key, ethers.provider);
+  const verifierAsSeller1 = verifier.connect(seller1Wallet);
+  const tx1 = await verifierAsSeller1.registerSeller(apiBaseUrl, "x402 Seller (primary)", 0);
+  await tx1.wait();
+  console.log("Seller 1 registered:", seller1);
+
+  // --- Seller 2 ---
+  console.log(`\n--- Registering Seller 2: ${seller2} (0 escrow) ---`);
+  const seller2Wallet = new ethers.Wallet(seller2Key, ethers.provider);
+  const verifierAsSeller2 = verifier.connect(seller2Wallet);
+  const tx2 = await verifierAsSeller2.registerSeller(apiBaseUrl, "x402 Seller (instant)", 0);
+  await tx2.wait();
+  console.log("Seller 2 registered:", seller2);
 
   // Summary
-  console.log("\n--- Deployment Summary ---");
+  console.log("\n═══════════════════════════════════════");
+  console.log("          DEPLOYMENT SUMMARY           ");
+  console.log("═══════════════════════════════════════");
   console.log("Network:              ", isMainnet ? "Conflux eSpace Mainnet (1030)" : "Conflux eSpace Testnet (71)");
   if (!isMainnet) {
     console.log("MockUSDT0:            ", tokenAddress);
   }
   console.log("X402PaymentVerifier:  ", verifierAddress);
   console.log("Supported tokens:     ", tokenAddresses.join(", "));
-  console.log("Deployer/Seller:      ", deployer.address);
-  console.log("Service wallet:       ", serviceWallet);
-  console.log("\nAdd to your .env:");
-  if (!isMainnet) {
-    console.log(`USDT0_ADDRESS=${tokenAddress}`);
-  }
-  console.log(`X402_CONTRACT_ADDRESS=${verifierAddress}`);
+  console.log("Deployer:             ", deployer.address);
+  console.log("Seller 1:             ", seller1, "(0 escrow)");
+  console.log("Seller 2:             ", seller2, "(0 escrow)");
+  console.log("\nUpdate your .env:");
   if (isMainnet) {
-    console.log(`NETWORK=mainnet`);
+    console.log(`X402_CONTRACT_ADDRESS_MAINNET=${verifierAddress}`);
+    console.log(`NEXT_PUBLIC_X402_CONTRACT_ADDRESS_MAINNET=${verifierAddress}`);
+  } else {
+    console.log(`USDT0_ADDRESS_TESTNET=${tokenAddress}`);
+    console.log(`NEXT_PUBLIC_USDT0_ADDRESS=${tokenAddress}`);
+    console.log(`X402_CONTRACT_ADDRESS_TESTNET=${verifierAddress}`);
+    console.log(`NEXT_PUBLIC_X402_CONTRACT_ADDRESS_TESTNET=${verifierAddress}`);
   }
 }
 

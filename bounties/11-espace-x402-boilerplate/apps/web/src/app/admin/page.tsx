@@ -4,14 +4,17 @@ import { useState, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSignMessage } from "wagmi";
 import { ConnectKitButton } from "connectkit";
-import { apiFetch, getAdminSession, setAdminSession, requestAdminChallenge, verifyAdminSignature } from "@/lib/api";
+import { apiFetch, getAdminSession, setAdminSession, onSessionChange, requestAdminChallenge, verifyAdminSignature } from "@/lib/api";
 import { BarChart3, Key, DollarSign, Download, Plus, Bot, Pause, Play, MessageSquare, Fuel, AlertTriangle, ShieldAlert, Check, X, Copy, ToggleLeft, ToggleRight, Lock, Unlock, Timer, ExternalLink, Wallet } from "lucide-react";
 import AgentChat from "@/components/AgentChat";
 import { Navbar } from "@/components/Navbar";
 import { fetchDisputes, resolveDispute, adminHeaders } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
-const SERVICE_WALLET = process.env.NEXT_PUBLIC_SERVICE_WALLET_ADDRESS?.toLowerCase() || "";
+const ADMIN_WALLETS = [
+  process.env.NEXT_PUBLIC_SERVICE_WALLET_ADDRESS,
+  process.env.NEXT_PUBLIC_SERVICE_WALLET_ADDRESS_2,
+].filter(Boolean).map(a => a!.toLowerCase());
 
 function AdminAuthGate({ children }: { children: React.ReactNode }) {
   const { address, isConnected } = useAccount();
@@ -20,8 +23,8 @@ function AdminAuthGate({ children }: { children: React.ReactNode }) {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Check if connected wallet is the seller/admin wallet
-  const isAdminWallet = isConnected && address?.toLowerCase() === SERVICE_WALLET;
+  // Check if connected wallet is a seller/admin wallet
+  const isAdminWallet = isConnected && !!address && ADMIN_WALLETS.includes(address.toLowerCase());
 
   // Clear session when wallet disconnects or changes
   useEffect(() => {
@@ -144,7 +147,7 @@ export default function AdminPage() {
 
   // ─── Add Endpoint form state ───
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newEndpoint, setNewEndpoint] = useState({ path: "", price: "", description: "" });
+  const [newEndpoint, setNewEndpoint] = useState({ path: "", price: "", description: "", escrow_duration: "" });
   const [addStatus, setAddStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   // ─── Dispute resolution state ───
@@ -191,33 +194,45 @@ export default function AdminPage() {
     setResolveLoading(null);
   };
 
+  // ─── Reactive session tracking ───
+  const [sessionVersion, setSessionVersion] = useState(0);
+  useEffect(() => {
+    return onSessionChange(() => setSessionVersion((v) => v + 1));
+  }, []);
+  const hasSession = !!getAdminSession();
+
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
     queryKey: ["analytics"],
     queryFn: () => apiFetch("/admin/analytics"),
     refetchInterval: 15000,
+    enabled: hasSession,
   });
 
   const { data: pricing, isLoading: pricingLoading } = useQuery({
     queryKey: ["pricing"],
     queryFn: () => apiFetch("/admin/pricing"),
+    enabled: hasSession,
   });
 
   const { data: facilitator } = useQuery({
     queryKey: ["facilitator"],
     queryFn: () => apiFetch("/admin/facilitator"),
     refetchInterval: 30000,
+    enabled: hasSession,
   });
 
   const { data: disputesData } = useQuery({
     queryKey: ["disputes"],
     queryFn: () => fetchDisputes(),
     refetchInterval: 15000,
+    enabled: hasSession,
   });
 
   const { data: apiKeysData } = useQuery({
     queryKey: ["apiKeys"],
     queryFn: () => apiFetch("/admin/keys"),
     refetchInterval: 15000,
+    enabled: hasSession,
   });
 
   // ─── Escrow management ───
@@ -229,6 +244,7 @@ export default function AdminPage() {
     queryKey: ["escrow-invoices"],
     queryFn: () => apiFetch<{ invoices: Array<{ id: string; endpoint: string; amount: string; token?: string; payer?: string; tx_hash?: string; created_at: string; paid_at?: string; release_at?: string; escrow_remaining_ms?: number; escrow_released?: boolean }> }>("/invoices?status=paid"),
     refetchInterval: 15000,
+    enabled: hasSession,
   });
 
   const escrowInvoices = (escrowData?.data as { invoices: Array<{ id: string; endpoint: string; amount: string; token?: string; payer?: string; tx_hash?: string; created_at: string; paid_at?: string; release_at?: string; escrow_remaining_ms?: number; escrow_released?: boolean }> })?.invoices ?? [];
@@ -321,6 +337,7 @@ export default function AdminPage() {
     price: string;
     tier: string;
     description: string;
+    escrow_duration?: number;
   }> })?.pricing ?? [];
 
   const statCards = [
@@ -544,7 +561,7 @@ export default function AdminPage() {
           {/* Add endpoint form */}
           {showAddForm && (
             <div className="rounded-2xl border border-conflux-teal/20 bg-[#0F2744]/60 p-5 mb-5">
-              <div className="grid gap-4 md:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-5">
                 <div>
                   <label className="text-xs text-gray-400 block mb-1">Endpoint Path</label>
                   <input
@@ -577,6 +594,19 @@ export default function AdminPage() {
                     className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-conflux-teal"
                   />
                 </div>
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Escrow (seconds)</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    step="1"
+                    min="0"
+                    max="2592000"
+                    value={newEndpoint.escrow_duration}
+                    onChange={(e) => setNewEndpoint({ ...newEndpoint, escrow_duration: e.target.value })}
+                    className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-conflux-teal"
+                  />
+                </div>
                 <div className="flex items-end">
                   <button
                     onClick={async () => {
@@ -591,16 +621,17 @@ export default function AdminPage() {
                         return;
                       }
                       const priceUnits = String(Math.round(priceNum * 1e6));
+                      const escrowSec = newEndpoint.escrow_duration ? parseInt(newEndpoint.escrow_duration) : 0;
                       try {
                         const res = await fetch(`${API_BASE}/admin/pricing${newEndpoint.path}`, {
                           method: "PUT",
                           headers: { "Content-Type": "application/json", ...adminHeaders() },
-                          body: JSON.stringify({ price: priceUnits, description: newEndpoint.description, tier: "premium" }),
+                          body: JSON.stringify({ price: priceUnits, description: newEndpoint.description, tier: "premium", escrow_duration: escrowSec }),
                         });
                         const data = await res.json();
                         if (data.success) {
                           setAddStatus({ type: "success", msg: `Added ${newEndpoint.path}` });
-                          setNewEndpoint({ path: "", price: "", description: "" });
+                          setNewEndpoint({ path: "", price: "", description: "", escrow_duration: "" });
                           queryClient.invalidateQueries({ queryKey: ["pricing"] });
                         } else {
                           setAddStatus({ type: "error", msg: data.error || "Failed" });
@@ -628,6 +659,7 @@ export default function AdminPage() {
                 <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-700/50">
                   <th className="text-left py-3 px-5 font-medium">Endpoint</th>
                   <th className="text-right py-3 px-5 font-medium">Price</th>
+                  <th className="text-right py-3 px-5 font-medium">Escrow</th>
                   <th className="text-left py-3 px-5 font-medium">Tier</th>
                   <th className="text-left py-3 px-5 font-medium">Description</th>
                 </tr>
@@ -639,6 +671,7 @@ export default function AdminPage() {
                       <tr key={i}>
                         <td className="py-3 px-5"><div className="h-5 w-32 bg-gray-700/50 rounded animate-pulse" /></td>
                         <td className="py-3 px-5 text-right"><div className="h-5 w-16 bg-gray-700/50 rounded animate-pulse ml-auto" /></td>
+                        <td className="py-3 px-5 text-right"><div className="h-5 w-12 bg-gray-700/50 rounded animate-pulse ml-auto" /></td>
                         <td className="py-3 px-5"><div className="h-5 w-16 bg-gray-700/50 rounded-full animate-pulse" /></td>
                         <td className="py-3 px-5"><div className="h-5 w-48 bg-gray-700/50 rounded animate-pulse" /></td>
                       </tr>
@@ -655,6 +688,13 @@ export default function AdminPage() {
                     <td className="py-3 px-5 text-right">
                       <span className="font-mono text-white">{(Number(p.price) / 1e6).toFixed(2)}</span>
                       <span className="text-gray-500 text-xs ml-1">USDT0</span>
+                    </td>
+                    <td className="py-3 px-5 text-right">
+                      <span className="font-mono text-white">
+                        {p.escrow_duration === 0 ? "instant" : p.escrow_duration != null
+                          ? p.escrow_duration >= 3600 ? `${(p.escrow_duration / 3600).toFixed(0)}h` : `${p.escrow_duration}s`
+                          : "default"}
+                      </span>
                     </td>
                     <td className="py-3 px-5">
                       <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
@@ -1143,7 +1183,7 @@ export default function AdminPage() {
             {!releaseModal.escrowReleased && (
               <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 rounded-lg p-2.5 mb-4">
                 <AlertTriangle size={14} className="flex-shrink-0" />
-                <span>The 24h escrow period has not passed yet. The smart contract will reject this release. There is no admin bypass for the escrow period, it protects buyers.</span>
+                <span>The escrow period has not passed yet. The smart contract will reject this release. There is no admin bypass for the escrow period, it protects buyers.</span>
               </div>
             )}
 

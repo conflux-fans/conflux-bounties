@@ -178,9 +178,9 @@ export function PaywallModal({ challenge, onClose, onPaymentComplete, onTokenSwi
               <span className="font-mono text-xl font-bold text-conflux-teal">{tokenAmount} <span className="text-sm font-normal text-gray-400">{symbol}</span></span>
             </div>
             {challenge.description && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Description</span>
-                <span className="text-gray-300">{challenge.description}</span>
+              <div className="flex justify-between text-sm gap-4">
+                <span className="text-gray-400 shrink-0">Description</span>
+                <span className="text-gray-300 text-right">{challenge.description}</span>
               </div>
             )}
             <div className="flex justify-between text-sm">

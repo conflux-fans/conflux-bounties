@@ -168,6 +168,7 @@ export function TransactionHistory() {
           <thead>
             <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-gray-700/50">
               <th className="text-left py-3 px-5 font-medium">Status</th>
+              <th className="text-left py-3 px-5 font-medium">Invoice ID</th>
               <th className="text-left py-3 px-5 font-medium">Endpoint</th>
               <th className="text-right py-3 px-5 font-medium">Amount</th>
               <th className="text-left py-3 px-5 font-medium">Payer</th>
@@ -182,6 +183,9 @@ export function TransactionHistory() {
               <React.Fragment key={inv.id}>
                 <tr className="hover:bg-white/[0.02] transition-colors">
                   <td className="py-3 px-5">{statusBadge(inv.status)}</td>
+                  <td className="py-3 px-5 font-mono text-xs text-gray-400" title={inv.id}>
+                    {inv.id.slice(0, 8)}...
+                  </td>
                   <td className="py-3 px-5">
                     <code className="text-xs font-mono text-gray-300 bg-gray-800/50 px-2 py-0.5 rounded">
                       {inv.endpoint}
@@ -231,7 +235,7 @@ export function TransactionHistory() {
                 </tr>
                 {disputeTarget === inv.id && (
                   <tr>
-                    <td colSpan={8} className="px-5 py-3 bg-amber-500/5 border-t border-amber-500/20">
+                    <td colSpan={9} className="px-5 py-3 bg-amber-500/5 border-t border-amber-500/20">
                       <div className="flex items-center gap-3">
                         <textarea
                           placeholder="Describe the reason for your dispute..."

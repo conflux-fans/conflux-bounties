@@ -18,7 +18,7 @@ const verifierAbi = [
       { name: "escrowDuration", type: "uint256" },
     ],
     outputs: [],
-    stateMutability: "nonpayable",
+    stateMutability: "payable",
   },
   {
     type: "function",
@@ -29,7 +29,7 @@ const verifierAbi = [
       { name: "escrowDuration", type: "uint256" },
     ],
     outputs: [],
-    stateMutability: "nonpayable",
+    stateMutability: "payable",
   },
   {
     type: "function",
@@ -53,7 +53,6 @@ const verifierAbi = [
     type: "function",
     name: "settle",
     inputs: [
-      { name: "invoiceId", type: "bytes32" },
       { name: "token", type: "address" },
       { name: "from", type: "address" },
       { name: "recipient", type: "address" },
@@ -62,6 +61,7 @@ const verifierAbi = [
       { name: "validBefore", type: "uint256" },
       { name: "nonce", type: "bytes32" },
       { name: "endpoint", type: "string" },
+      { name: "escrowDuration", type: "uint256" },
       { name: "v", type: "uint8" },
       { name: "r", type: "bytes32" },
       { name: "s", type: "bytes32" },
@@ -95,11 +95,43 @@ const verifierAbi = [
   },
   {
     type: "function",
-    name: "setSupportedToken",
-    inputs: [
-      { name: "token", type: "address" },
-      { name: "supported", type: "bool" },
-    ],
+    name: "proposeToken",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "activateToken",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "setRegistrationFee",
+    inputs: [{ name: "fee", type: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "withdrawFees",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "transferOwnership",
+    inputs: [{ name: "newOwner", type: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "acceptOwnership",
+    inputs: [],
     outputs: [],
     stateMutability: "nonpayable",
   },
@@ -209,7 +241,21 @@ const verifierAbi = [
   },
   {
     type: "function",
-    name: "ESCROW_DURATION",
+    name: "DEFAULT_ESCROW_DURATION",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "MAX_ESCROW_DURATION",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "MIN_ESCROW_DURATION",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
@@ -219,6 +265,53 @@ const verifierAbi = [
     name: "MAX_AUTH_DURATION",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "DEPLOYMENT_CHAIN_ID",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "TOKEN_ACTIVATION_DELAY",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "pendingOwner",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "pendingTokenActivation",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "payments",
+    inputs: [{ name: "", type: "bytes32" }],
+    outputs: [
+      { name: "payer", type: "address" },
+      { name: "recipient", type: "address" },
+      { name: "amount", type: "uint256" },
+      { name: "token", type: "address" },
+      { name: "endpoint", type: "string" },
+      { name: "nonce", type: "bytes32" },
+      { name: "expiry", type: "uint256" },
+      { name: "paidAt", type: "uint256" },
+      { name: "releaseAt", type: "uint256" },
+      { name: "released", type: "bool" },
+      { name: "refunded", type: "bool" },
+    ],
     stateMutability: "view",
   },
   {
@@ -413,7 +506,6 @@ export default function RegisterPage() {
   const setTokenWrite = useWriteContract();
   const setTokenReceipt = useWaitForTransactionReceipt({ hash: setTokenWrite.data });
   const [tokenAddr, setTokenAddr] = useState("");
-  const [tokenSupported, setTokenSupported] = useState(true);
 
   // ─── Read query state ───
   const [getSellerAddr, setGetSellerAddr] = useState("");
@@ -888,18 +980,18 @@ export default function RegisterPage() {
                   <FormField label="refundRecipient" placeholder="0x..." value={refundToAddr} onChange={setRefundToAddr} required hint="Alternative address to receive the refund" />
                 </WriteCard>
 
-                {/* setSupportedToken */}
+                {/* proposeToken */}
                 <WriteCard
-                  title="setSupportedToken"
-                  description="Owner only — Adds or removes tokens from the settlement whitelist"
+                  title="proposeToken"
+                  description="Owner only — Propose a new token for settlement (requires activation delay)"
                   icon={<Coins size={16} />}
                   onSubmit={() => {
                     if (!contractAddress || !tokenAddr.trim()) return;
                     setTokenWrite.writeContract({
                       address: contractAddress,
                       abi: verifierAbi,
-                      functionName: "setSupportedToken",
-                      args: [tokenAddr.trim() as `0x${string}`, tokenSupported],
+                      functionName: "proposeToken",
+                      args: [tokenAddr.trim() as `0x${string}`],
                     });
                   }}
                   isPending={setTokenWrite.isPending}
@@ -910,25 +1002,30 @@ export default function RegisterPage() {
                   error={setTokenWrite.error?.message}
                 >
                   <FormField label="token" placeholder="0x..." value={tokenAddr} onChange={setTokenAddr} required hint="ERC-3009 token contract address" />
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1.5">supported</label>
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setTokenSupported(true)}
-                        className={`px-3 py-1.5 rounded-lg text-sm ${tokenSupported ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-white/5 text-gray-400 border border-gray-700/50"}`}
-                      >
-                        true
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTokenSupported(false)}
-                        className={`px-3 py-1.5 rounded-lg text-sm ${!tokenSupported ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-white/5 text-gray-400 border border-gray-700/50"}`}
-                      >
-                        false
-                      </button>
-                    </div>
-                  </div>
+                </WriteCard>
+
+                {/* activateToken */}
+                <WriteCard
+                  title="activateToken"
+                  description="Owner only — Activate a previously proposed token after the delay period"
+                  icon={<Coins size={16} />}
+                  onSubmit={() => {
+                    if (!contractAddress || !tokenAddr.trim()) return;
+                    setTokenWrite.writeContract({
+                      address: contractAddress,
+                      abi: verifierAbi,
+                      functionName: "activateToken",
+                      args: [tokenAddr.trim() as `0x${string}`],
+                    });
+                  }}
+                  isPending={setTokenWrite.isPending}
+                  isConfirming={setTokenReceipt.isLoading}
+                  isSuccess={setTokenReceipt.isSuccess}
+                  txHash={setTokenWrite.data}
+                  explorerUrl={explorerUrl}
+                  error={setTokenWrite.error?.message}
+                >
+                  <FormField label="token" placeholder="0x..." value={tokenAddr} onChange={setTokenAddr} required hint="ERC-3009 token contract address" />
                 </WriteCard>
               </div>
             )}
@@ -1028,12 +1125,12 @@ export default function RegisterPage() {
                   <FormField label="token address" placeholder="0x..." value={checkTokenAddr} onChange={setCheckTokenAddr} required />
                 </ReadCard>
 
-                {/* ESCROW_DURATION */}
+                {/* DEFAULT_ESCROW_DURATION */}
                 <ReadCard
-                  title="ESCROW_DURATION"
-                  description="Time (seconds) funds are held in escrow before release"
+                  title="DEFAULT_ESCROW_DURATION"
+                  description="Default time (seconds) funds are held in escrow before release"
                   icon={<Shield size={16} />}
-                  onQuery={() => readContract("ESCROW_DURATION", [], setEscrowDurationResult, setEscrowDurationError, setEscrowDurationLoading)}
+                  onQuery={() => readContract("DEFAULT_ESCROW_DURATION", [], setEscrowDurationResult, setEscrowDurationError, setEscrowDurationLoading)}
                   isLoading={escrowDurationLoading}
                   result={escrowDurationResult}
                   error={escrowDurationError}

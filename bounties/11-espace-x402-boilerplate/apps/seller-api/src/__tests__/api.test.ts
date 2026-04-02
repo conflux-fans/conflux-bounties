@@ -974,3 +974,161 @@ describe("E2E Flow: 402 → settle → data", () => {
     expect(mockVerifier.settle).not.toHaveBeenCalled();
   });
 });
+
+// ─── Per-Endpoint Escrow Duration Tests ───
+
+describe("Per-Endpoint Escrow Duration", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetSettleRateLimit();
+    mockRows.pricing = [];
+    mockRows.invoices = [];
+    app = createTestApp();
+  });
+
+  it("should include escrow_duration in 402 challenge invoice", async () => {
+    mockRows.pricing = [{ price: "100000", token: "0xMockToken", description: "Premium", escrow_duration: 3600 }];
+
+    const res = await app.request("/data/premium");
+    expect(res.status).toBe(402);
+
+    // The invoice INSERT should include escrow_duration in the template
+    const insertCall = sqlMock.mock.calls.find(
+      (call: unknown[]) => String((call as unknown[])[0]).includes("INSERT INTO invoices")
+    );
+    expect(insertCall).toBeDefined();
+    // Tagged template: first arg is TemplateStringsArray, rest are values
+    const templateStr = String(insertCall![0]);
+    expect(templateStr).toContain("escrow_duration");
+  });
+
+  it("should pass escrow_duration from invoice to verifier.settle()", async () => {
+    // Set up a paid invoice with escrow_duration
+    const invoiceId = "test-escrow-settle-id";
+    const nonce = hashNonce(invoiceId);
+    mockRows.invoices = [{
+      id: invoiceId,
+      endpoint: "/data/premium",
+      amount: "100000",
+      token: "0xMockToken",
+      nonce,
+      expiry: Math.floor(Date.now() / 1000) + 600,
+      status: "pending",
+      escrow_duration: 3600,
+    }];
+    mockVerifier.settle.mockResolvedValue("0xsettletxhash");
+    mockVerifier.waitForTx.mockResolvedValue({});
+
+    const res = await app.request(`/invoices/${invoiceId}/settle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        authorization: {
+          from: "0x1111111111111111111111111111111111111111",
+          to: mockConfig.contractAddress,
+          value: "100000",
+          validAfter: 0,
+          validBefore: 9999999999,
+          nonce,
+          v: 27, r: "0x1234", s: "0x5678",
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    // Verify settle was called with escrowDuration=3600
+    expect(mockVerifier.settle).toHaveBeenCalledWith(
+      invoiceId,
+      mockConfig.tokenAddress,
+      "/data/premium",
+      expect.any(Object),
+      undefined,
+      3600
+    );
+  });
+
+  it("should accept escrow_duration in PUT /admin/pricing", async () => {
+    const res = await app.request("/admin/pricing/data/premium", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-key": "test-admin-key-123",
+      },
+      body: JSON.stringify({
+        price: "200000",
+        escrow_duration: 7200,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(body.escrow_duration).toBe(7200);
+  });
+
+  it("should reject invalid escrow_duration in PUT /admin/pricing", async () => {
+    const res = await app.request("/admin/pricing/data/premium", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-key": "test-admin-key-123",
+      },
+      body: JSON.stringify({
+        price: "200000",
+        escrow_duration: 3000000, // > 30 days
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.error).toContain("escrow_duration");
+  });
+
+  it("should schedule auto-release with correct delay after settlement", async () => {
+    const invoiceId = "test-autorelease-id";
+    const nonce = hashNonce(invoiceId);
+    const releaseAtTimestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+    mockRows.invoices = [{
+      id: invoiceId,
+      endpoint: "/data/premium",
+      amount: "100000",
+      token: "0xMockToken",
+      nonce,
+      expiry: Math.floor(Date.now() / 1000) + 600,
+      status: "pending",
+      escrow_duration: 3600,
+    }];
+    mockVerifier.settle.mockResolvedValue("0xsettletxhash");
+    mockVerifier.waitForTx.mockResolvedValue({});
+    mockVerifier.getPayment.mockResolvedValue({ releaseAt: BigInt(releaseAtTimestamp) });
+
+    const res = await app.request(`/invoices/${invoiceId}/settle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        authorization: {
+          from: "0x1111111111111111111111111111111111111111",
+          to: mockConfig.contractAddress,
+          value: "100000",
+          validAfter: 0,
+          validBefore: 9999999999,
+          nonce,
+          v: 27, r: "0x1234", s: "0x5678",
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    // Verify escrow release was scheduled
+    expect(mockScheduleEscrowRelease).toHaveBeenCalledWith(
+      invoiceId,
+      expect.any(Number)
+    );
+    // The delay should be approximately 3600*1000 ms (within a few seconds)
+    const actualDelay = mockScheduleEscrowRelease.mock.calls[0][1];
+    expect(actualDelay).toBeGreaterThan(3500000);
+    expect(actualDelay).toBeLessThan(3700000);
+  });
+});

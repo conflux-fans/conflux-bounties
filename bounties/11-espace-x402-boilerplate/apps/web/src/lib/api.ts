@@ -2,13 +2,21 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
 
 // ─── Wallet-based admin session ───
 let adminSessionToken: string | null = null;
+const sessionListeners = new Set<() => void>();
 
 export function setAdminSession(token: string | null) {
   adminSessionToken = token;
+  sessionListeners.forEach((fn) => fn());
 }
 
 export function getAdminSession(): string | null {
   return adminSessionToken;
+}
+
+/** Subscribe to session changes — returns an unsubscribe function */
+export function onSessionChange(fn: () => void): () => void {
+  sessionListeners.add(fn);
+  return () => sessionListeners.delete(fn);
 }
 
 export function adminHeaders(): Record<string, string> {

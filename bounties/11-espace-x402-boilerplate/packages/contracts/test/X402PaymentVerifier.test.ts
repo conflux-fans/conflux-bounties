@@ -81,7 +81,8 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
   async function settlePayment(
     sellerSigner: any,
     nonceSuffix: string = "001",
-    ep: string = endpoint
+    ep: string = endpoint,
+    escrowDuration: number = 0 // 0 = use seller default
   ) {
     await ensureSellerRegistered(sellerSigner);
 
@@ -99,7 +100,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
 
     await verifier.connect(sellerSigner).settle(
       tokenAddr, payer.address, sellerSigner.address, amount,
-      validAfter, validBefore, nonce, ep, v, r, s
+      validAfter, validBefore, nonce, ep, escrowDuration, v, r, s
     );
 
     const invoiceId = deriveInvoiceId(payer.address, sellerSigner.address, tokenAddr, nonce);
@@ -145,7 +146,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     await expect(
       verifier.connect(seller1).settle(
         tokenAddr, payer.address, seller1.address, amount,
-        validAfter, validBefore, nonce, endpoint, v, r, s
+        validAfter, validBefore, nonce, endpoint, 0, v, r, s
       )
     )
       .to.emit(verifier, "PaymentReceived")
@@ -174,7 +175,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     const sig1 = await signReceiveAuthorization(payer, tokenAddr, verifierAddr, amount, 0, validBefore, nonce1);
     await verifier.connect(seller1).settle(
       tokenAddr, payer.address, seller1.address, amount,
-      0, validBefore, nonce1, endpoint, sig1.v, sig1.r, sig1.s
+      0, validBefore, nonce1, endpoint, 0, sig1.v, sig1.r, sig1.s
     );
 
     // Payment to seller2
@@ -182,7 +183,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     const sig2 = await signReceiveAuthorization(payer, tokenAddr, verifierAddr, amount, 0, validBefore, nonce2);
     await verifier.connect(seller2).settle(
       tokenAddr, payer.address, seller2.address, amount,
-      0, validBefore, nonce2, "/compute/simulate", sig2.v, sig2.r, sig2.s
+      0, validBefore, nonce2, "/compute/simulate", 0, sig2.v, sig2.r, sig2.s
     );
 
     // Both payments held in escrow
@@ -212,7 +213,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     await expect(
       verifier.connect(seller1).settle(
         tokenAddr, payer.address, seller1.address, amount,
-        validAfter, validBefore, nonce, endpoint, v, r, s
+        validAfter, validBefore, nonce, endpoint, 0, v, r, s
       )
     ).to.be.revertedWith("X402: authorization expired");
   });
@@ -231,7 +232,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
 
     await verifier.connect(seller1).settle(
       tokenAddr, payer.address, seller1.address, amount,
-      validAfter, validBefore, nonce, endpoint, v, r, s
+      validAfter, validBefore, nonce, endpoint, 0, v, r, s
     );
 
     const sig2 = await signReceiveAuthorization(
@@ -242,7 +243,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     await expect(
       verifier.connect(seller1).settle(
         tokenAddr, payer.address, seller1.address, amount,
-        validAfter, validBefore, nonce, endpoint, sig2.v, sig2.r, sig2.s
+        validAfter, validBefore, nonce, endpoint, 0, sig2.v, sig2.r, sig2.s
       )
     ).to.be.revertedWith("X402: already paid");
   });
@@ -260,7 +261,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     );
     await verifier.connect(seller1).settle(
       tokenAddr, payer.address, seller1.address, amount,
-      validAfter, validBefore, nonce1, endpoint, sig1.v, sig1.r, sig1.s
+      validAfter, validBefore, nonce1, endpoint, 0, sig1.v, sig1.r, sig1.s
     );
 
     // Same nonce → same derived invoiceId → "already paid"
@@ -274,7 +275,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     // so duplicate detection is automatic via nonce reuse
     await verifier.connect(seller1).settle(
       tokenAddr, payer.address, seller1.address, amount,
-      validAfter, validBefore, nonce2, endpoint, sig2.v, sig2.r, sig2.s
+      validAfter, validBefore, nonce2, endpoint, 0, sig2.v, sig2.r, sig2.s
     );
   });
 
@@ -292,7 +293,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     await expect(
       verifier.connect(seller1).settle(
         tokenAddr, payer.address, seller1.address, 0n,
-        validAfter, validBefore, nonce, endpoint, v, r, s
+        validAfter, validBefore, nonce, endpoint, 0, v, r, s
       )
     ).to.be.revertedWith("X402: zero payment");
   });
@@ -306,7 +307,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     await expect(
       verifier.settle(
         tokenAddr, payer.address, ethers.ZeroAddress, amount,
-        validAfter, validBefore, nonce, endpoint, 27, ethers.ZeroHash, ethers.ZeroHash
+        validAfter, validBefore, nonce, endpoint, 0, 27, ethers.ZeroHash, ethers.ZeroHash
       )
     ).to.be.revertedWith("X402: zero recipient");
   });
@@ -325,7 +326,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     await expect(
       verifier.connect(seller1).settle(
         tokenAddr, seller1.address, seller1.address, amount,
-        validAfter, validBefore, nonce, endpoint, v, r, s
+        validAfter, validBefore, nonce, endpoint, 0, v, r, s
       )
     ).to.be.revertedWith("X402: self-payment");
   });
@@ -344,7 +345,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     await expect(
       verifier.connect(seller2).settle(
         tokenAddr, payer.address, seller1.address, amount,
-        validAfter, validBefore, nonce, endpoint, v, r, s
+        validAfter, validBefore, nonce, endpoint, 0, v, r, s
       )
     ).to.be.revertedWith("X402: only recipient can settle");
   });
@@ -365,7 +366,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
     await expect(
       verifier.connect(seller1).settle(
         fakeToken, payer.address, seller1.address, amount,
-        validAfter, validBefore, nonce, endpoint, 27, ethers.ZeroHash, ethers.ZeroHash
+        validAfter, validBefore, nonce, endpoint, 0, 27, ethers.ZeroHash, ethers.ZeroHash
       )
     ).to.be.revertedWith("X402: unsupported token");
   });
@@ -829,7 +830,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
       await expect(
         verifier.connect(seller1).settle(
           tokenAddr, payer.address, seller1.address, amount,
-          validAfter, validBefore, nonce, endpoint, v, r, s
+          validAfter, validBefore, nonce, endpoint, 0, v, r, s
         )
       ).to.be.revertedWith("USDT0: invalid signature");
     });
@@ -873,7 +874,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
       await expect(
         verifier.connect(seller1).settle(
           tokenAddr, payer.address, seller1.address, amount,
-          validAfter, validBefore, nonce, endpoint, v, r, s
+          validAfter, validBefore, nonce, endpoint, 0, v, r, s
         )
       ).to.be.revertedWith("USDT0: invalid signature");
     });
@@ -896,7 +897,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
       await expect(
         verifier.connect(seller1).settle(
           tokenAddr, payer.address, seller1.address, inflatedAmount,
-          validAfter, validBefore, nonce, endpoint, v, r, s
+          validAfter, validBefore, nonce, endpoint, 0, v, r, s
         )
       ).to.be.revertedWith("USDT0: invalid signature");
     });
@@ -916,7 +917,7 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
       await expect(
         verifier.connect(seller1).settle(
           tokenAddr, payer.address, seller1.address, amount,
-          validAfter, validBefore, nonce, endpoint, v, r, s
+          validAfter, validBefore, nonce, endpoint, 0, v, r, s
         )
       ).to.emit(verifier, "PaymentReceived");
 
@@ -924,9 +925,128 @@ describe("X402PaymentVerifier (Multi-Tenant ERC-3009)", function () {
       await expect(
         verifier.connect(seller1).settle(
           tokenAddr, payer.address, seller1.address, amount,
-          validAfter, validBefore, nonce, endpoint, v, r, s
+          validAfter, validBefore, nonce, endpoint, 0, v, r, s
         )
       ).to.be.revertedWith("X402: already paid");
+    });
+  });
+
+  // ─── Per-Settlement Escrow Duration Tests ───
+
+  describe("Per-Settlement Escrow Duration", function () {
+    it("should use per-settlement escrowDuration=0 for instant release", async function () {
+      // Seller registered with 24h default escrow
+      await ensureSellerRegistered(seller1, ESCROW_24H);
+
+      const tokenAddr = await token.getAddress();
+      const verifierAddr = await verifier.getAddress();
+      const nonce = ethers.id("nonce-escrow-instant");
+      const latestBlock = await ethers.provider.getBlock("latest");
+      const validBefore = latestBlock!.timestamp + 300;
+
+      const { v, r, s } = await signReceiveAuthorization(
+        payer, tokenAddr, verifierAddr, amount, 0, validBefore, nonce
+      );
+
+      // Settle with escrowDuration=0 should NOT use seller's 24h default
+      // escrowDuration=0 means "use seller default" in our contract
+      await verifier.connect(seller1).settle(
+        tokenAddr, payer.address, seller1.address, amount,
+        0, validBefore, nonce, endpoint, 0, v, r, s
+      );
+
+      const invoiceId = deriveInvoiceId(payer.address, seller1.address, tokenAddr, nonce);
+      const payment = await verifier.getPayment(invoiceId);
+      // With escrowDuration=0 (seller default), releaseAt = paidAt + seller's 24h
+      expect(payment.releaseAt).to.equal(payment.paidAt + BigInt(ESCROW_24H));
+    });
+
+    it("should override seller default with per-settlement escrowDuration=300 (5 min)", async function () {
+      // Seller registered with 24h default
+      await ensureSellerRegistered(seller1, ESCROW_24H);
+
+      const tokenAddr = await token.getAddress();
+      const verifierAddr = await verifier.getAddress();
+      const nonce = ethers.id("nonce-escrow-5min");
+      const latestBlock = await ethers.provider.getBlock("latest");
+      const validBefore = latestBlock!.timestamp + 300;
+
+      const { v, r, s } = await signReceiveAuthorization(
+        payer, tokenAddr, verifierAddr, amount, 0, validBefore, nonce
+      );
+
+      // Settle with escrowDuration=300 (5 min override, seller has 24h default)
+      await verifier.connect(seller1).settle(
+        tokenAddr, payer.address, seller1.address, amount,
+        0, validBefore, nonce, endpoint, 300, v, r, s
+      );
+
+      const invoiceId = deriveInvoiceId(payer.address, seller1.address, tokenAddr, nonce);
+      const payment = await verifier.getPayment(invoiceId);
+      // releaseAt should be paidAt + 300s, not paidAt + 24h
+      expect(payment.releaseAt).to.equal(payment.paidAt + 300n);
+    });
+
+    it("should revert when escrowDuration exceeds MAX_ESCROW_DURATION", async function () {
+      await ensureSellerRegistered(seller1, ESCROW_24H);
+
+      const tokenAddr = await token.getAddress();
+      const verifierAddr = await verifier.getAddress();
+      const nonce = ethers.id("nonce-escrow-toolong");
+      const latestBlock = await ethers.provider.getBlock("latest");
+      const validBefore = latestBlock!.timestamp + 300;
+
+      const { v, r, s } = await signReceiveAuthorization(
+        payer, tokenAddr, verifierAddr, amount, 0, validBefore, nonce
+      );
+
+      const MAX_ESCROW = 30 * 24 * 60 * 60; // 30 days
+      await expect(
+        verifier.connect(seller1).settle(
+          tokenAddr, payer.address, seller1.address, amount,
+          0, validBefore, nonce, endpoint, MAX_ESCROW + 1, v, r, s
+        )
+      ).to.be.revertedWith("X402: escrow too long");
+    });
+  });
+
+  // ─── updateSeller Sentinel Value Tests ───
+
+  describe("updateSeller Sentinel Value", function () {
+    const SENTINEL = ethers.MaxUint256; // type(uint256).max
+
+    it("should not change escrow when sentinel value is passed", async function () {
+      await ensureSellerRegistered(seller1, ESCROW_24H);
+
+      // Update seller with sentinel — escrow should stay at 24h
+      await verifier.connect(seller1).updateSeller("https://updated.example.com", "Updated Seller", SENTINEL);
+
+      const seller = await verifier.getSeller(seller1.address);
+      expect(seller.escrowDuration).to.equal(BigInt(ESCROW_24H));
+      expect(seller.apiBaseUrl).to.equal("https://updated.example.com");
+    });
+
+    it("should set escrow to 0 (instant release) when 0 is passed explicitly", async function () {
+      await ensureSellerRegistered(seller1, ESCROW_24H);
+
+      // Update seller with 0 — should change escrow to 0 (instant release)
+      await verifier.connect(seller1).updateSeller("https://instant.example.com", "Instant Seller", 0);
+
+      const seller = await verifier.getSeller(seller1.address);
+      expect(seller.escrowDuration).to.equal(0n);
+    });
+
+    it("should not change escrow on reactivateSeller with sentinel", async function () {
+      await ensureSellerRegistered(seller1, ESCROW_24H);
+
+      // Deactivate
+      await verifier.connect(seller1).deactivateSeller(seller1.address);
+
+      // Reactivate with sentinel — should keep original 24h escrow
+      await verifier.connect(seller1).reactivateSeller("https://reactivated.example.com", "Reactivated", SENTINEL);
+
+      const seller = await verifier.getSeller(seller1.address);
+      expect(seller.escrowDuration).to.equal(BigInt(ESCROW_24H));
     });
   });
 });

@@ -25,18 +25,25 @@ adminRoutes.put("/pricing/:endpoint{.+}", async (c) => {
     return c.json({ error: "Invalid price: must be a positive integer string (token smallest units)" }, 400);
   }
 
+  // Validate escrow_duration if provided (0 = instant release, max 30 days = 2592000s)
+  const escrowDuration = body.escrow_duration != null ? Number(body.escrow_duration) : null;
+  if (escrowDuration != null && (isNaN(escrowDuration) || escrowDuration < 0 || escrowDuration > 2592000)) {
+    return c.json({ error: "Invalid escrow_duration: must be 0-2592000 seconds (0 = instant, max 30 days)" }, 400);
+  }
+
   await sql`
-    INSERT INTO endpoint_pricing (endpoint, price, token, description, tier)
-    VALUES (${endpoint}, ${body.price}, ${body.token || config.tokenAddress}, ${body.description || ''}, ${body.tier || 'premium'})
+    INSERT INTO endpoint_pricing (endpoint, price, token, description, tier, escrow_duration)
+    VALUES (${endpoint}, ${body.price}, ${body.token || config.tokenAddress}, ${body.description || ''}, ${body.tier || 'premium'}, ${escrowDuration})
     ON CONFLICT (endpoint) DO UPDATE SET
       price = ${body.price},
       description = COALESCE(${body.description}, endpoint_pricing.description),
       tier = COALESCE(${body.tier}, endpoint_pricing.tier),
-      token = COALESCE(${body.token}, endpoint_pricing.token)
+      token = COALESCE(${body.token}, endpoint_pricing.token),
+      escrow_duration = COALESCE(${escrowDuration}, endpoint_pricing.escrow_duration)
   `;
 
-  audit("update_pricing", "endpoint_pricing", endpoint, { price: body.price, token: body.token, tier: body.tier });
-  return c.json({ success: true, endpoint, price: body.price });
+  audit("update_pricing", "endpoint_pricing", endpoint, { price: body.price, token: body.token, tier: body.tier, escrow_duration: escrowDuration });
+  return c.json({ success: true, endpoint, price: body.price, escrow_duration: escrowDuration });
 });
 
 // Analytics: usage summary
