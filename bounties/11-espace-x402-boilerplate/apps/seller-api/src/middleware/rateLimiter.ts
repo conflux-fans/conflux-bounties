@@ -38,7 +38,7 @@ export const rateLimiter = createMiddleware(async (c, next) => {
   const now = Date.now();
   const windowMs = 60_000;
 
-  let limit = RATE_LIMITS.FREE_RPM;
+  let limit: number = RATE_LIMITS.FREE_RPM;
   let rateLimitKey = `ip:${ip}`;
 
   // If an API key is provided, use its rate limit

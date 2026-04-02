@@ -4,6 +4,10 @@ End-to-end reference for **x402 pay-per-request payments** on Conflux eSpace usi
 
 > **Status:** Complete. All acceptance criteria met. Two security audits completed (0 critical/high findings). Built for Conflux Bounty #11.
 
+### Demo Video
+
+[![Demo Video](https://img.youtube.com/vi/XXDkpPWeWBI/maxresdefault.jpg)](https://youtu.be/XXDkpPWeWBI)
+
 ---
 
 ## Table of Contents

@@ -12,7 +12,9 @@ import { invoicesCreatedTotal } from "../lib/metrics.js";
 const pricingCache = new Map<string, { price: string; token: string; description: string; escrow_duration: number | null; expiresAt: number }>();
 const PRICING_CACHE_TTL_MS = 60_000;
 
-async function getPricing(endpoint: string): Promise<{ price: string; token: string; description: string; escrow_duration: number | null } | undefined> {
+type PricingRow = { price: string; token: string; description: string; escrow_duration: number | null };
+
+async function getPricing(endpoint: string): Promise<PricingRow | undefined> {
   const cached = pricingCache.get(endpoint);
   if (cached && Date.now() < cached.expiresAt) return cached;
 
@@ -20,9 +22,11 @@ async function getPricing(endpoint: string): Promise<{ price: string; token: str
     SELECT price, token, description, escrow_duration FROM endpoint_pricing WHERE endpoint = ${endpoint}
   `;
   if (row) {
-    pricingCache.set(endpoint, { ...row, expiresAt: Date.now() + PRICING_CACHE_TTL_MS });
+    const pricing = row as unknown as PricingRow;
+    pricingCache.set(endpoint, { ...pricing, expiresAt: Date.now() + PRICING_CACHE_TTL_MS });
+    return pricing;
   }
-  return row;
+  return undefined;
 }
 
 export const x402Paywall = createMiddleware(async (c, next) => {
@@ -55,7 +59,7 @@ export const x402Paywall = createMiddleware(async (c, next) => {
     // Check on-chain as fallback
     try {
       const { valid, payer } = await verifier.isInvoicePaid(
-        invoiceId,
+        invoiceId as `0x${string}`,
         BigInt(pricing.price),
         endpoint
       );
