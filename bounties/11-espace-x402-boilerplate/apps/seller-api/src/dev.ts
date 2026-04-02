@@ -636,7 +636,11 @@ app.post("/invoices/:id/dev-pay", async (c) => {
 // ─── Seller Registry (read from contract) ───
 // Serialize BigInt values to strings for JSON
 function serializeSeller(s: any) {
-  return { ...s, registeredAt: String(s.registeredAt) };
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(s)) {
+    out[k] = typeof v === "bigint" ? String(v) : v;
+  }
+  return out;
 }
 
 app.get("/sellers", async (c) => {
