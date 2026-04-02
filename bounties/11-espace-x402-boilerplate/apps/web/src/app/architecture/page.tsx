@@ -464,9 +464,9 @@ export default function ArchitecturePage() {
                 </thead>
                 <tbody className="divide-y divide-gray-800/50 text-gray-400">
                   <tr>
-                    <td className="py-2.5 px-4"><code className="text-white text-xs">settle(invoiceId, token, from, recipient, value, validAfter, validBefore, nonce, endpoint, v, r, s)</code></td>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">settle(token, from, recipient, value, validAfter, validBefore, nonce, endpoint, escrowDuration, v, r, s)</code></td>
                     <td className="py-2.5 px-4 whitespace-nowrap">Facilitator</td>
-                    <td className="py-2.5 px-4">Submits buyer&apos;s ERC-3009 signed auth. Calls <code className="text-conflux-teal text-xs">receiveWithAuthorization</code> on the token, records payment in escrow, prevents replay.</td>
+                    <td className="py-2.5 px-4">Submits buyer&apos;s ERC-3009 signed auth. Calls <code className="text-conflux-teal text-xs">receiveWithAuthorization</code> on the token, records payment in escrow with per-settlement duration override (0 = use seller default), prevents replay.</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">release(invoiceId)</code></td>

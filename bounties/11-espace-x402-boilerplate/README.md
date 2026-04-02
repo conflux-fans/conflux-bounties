@@ -293,7 +293,7 @@ See [`docs/sequence.md`](docs/sequence.md) for detailed Mermaid sequence diagram
 
 | Token | Peg | Testnet Address | Mainnet Address | Standard |
 |-------|-----|-----------------|-----------------|----------|
-| **USDT0** | USD | `0x91de8a02c4E85b4b7cAB8c13F71a5272E4EF9b11` (MockUSDT0) | `0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff` | OFT (LayerZero) |
+| **USDT0** | USD | `0x637B87C22d85Cd5f4C95d09d77c29130947C5A93` (MockUSDT0) | `0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff` | OFT (LayerZero) |
 | **CNHT0 (AxCNH)** | CNH | — | `0x70bfd7f7eadf9b9827541272589a6b2bb760ae2e` | OFT (LayerZero) |
 
 Both tokens support ERC-3009 (`transferWithAuthorization` / `receiveWithAuthorization`) for gasless payment signing on Conflux eSpace. For testnet development (chain 71), a `MockUSDT0` contract is provided with the same ERC-3009 interface and a public `mint()` function. On mainnet (chain 1030), both USDT0 and CNHT0 are available as payment options.
@@ -313,7 +313,8 @@ Facilitator contract that settles ERC-3009 payments. The `settle()` function:
 - Calls `receiveWithAuthorization()` on the token (transfers from buyer → verifier contract)
 - Records invoice metadata (payer, amount, endpoint, nonce)
 - Enforces replay protection via nonce tracking
-- Holds funds in escrow for a **24-hour grace period** before release to the seller
+- Accepts a per-settlement `escrowDuration` parameter (0 = use seller's default, otherwise override for this payment)
+- Holds funds in escrow for a **configurable grace period** (default 24h, min 0s for instant release, max 30 days per seller/endpoint) before release to the seller
 - `release()` is permissionless (anyone can call it after escrow expires)
 - `refund()` is seller-only during the escrow period, enabling buyer protection
 
@@ -366,7 +367,7 @@ npm run contracts:test
 | `/admin/agent/:address/status` | GET | Check agent pause status |
 | `/admin/agent/:address/pause` | POST | Pause an agent's spending |
 | `/admin/agent/:address/resume` | POST | Resume a paused agent |
-| `/admin/invoices/:id/release` | POST | Release escrowed funds after 24h grace period |
+| `/invoices/:id/release` | POST | Release escrowed funds after the escrow grace period |
 
 ### Disputes
 | Endpoint | Method | Description |
@@ -574,7 +575,7 @@ All acceptance criteria from the [bounty spec](spec.md) are met:
 | "Cannot find module" errors | Run `npm install` from the project root — this is an npm workspaces monorepo. |
 | Port already in use | Another process is using port 4000 or 3000. Kill it or change `API_PORT` in `.env`. |
 | Wrong token address on paywall | Click the network badge in the header to switch between testnet/mainnet. The backend routes to the correct contracts per chain automatically. |
-| Escrow release fails | The smart contract enforces a 24h grace period. There is no admin bypass. Wait for the period to expire, then release from the Admin page. |
+| Escrow release fails | The smart contract enforces a configurable escrow period (default 24h, can be 0-30 days per endpoint). There is no admin bypass. Wait for the period to expire, then release from the Admin page. |
 
 Run the **preflight check** to diagnose configuration issues:
 ```bash
