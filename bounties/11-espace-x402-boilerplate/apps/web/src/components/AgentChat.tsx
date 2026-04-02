@@ -78,8 +78,8 @@ export default function AgentChat() {
     fetchBudget();
   }, [fetchBudget]);
 
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (override?: string) => {
+    const text = (override ?? input).trim();
     if (!text || loading) return;
 
     setInput("");
@@ -318,7 +318,7 @@ export default function AgentChat() {
                 <button
                   key={suggestion}
                   onClick={() => {
-                    setInput(suggestion);
+                    sendMessage(suggestion);
                   }}
                   className="text-[11px] px-2.5 py-1 rounded-full border border-gray-700/50 text-gray-400 hover:text-white hover:border-conflux-teal/30 hover:bg-conflux-teal/5 transition-colors"
                 >
