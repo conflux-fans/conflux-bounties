@@ -33,7 +33,7 @@ import { verifyTypedData } from "viem";
 
 import { X402Verifier, confluxESpaceTestnet, confluxESpaceMainnet } from "@x402/sdk";
 
-const SERVICE_WALLET = process.env.SERVICE_WALLET_ADDRESS || "0xE90fA6AA4F03Ae276049B328d62fF7702b6242ba";
+const SERVICE_WALLET = process.env.SERVICE_WALLET_ADDRESS || "0xFF1D35e04d9F336283046fA464Be11B675B0e5aF";
 const FACILITATOR_KEY = process.env.SERVICE_WALLET_KEY as `0x${string}` | undefined;
 
 // ─── Per-network configuration ───
@@ -51,7 +51,7 @@ const NETWORKS: Record<number, NetworkConfig> = {
     chainId: 71,
     name: "Conflux eSpace Testnet",
     rpcUrl: "https://evmtestnet.confluxrpc.com",
-    tokenAddress: process.env.USDT0_ADDRESS_TESTNET || "0x91de8a02c4E85b4b7cAB8c13F71a5272E4EF9b11",
+    tokenAddress: process.env.USDT0_ADDRESS_TESTNET || "0xC6889F2838425955E3a58aD335c30bFa23B7AF98",
     contractAddress: (process.env.X402_CONTRACT_ADDRESS_TESTNET || process.env.X402_CONTRACT_ADDRESS || undefined) as `0x${string}` | undefined,
   },
   1030: {
