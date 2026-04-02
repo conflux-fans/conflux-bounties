@@ -134,7 +134,7 @@ if [ -f "$ARTIFACT" ]; then
 
   # Rebuild the SDK so dist/ matches the new ABI
   info "Rebuilding x402-sdk (dist/)..."
-  (cd "$ROOT" && npm run build -w packages/x402-sdk 2>&1) || warn "SDK build failed — run 'npm run build -w packages/x402-sdk' manually"
+  (cd "$ROOT" && npm run build -w packages/x402-sdk 2>&1) || fail "SDK build failed — the ABI won't match at runtime. Run 'npm run build -w packages/x402-sdk' manually"
   ok "x402-sdk dist/ rebuilt"
 else
   warn "No compiled artifact found at $ARTIFACT — skipping ABI sync"

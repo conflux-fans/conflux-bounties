@@ -124,7 +124,7 @@ npm run deploy:full
 npm run deploy:full:mainnet
 ```
 
-This runs `contracts:deploy` followed by `scripts/post-deploy.sh`, which automatically:
+This compiles contracts, deploys them, then runs `scripts/post-deploy.sh`, which automatically:
 
 1. **Reads** the deploy manifest (`deploy-manifest.json`) written by the deploy script
 2. **Updates** root `.env` with the new contract and token addresses (testnet or mainnet)
