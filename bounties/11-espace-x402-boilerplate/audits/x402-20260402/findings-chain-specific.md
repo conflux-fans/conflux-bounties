@@ -3,27 +3,73 @@
 **Contract**: `X402PaymentVerifier.sol`
 **Chain**: Conflux eSpace (Chain ID 71 testnet / 1030 mainnet)
 **Date**: 2026-04-02
-**Checklist**: [evm-audit-chain-specific checklist](https://raw.githubusercontent.com/austintgriffith/evm-audit-skills/main/evm-audit-chain-specific/references/checklist.md)
+**Checklist**: evm-audit-chain-specific
 
 ---
 
-## [CS-1] Block timestamp granularity differs on Conflux eSpace (~1s blocks vs 12s on Ethereum)
-**Severity**: Low
+## [CHAIN-1] Cross-Chain ERC-3009 Authorization Replay
+**Severity**: Critical
 **Category**: evm-audit-chain-specific
-**Location**: `settle()` (line 287-290), `_refundTo()` (line 399), `release()` (line 339)
-**Description**: Conflux eSpace produces blocks approximately every 1 second, compared to Ethereum's ~12 seconds. The contract uses `block.timestamp` for escrow timing (e.g., `DEFAULT_ESCROW_DURATION = 24 hours`, `MAX_AUTH_DURATION = 7 days`). While these are absolute durations and not block-count-based (which is correct), the higher block frequency means that `block.timestamp` advances with finer granularity. This is not a bug per se, but there is a subtle edge case: on Conflux eSpace, the `block.timestamp` can occasionally exhibit non-monotonic behavior within a single epoch, where multiple blocks in the same epoch may share the same timestamp. This means two transactions in consecutive blocks could see the same `block.timestamp`, which could allow a settle and release to occur in the same timestamp if `escrowDuration` is set to 0 (which `MIN_ESCROW_DURATION` allows). A seller could register with `escrowDuration = 0`, settle a payment, and release it in the same block, eliminating any refund window.
+**Location**: `settle()`
+**Description**: If this contract is deployed at the same address on multiple EVM chains (e.g., Conflux eSpace and Ethereum mainnet), an ERC-3009 `receiveWithAuthorization` signed for one chain could be replayed on another. The ERC-3009 standard uses EIP-712 typed data with a `DOMAIN_SEPARATOR` that should include `block.chainid`, but this protection depends entirely on the token contract's implementation. If the token contract caches an immutable `DOMAIN_SEPARATOR` at deployment (as many older implementations do) rather than computing it dynamically, cross-chain replay is possible. The `usedNonces` mapping in this contract is local to each deployment and provides no cross-chain protection. The contract emits `block.chainid` in the `PaymentReceived` event but never validates it against an expected value.
 **Proof of Concept**:
-1. Seller registers with `escrowDuration = 1` (the minimum non-zero value that `_validateEscrowDuration` returns as-is).
-2. Seller calls `settle()` - `releaseAt` is set to `block.timestamp + 1`.
-3. In the very next block (~1 second later), `block.timestamp >= releaseAt` is satisfied.
-4. Seller calls `release()` - funds are released with effectively no meaningful refund window.
-5. With `escrowDuration = 0`, the `_validateEscrowDuration` function returns `DEFAULT_ESCROW_DURATION` (24h), so that case is handled. But any value from 1 to a few seconds is accepted and creates a nearly instant release.
-**Recommendation**: Enforce a meaningful minimum escrow duration rather than allowing `MIN_ESCROW_DURATION = 0`. Consider setting a minimum of at least 1 hour:
+1. Contract is deployed at the same address on Conflux eSpace (chain ID 1030) and another EVM chain.
+2. User signs a `receiveWithAuthorization` for USDT0 on Conflux eSpace.
+3. Attacker (or the seller) takes the same signature parameters and calls `settle()` on the other chain where the same token exists with a compatible `DOMAIN_SEPARATOR`.
+4. The payment executes on both chains, double-spending the payer's funds.
+**Recommendation**: Add an immutable `EXPECTED_CHAIN_ID` set in the constructor and validate it in `settle()`:
+```solidity
+uint256 public immutable EXPECTED_CHAIN_ID;
+
+constructor(address[] memory _tokens) Ownable(msg.sender) {
+    EXPECTED_CHAIN_ID = block.chainid;
+    // ...
+}
+
+function settle(...) external nonReentrant {
+    require(block.chainid == EXPECTED_CHAIN_ID, "X402: wrong chain");
+    // ...
+}
+```
+Additionally, document that only tokens with dynamically-computed `DOMAIN_SEPARATOR` (using `block.chainid` at runtime) should be added to the supported token list.
+
+---
+
+## [CHAIN-2] PUSH0 Opcode Compatibility With Conflux eSpace
+**Severity**: High
+**Category**: evm-audit-chain-specific
+**Location**: `pragma solidity ^0.8.24;`
+**Description**: The contract uses `pragma solidity ^0.8.24`, which allows compilation with Solidity 0.8.24+. Starting from Solidity 0.8.20, the compiler defaults to the Shanghai EVM target, which emits the `PUSH0` opcode (EIP-3855). Conflux eSpace added PUSH0 support in the Hardfork v2.4.0 upgrade (late 2024), but the project's Hardhat config sets `evmVersion: "paris"`, which correctly avoids PUSH0 emission. However, the pragma itself allows any compiler >= 0.8.24, meaning if anyone compiles this contract without the Hardhat config (e.g., using Remix, Foundry with default settings, or a different build tool), the resulting bytecode will contain PUSH0. If deployed to a Conflux eSpace node that has not yet upgraded to v2.4.0, or if the PUSH0 support has any edge-case incompatibilities, deployment or execution will fail silently.
+**Proof of Concept**:
+1. Developer clones the contract source and compiles with `solc 0.8.24` directly (no Hardhat config).
+2. Default EVM target is Shanghai, emitting `PUSH0` opcodes.
+3. Deployment to Conflux eSpace succeeds if PUSH0 is supported, fails if not.
+4. The pragma does not enforce the EVM version.
+**Recommendation**: The existing `evmVersion: "paris"` in hardhat.config.ts is the correct mitigation. Add an explicit comment in the contract source near the pragma explaining this dependency:
+```solidity
+/// @dev MUST be compiled with evmVersion "paris" for Conflux eSpace compatibility.
+///      Solidity >= 0.8.20 defaults to Shanghai which emits PUSH0. Ensure your
+///      build tool targets Paris or verify PUSH0 support on the target chain.
+pragma solidity ^0.8.24;
+```
+
+---
+
+## [CHAIN-3] Seller Can Set Escrow Duration to 1 Second, Exploitable With 0.5s Block Times
+**Severity**: Medium
+**Category**: evm-audit-chain-specific
+**Location**: `_validateEscrowDuration()`, `registerSeller()`, `settle()`, `release()`
+**Description**: `MIN_ESCROW_DURATION` is set to 0, and `_validateEscrowDuration()` accepts any value between 0 and `MAX_ESCROW_DURATION` (30 days). A seller can register with `escrowDuration = 1` (1 second). On Conflux eSpace with ~0.5s block times, the seller can call `release()` in the very next block after `settle()`, giving the payer virtually zero refund window. Even `escrowDuration = 0` results in `releaseAt == paidAt`, meaning `release()` can be called in the same block or the next block. This is significantly worse on Conflux than Ethereum because Conflux produces blocks ~24x faster, so even a few seconds of escrow evaporate across just a handful of blocks.
+**Proof of Concept**:
+1. Malicious seller calls `registerSeller("https://evil.com", "desc", 0)` -- escrow duration 0.
+2. Buyer signs ERC-3009 authorization.
+3. Seller calls `settle()` in block N. `releaseAt = block.timestamp + 0 = block.timestamp`.
+4. Seller calls `release()` in the same transaction batch or next block (~0.5s). `block.timestamp >= releaseAt` passes immediately.
+5. Buyer has no practical window to dispute via any external mechanism.
+**Recommendation**: Enforce a meaningful minimum escrow duration:
 ```solidity
 uint256 public constant MIN_ESCROW_DURATION = 1 hours;
-```
-And update `_validateEscrowDuration` to enforce it for non-zero inputs:
-```solidity
+
 function _validateEscrowDuration(uint256 duration) internal pure returns (uint256) {
     if (duration == 0) return DEFAULT_ESCROW_DURATION;
     require(duration >= MIN_ESCROW_DURATION, "X402: escrow too short");
@@ -34,76 +80,136 @@ function _validateEscrowDuration(uint256 duration) internal pure returns (uint25
 
 ---
 
-## [CS-2] ERC-3009 `receiveWithAuthorization` signature domain may not include Conflux eSpace chain ID
+## [CHAIN-4] Tree-Graph Consensus Reorg Risk for Timestamp-Based Escrow Boundaries
 **Severity**: Medium
 **Category**: evm-audit-chain-specific
-**Location**: `settle()` (line 297-305)
-**Description**: ERC-3009 `receiveWithAuthorization` uses EIP-712 typed data signatures which include a `DOMAIN_SEPARATOR` containing the chain ID. The contract delegates signature verification entirely to the token contract. If a token contract deployed on Conflux eSpace was deployed with a cached `DOMAIN_SEPARATOR` from another chain (e.g., if the token was deployed with the same bytecode on multiple chains without re-initializing the domain separator at deploy time), signatures from other chains could be replayed on Conflux eSpace, or vice versa. This is a known cross-chain replay risk for EIP-712 signatures. The X402PaymentVerifier contract itself has no mechanism to verify that the token's domain separator includes the correct chain ID. This is especially relevant because Conflux eSpace tokens (like USDT0, which is a cross-chain bridged token) may be deployed across multiple EVM chains.
+**Location**: `settle()`, `release()`, `_refundTo()`
+**Description**: Conflux uses a tree-graph consensus mechanism rather than a linear chain. While eSpace provides EVM compatibility, the underlying consensus can experience reorganizations differently than Ethereum. The contract relies entirely on `block.timestamp` for escrow boundaries: `settle()` sets `releaseAt = block.timestamp + escrowDuration`, `release()` requires `block.timestamp >= p.releaseAt`, and `_refundTo()` requires `block.timestamp < p.releaseAt`. Near the escrow boundary, a reorg could cause a `settle()` transaction to be re-included in a different block with a different timestamp, shifting `releaseAt`. A refund that was valid pre-reorg could become invalid post-reorg (or vice versa), leading to inconsistent state between what the seller/buyer observed and what actually finalized.
 **Proof of Concept**:
-1. A token contract is deployed on both Conflux eSpace (chain ID 1030) and another EVM chain with the same address.
-2. If the token contract caches `DOMAIN_SEPARATOR` at deploy time via `immutable` rather than computing it dynamically with `block.chainid`, and if there were a fork scenario, a signature valid on one chain could be replayed.
-3. The X402PaymentVerifier has no way to detect this - it trusts the token contract's `receiveWithAuthorization` to validate correctly.
-**Recommendation**: This is primarily a token-level risk, but the contract should document this assumption explicitly. Consider adding a check that the token contract's domain separator includes the expected chain ID, or at minimum document that only tokens with dynamically-computed domain separators (using `block.chainid` at runtime rather than cached at deploy time) should be added to the supported token list:
+1. Payment is settled at timestamp T with `releaseAt = T + 3600`.
+2. At timestamp T + 3599, seller initiates a refund. The check `block.timestamp < p.releaseAt` passes.
+3. A tree-graph reorg occurs. The `settle()` transaction is re-included in a block with timestamp T-2.
+4. Now `releaseAt = T - 2 + 3600 = T + 3598`. The refund at T + 3599 would now fail because `T + 3599 >= T + 3598`.
+5. Alternatively, the refund transaction itself could be re-included at a different timestamp, changing the outcome.
+**Recommendation**: Add a small buffer to escrow boundary checks to account for potential timestamp drift during reorgs. For example, add a grace period to refund eligibility:
 ```solidity
-/// @dev IMPORTANT: Only add tokens whose ERC-3009 implementation computes
-///      DOMAIN_SEPARATOR dynamically using block.chainid (not cached at deploy).
-///      This prevents cross-chain signature replay.
+uint256 public constant ESCROW_GRACE_PERIOD = 5 minutes;
+// In _refundTo:
+require(block.timestamp < p.releaseAt + ESCROW_GRACE_PERIOD, "X402: escrow period ended");
+```
+Document the reorg risk for integrators and recommend waiting for sufficient block confirmations before considering escrow boundaries final.
+
+---
+
+## [CHAIN-5] Gas Cost Differences Enable Seller Registration Spam on Conflux
+**Severity**: Low
+**Category**: evm-audit-chain-specific
+**Location**: `registerSeller()`, `reactivateSeller()`
+**Description**: Gas costs on Conflux eSpace are significantly cheaper than Ethereum mainnet, and CFX is substantially cheaper than ETH. The `registrationFee` defaults to 0 and must be explicitly set by the owner via `setRegistrationFee()`. Even when set, the fee is denominated in native CFX, which has much lower value than ETH. Combined with cheap gas, a malicious actor could register thousands of sellers, bloating the `sellerList` array. This degrades `getActiveSellers()` performance and increases gas costs for legitimate pagination queries. The `sellerList` array has no upper bound.
+**Proof of Concept**:
+1. Owner deploys contract without setting `registrationFee` (defaults to 0).
+2. Attacker calls `registerSeller()` from thousands of addresses at near-zero gas cost on Conflux eSpace.
+3. `sellerList` grows unboundedly.
+4. `getActiveSellers()` with large offsets becomes expensive.
+5. Even with a fee, CFX's low price makes spam economically viable compared to Ethereum.
+**Recommendation**: Set `registrationFee` to a meaningful default in the constructor. Add an upper bound on `sellerList.length`:
+```solidity
+uint256 public constant MAX_SELLERS = 10000;
+require(sellerList.length < MAX_SELLERS, "X402: seller limit reached");
 ```
 
 ---
 
-## [CS-3] Conflux eSpace transaction ordering and frontrunning characteristics differ from Ethereum
+## [CHAIN-6] ERC-3009 Token Decimal Assumptions (USDT0 on Conflux)
+**Severity**: Medium
+**Category**: evm-audit-chain-specific
+**Location**: `settle()`, `verifyPayment()`
+**Description**: The contract handles ERC-3009 tokens on Conflux eSpace (specifically USDT0) without any decimal validation or normalization. USDT0 is a cross-chain stablecoin that may use different decimals than USDT on Ethereum (6 decimals). The `verifyPayment` function compares `p.amount < expectedAmount` directly without any awareness of token decimals. If an off-chain system assumes 6 decimals but the token uses 18 (or vice versa), payment verification will produce incorrect results. The contract stores `received` (actual tokens transferred) in `p.amount`, but the `value` parameter passed to `settle()` represents the nominal amount in the token's native decimal scaling, which could differ across chains.
+**Proof of Concept**:
+1. Backend system is coded assuming USDT0 has 6 decimals (like USDT on Ethereum).
+2. USDT0 on Conflux uses 18 decimals.
+3. Seller wants to charge 1 USDT0. Backend sets `expectedAmount = 1e6`.
+4. Buyer pays 1 USDT0, which is `1e18` in token units.
+5. `verifyPayment` checks `p.amount (1e18) < expectedAmount (1e6)` -- this passes (1e18 is not less than 1e6), so verification succeeds but the amounts are semantically mismatched.
+**Recommendation**: Store the token decimals alongside each supported token. Add a `tokenDecimals` mapping populated during `activateToken()`:
+```solidity
+mapping(address => uint8) public tokenDecimals;
+```
+Document the expected decimals for each supported token. Consider querying `IERC20Metadata(token).decimals()` during token activation and storing the result for off-chain reference.
+
+---
+
+## [CHAIN-7] block.timestamp Granularity Creates Wider MEV Windows on Conflux
 **Severity**: Low
 **Category**: evm-audit-chain-specific
-**Location**: `settle()` (line 263-325)
-**Description**: Conflux eSpace uses a Tree-Graph consensus mechanism with a different transaction ordering model than Ethereum's priority-fee-based ordering. While the contract correctly restricts `settle()` to `msg.sender == recipient` (the seller), and uses `receiveWithAuthorization` (which requires the `to` parameter to match `msg.sender` of the calling contract), the frontrunning characteristics of Conflux eSpace are distinct. On Conflux eSpace, validators select transactions from the transaction pool differently than Ethereum miners/validators. The practical impact is that the frontrunning threat model assumed in the contract's design (which explicitly mentions "prevents front-running via receiveWithAuthorization" in the comments) may behave differently. Specifically, Conflux eSpace's faster block times (~1s) and different mempool dynamics could create different timing windows for griefing attacks.
-**Proof of Concept**: A griefing attack where an attacker observes a pending `settle()` transaction in the mempool and attempts to front-run with a `transferWithAuthorization` call (using the same nonce) to a different address is mitigated by using `receiveWithAuthorization` instead. However, the contract's additional nonce tracking (`usedNonces` mapping at line 293) creates a different griefing vector: if an attacker can extract the authorization parameters from the mempool and call the token's `transferWithAuthorization` before the seller's `settle()` is mined, the authorization nonce is consumed at the token level, causing the `receiveWithAuthorization` in `settle()` to revert. The seller would need to obtain a new authorization from the buyer. This is an inherent limitation of ERC-3009, not specific to this contract, but Conflux eSpace's transaction ordering may make this easier or harder depending on mempool visibility.
-**Recommendation**: Acknowledge this in documentation. The use of `receiveWithAuthorization` (rather than `transferWithAuthorization`) is the correct mitigation. No code change needed, but consider documenting the residual griefing risk for integrators.
+**Location**: `settle()`
+**Description**: With Conflux eSpace's ~0.5s block times, authorization validity windows span many more blocks than they would on Ethereum. A `validBefore` of `now + 300` (5 minutes) spans ~600 blocks on Conflux vs ~25 on Ethereum. While `receiveWithAuthorization` mitigates direct front-running (since only the designated `to` address can receive), the expanded block window increases exposure to griefing attacks where an attacker calls `transferWithAuthorization` on the token contract directly to consume the authorization nonce before `settle()` is mined. The `MAX_AUTH_DURATION` of 7 days represents approximately 1,209,600 blocks on Conflux, providing a very large window for such attacks.
+**Proof of Concept**:
+1. Payer signs an authorization with `validBefore = now + 7 days`.
+2. Authorization parameters are visible in the mempool or transmitted off-chain.
+3. Attacker monitors for ~1.2M blocks on Conflux, waiting for an opportune moment.
+4. Attacker calls `transferWithAuthorization` on the token contract to consume the nonce.
+5. Seller's subsequent `settle()` call reverts because the authorization is already consumed.
+**Recommendation**: Consider a tighter `MAX_AUTH_DURATION` for Conflux deployment (e.g., 1 day instead of 7 days). Document that authorization validity windows should be kept as short as practically possible on fast-block-time chains.
 
 ---
 
-## [CS-4] OpenZeppelin v5.x compiled with Solidity 0.8.24 - PUSH0 mitigation verified
-**Severity**: Info
+## [CHAIN-8] Conflux eSpace Chain ID Not Validated at Runtime
+**Severity**: Medium
 **Category**: evm-audit-chain-specific
-**Location**: `hardhat.config.ts` (line 10)
-**Description**: The contract uses Solidity 0.8.24 with OpenZeppelin v5.6.1. Solidity >= 0.8.20 defaults to the Shanghai EVM version which emits the `PUSH0` opcode. Conflux eSpace added PUSH0 support in the Hardfork v2.4.0 upgrade (late 2024), but the project correctly sets `evmVersion: "paris"` in the Hardhat config, which avoids emitting `PUSH0` entirely. This is the recommended approach for maximum compatibility.
-**Proof of Concept**: N/A - no vulnerability. This is a positive finding confirming correct configuration.
-**Recommendation**: No change needed. The `evmVersion: "paris"` setting correctly prevents PUSH0 emission. If the project later upgrades and a developer removes this setting, PUSH0 would be emitted - consider adding a comment in `hardhat.config.ts` explaining why `paris` is specified.
+**Location**: `settle()` line 339, constructor
+**Description**: The contract emits `block.chainid` in the `PaymentReceived` event but never validates it against an expected value. On Conflux eSpace, the chain ID is 1030 (mainnet) or 71 (testnet). If the same bytecode is deployed on a different chain -- accidentally or maliciously -- all functions execute without error. There is no constructor-time or runtime check that the contract is operating on the intended chain. This compounds the cross-chain replay risk from CHAIN-1: without chain ID validation, the contract cannot distinguish between a legitimate Conflux eSpace deployment and a rogue deployment on another chain.
+**Proof of Concept**:
+1. Contract bytecode is deployed on Ethereum mainnet (chain ID 1) using the same deployer and nonce.
+2. All functions execute normally. Events log chain ID 1 instead of 1030.
+3. ERC-3009 authorizations could be valid on both chains if the token's `DOMAIN_SEPARATOR` is compatible.
+4. No on-chain mechanism prevents or detects this.
+**Recommendation**: Store `block.chainid` as an immutable at construction and validate in `settle()`:
+```solidity
+uint256 public immutable DEPLOYMENT_CHAIN_ID;
+
+constructor(address[] memory _tokens) Ownable(msg.sender) {
+    DEPLOYMENT_CHAIN_ID = block.chainid;
+    // ...
+}
+
+function settle(...) external nonReentrant {
+    require(block.chainid == DEPLOYMENT_CHAIN_ID, "X402: wrong chain");
+    // ...
+}
+```
 
 ---
 
-## [CS-5] No hardcoded token or infrastructure addresses - multi-chain portable
+## [CHAIN-9] Native CFX Withdrawal Pattern Compatibility
+**Severity**: Low
+**Category**: evm-audit-chain-specific
+**Location**: `withdrawFees()`
+**Description**: The `withdrawFees()` function uses `owner().call{value: balance}("")` to send native CFX to the owner. While the `.call{value}` pattern works on Conflux eSpace (CFX behaves like ETH for transfer purposes), Conflux eSpace has a storage collateral mechanism where certain storage operations require collateral deposits. If the owner is a smart contract (e.g., a multisig or governance contract) whose `receive()` or `fallback()` function triggers storage writes, the call could fail unexpectedly due to insufficient storage collateral, even with sufficient gas. This forwards all available gas to the recipient, which is generally fine but could interact unexpectedly with Conflux-specific storage pricing.
+**Proof of Concept**:
+1. Owner is set to a multisig contract on Conflux eSpace.
+2. `withdrawFees()` is called with collected CFX fees.
+3. The `.call{value}` forwards gas to the multisig's `receive()` function.
+4. The multisig performs storage operations that require Conflux storage collateral.
+5. The call fails with an unexpected error unrelated to gas.
+**Recommendation**: Document that the owner address should be an EOA or a contract with a simple `receive()` function. Consider implementing a pull pattern where fees accumulate and the owner claims them via a dedicated function that does not forward arbitrary gas.
+
+---
+
+## [CHAIN-10] Token Activation Timelock Monitoring Must Account for Fast Block Production
 **Severity**: Info
 **Category**: evm-audit-chain-specific
-**Location**: Constructor (line 132-139), `setSupportedToken()` (line 420-427)
-**Description**: The checklist flags hardcoded token addresses (WETH, USDC, etc.) and infrastructure contract addresses (Uniswap factories, Gnosis Safe singletons) as a common multi-chain deployment error. This contract correctly avoids all hardcoded addresses. Token support is configurable via the constructor and `setSupportedToken()`. No external protocol addresses are referenced. This makes the contract portable across Conflux eSpace testnet (chain 71) and mainnet (chain 1030) without code changes.
-**Proof of Concept**: N/A - positive finding.
+**Location**: `proposeToken()`, `activateToken()`
+**Description**: The `TOKEN_ACTIVATION_DELAY` of 48 hours is wall-clock based via `block.timestamp`, so the actual delay is the same regardless of block speed. However, on Conflux eSpace, 48 hours represents approximately 345,600 blocks (vs ~14,400 on Ethereum). Monitoring systems and governance watchers designed for Ethereum's cadence may need reconfiguration. A bot polling every 100 blocks checks every ~50 seconds on Conflux vs ~20 minutes on Ethereum. This is an operational concern: the timelock is adequate, but off-chain infrastructure must be tuned for Conflux's block production rate to ensure malicious token proposals are detected in time.
+**Proof of Concept**: N/A -- operational concern, not a contract vulnerability.
+**Recommendation**: Document the block speed difference for monitoring infrastructure. Ensure off-chain governance monitoring is configured for Conflux eSpace's ~0.5s block time rather than Ethereum's 12s block time.
+
+---
+
+## [CHAIN-11] No Hardcoded Addresses -- Correct Multi-Chain Portability
+**Severity**: Info
+**Category**: evm-audit-chain-specific
+**Location**: Constructor, token management functions
+**Description**: The contract correctly avoids all hardcoded token or infrastructure addresses. Token support is configurable via the constructor and the propose/activate flow. No external protocol addresses (Uniswap, Gnosis Safe, etc.) are referenced. This makes the contract portable across Conflux eSpace testnet (chain 71) and mainnet (chain 1030) without code changes. This is the correct approach for a chain-agnostic deployment.
+**Proof of Concept**: N/A -- positive finding.
 **Recommendation**: No change needed.
-
----
-
-## [CS-6] Seller can set escrow duration to 1 second, effectively bypassing buyer protection
-**Severity**: Medium
-**Category**: evm-audit-chain-specific
-**Location**: `_validateEscrowDuration()` (line 471-476), `registerSeller()` (line 154)
-**Description**: `MIN_ESCROW_DURATION` is set to 0, and `_validateEscrowDuration()` only uses the default (24h) when the input is exactly 0. Any non-zero value between 1 and `MAX_ESCROW_DURATION` (30 days) is accepted. On Conflux eSpace with ~1 second block times, a seller can register with `escrowDuration = 1` (1 second). After settling a payment, the seller can call `release()` in the very next block, making refunds practically impossible. This creates a trust model violation: buyers may assume the x402 escrow provides a meaningful refund window, but a malicious seller can eliminate it entirely. This is exacerbated on Conflux eSpace because the 1-second block time means even small escrow values expire almost immediately.
-**Proof of Concept**:
-1. Malicious seller calls `registerSeller("https://evil.com", "desc", 1)` - escrow duration is 1 second.
-2. Buyer signs an ERC-3009 authorization for payment.
-3. Seller calls `settle()` in block N. `releaseAt = block.timestamp + 1`.
-4. Seller calls `release()` in block N+1 (1 second later). `block.timestamp >= releaseAt` passes.
-5. Buyer has no practical window to request a refund. Note: only the seller can refund, but any external dispute resolution mechanism has zero time to act.
-**Recommendation**: Set a meaningful minimum escrow duration:
-```solidity
-uint256 public constant MIN_ESCROW_DURATION = 1 hours;
-```
-Update the validation to enforce the minimum for non-zero values (already does via the `require` check, but `MIN_ESCROW_DURATION` being 0 makes it a no-op):
-```solidity
-function _validateEscrowDuration(uint256 duration) internal pure returns (uint256) {
-    if (duration == 0) return DEFAULT_ESCROW_DURATION;
-    require(duration >= MIN_ESCROW_DURATION, "X402: escrow too short");
-    require(duration <= MAX_ESCROW_DURATION, "X402: escrow too long");
-    return duration;
-}
-```
-With `MIN_ESCROW_DURATION = 1 hours`, the existing logic works correctly.

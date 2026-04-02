@@ -7,6 +7,7 @@ import { invoiceRoutes } from "./routes/invoices.js";
 import { disputeRoutes } from "./routes/disputes.js";
 import { manifestRoutes } from "./routes/manifest.js";
 import { adminRoutes } from "./routes/admin.js";
+import { adminAuthRoutes } from "./routes/adminAuth.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { rateLimiter } from "./middleware/rateLimiter.js";
 import { adminAuth } from "./middleware/adminAuth.js";
@@ -56,6 +57,9 @@ app.get("/agent/:address/status", async (c) => {
     reason: control?.reason ?? null,
   });
 });
+
+// Auth routes are public (no middleware) — they issue session tokens
+app.route("/admin/auth", adminAuthRoutes);
 
 app.use("/admin/*", adminAuth);
 app.route("/admin", adminRoutes);

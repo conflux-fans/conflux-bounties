@@ -130,6 +130,7 @@ const CNHT0_ADDRESS = NETWORKS[1030]?.cnht0Address || "0x70bfd7f7eadf9b982754127
 function getPricing(chainId: number) {
   const net = NETWORKS[chainId] || NETWORKS[DEFAULT_CHAIN_ID];
   return new Map<string, { price: string; token: string; description: string; tier: string }>([
+    ["/data/instant", { price: "10000", token: net.tokenAddress, description: "Quick price and network lookup (0.01 USDT0)", tier: "premium" }],
     ["/data/premium", { price: "100000", token: net.tokenAddress, description: "Premium data feed (0.10 USDT0)", tier: "premium" }],
     ["/compute/simulate", { price: "500000", token: net.tokenAddress, description: "Compute simulation (0.50 USDT0)", tier: "premium" }],
   ]);
@@ -140,6 +141,10 @@ function getTokenPricing(chainId: number) {
   const net = NETWORKS[chainId] || NETWORKS[DEFAULT_CHAIN_ID];
   const isMainnetChain = chainId === 1030;
   return new Map<string, Map<string, { price: string; symbol: string }>>([
+    ["/data/instant", new Map([
+      [net.tokenAddress.toLowerCase(), { price: "10000", symbol: "USDT0" }],
+      ...(isMainnetChain && net.cnht0Address ? [[net.cnht0Address.toLowerCase(), { price: "72000", symbol: "CNHT0" }] as const] : []),
+    ])],
     ["/data/premium", new Map([
       [net.tokenAddress.toLowerCase(), { price: "100000", symbol: "USDT0" }],
       ...(isMainnetChain && net.cnht0Address ? [[net.cnht0Address.toLowerCase(), { price: "720000", symbol: "CNHT0" }] as const] : []),
@@ -173,6 +178,11 @@ app.get("/x402/manifest", (c: any) => {
       method: "GET",
       description: "Basic network metrics including TPS and active accounts",
       returns: "JSON { data: { blockHeight, timestamp, metrics: { tps, activeAccounts } } }",
+    },
+    "/data/instant": {
+      method: "GET",
+      description: "Quick price and network lookup, designed for no-escrow sellers",
+      returns: "JSON { data: { lookup: { cfxPrice, gasPrice, blockHeight, epoch, networkStatus }, timestamp } }",
     },
     "/data/premium": {
       method: "GET",
@@ -262,6 +272,25 @@ app.get("/data/free", (c) =>
     },
   })
 );
+
+// ─── Instant data (low-cost, no escrow) ───
+app.get("/data/instant", (c) => {
+  const blocked = paywall("/data/instant", c);
+  if (blocked) return blocked;
+  return c.json({
+    data: {
+      message: "Instant access data — no escrow hold on this payment",
+      lookup: {
+        cfxPrice: (Math.random() * 0.5 + 0.1).toFixed(4),
+        gasPrice: Math.floor(Math.random() * 30 + 1),
+        blockHeight: Math.floor(Math.random() * 1_000_000),
+        epoch: Math.floor(Math.random() * 500_000),
+        networkStatus: "healthy",
+      },
+      timestamp: Date.now(),
+    },
+  });
+});
 
 // ─── x402 paywall helper ───
 function paywall(endpoint: string, c: any) {
@@ -419,7 +448,14 @@ app.post("/invoices/:id/verify", async (c) => {
       );
       if (valid) {
         const paidAt = new Date().toISOString();
-        const releaseAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        // Read actual on-chain releaseAt instead of assuming 24h
+        let releaseAt: string;
+        try {
+          const payment = await invoiceVerifier.getPayment(id);
+          releaseAt = new Date(Number(payment.releaseAt) * 1000).toISOString();
+        } catch {
+          releaseAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        }
         inv.status = "paid";
         inv.payer = payer;
         inv.paid_at = paidAt;
@@ -524,7 +560,14 @@ app.post("/invoices/:id/settle", async (c) => {
     await invoiceVerifier.waitForTx(txHash);
 
     const paidAt = new Date().toISOString();
-    const releaseAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    // Read actual on-chain releaseAt instead of assuming 24h
+    let releaseAt: string;
+    try {
+      const payment = await invoiceVerifier.getPayment(id);
+      releaseAt = new Date(Number(payment.releaseAt) * 1000).toISOString();
+    } catch {
+      releaseAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    }
     inv.status = "paid";
     inv.payer = auth.from;
     inv.tx_hash = txHash;
@@ -539,7 +582,7 @@ app.post("/invoices/:id/settle", async (c) => {
   }
 });
 
-// Release escrowed funds after grace period (24h on-chain, immediate in dev)
+// Release escrowed funds after grace period (per-seller escrow duration on-chain)
 app.post("/invoices/:id/release", async (c) => {
   const id = c.req.param("id");
   const inv = invoices.get(id);
@@ -579,7 +622,9 @@ app.post("/invoices/:id/dev-pay", async (c) => {
   if (!inv) return c.json({ error: "Invoice not found" }, 404);
   const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
   const paidAt = new Date().toISOString();
-  const releaseAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  // Use instant release (no escrow) for /data/instant, 24h for others
+  const escrowMs = (inv.endpoint as string) === "/data/instant" ? 0 : 24 * 60 * 60 * 1000;
+  const releaseAt = new Date(Date.now() + escrowMs).toISOString();
   inv.status = "paid";
   inv.payer = (body as Record<string, unknown>).payer as string || agentClient?.address || SERVICE_WALLET;
   inv.tx_hash = "0x" + Math.random().toString(16).slice(2);
@@ -1355,6 +1400,7 @@ serve({ fetch: app.fetch, port }, (info) => {
   console.log(`  Endpoints:`);
   console.log(`    GET  /health`);
   console.log(`    GET  /data/free`);
+  console.log(`    GET  /data/instant              (402 paywall — 0.01 USDT0)`);
   console.log(`    GET  /data/premium              (402 paywall — 0.10 USDT0)`);
   console.log(`    POST /compute/simulate          (402 paywall — 0.50 USDT0)`);
   console.log(`    GET  /invoices`);

@@ -47,9 +47,16 @@ const mockVerifier = {
   settle: vi.fn(),
   waitForTx: vi.fn(),
   refund: vi.fn(),
+  release: vi.fn(),
   isInvoicePaid: vi.fn(),
+  getPayment: vi.fn(() => Promise.resolve({ releaseAt: BigInt(Math.floor(Date.now() / 1000) + 86400) })),
+  account: { address: "0xE90fA6AA4F03Ae276049B328d62fF7702b6242ba" as `0x${string}` },
 };
 vi.mock("../lib/verifier.js", () => ({ verifier: mockVerifier }));
+
+// ─── Mock escrow release job ───
+const mockScheduleEscrowRelease = vi.fn(() => Promise.resolve());
+vi.mock("../jobs/escrowRelease.js", () => ({ scheduleEscrowRelease: mockScheduleEscrowRelease }));
 
 // ─── Mock config ───
 const mockConfig = {
@@ -58,7 +65,7 @@ const mockConfig = {
   redisUrl: "redis://localhost:6379",
   contractAddress: "0x0000000000000000000000000000000000000000" as `0x${string}`,
   serviceWalletKey: undefined,
-  serviceWalletAddress: "0xSeller",
+  serviceWalletAddress: "0xE90fA6AA4F03Ae276049B328d62fF7702b6242ba",
   rpcUrl: "https://evmtestnet.confluxrpc.com",
   tokenAddress: "0x0000000000000000000000000000000000000000" as `0x${string}`,
   adminApiKey: "test-admin-key-123",
@@ -242,7 +249,7 @@ describe("Settlement Endpoint", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         authorization: {
-          from: "0xPayer", to: "0xSeller", value: "50000", // too low
+          from: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", to: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", value: "50000", // too low
           validAfter: 0, validBefore: 9999999999, nonce: hashNonce("inv-4"),
           v: 27, r: "0x1234", s: "0x5678",
         },
@@ -270,7 +277,7 @@ describe("Settlement Endpoint", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         authorization: {
-          from: "0xPayer", to: "0x0000000000000000000000000000000000000000", value: "100000",
+          from: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", to: "0x0000000000000000000000000000000000000000", value: "100000",
           validAfter: 0, validBefore: 9999999999, nonce: hashNonce("inv-5"),
           v: 27, r: "0x1234", s: "0x5678",
         },
@@ -299,7 +306,7 @@ describe("Settlement Endpoint", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         authorization: {
-          from: "0xPayer", to: "0x0000000000000000000000000000000000000000", value: "100000",
+          from: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", to: "0x0000000000000000000000000000000000000000", value: "100000",
           validAfter: 0, validBefore: 9999999999, nonce: hashNonce("inv-6"),
           v: 27, r: "0x1234", s: "0x5678",
         },
@@ -415,6 +422,7 @@ describe("Verify Route", () => {
       expiry: String(Math.floor(Date.now() / 1000) + 300),
       endpoint: "/data/premium",
       amount: "100000",
+      onchain_invoice_id: "0xabc123" as `0x${string}`,
     }];
     mockVerifier.isInvoicePaid.mockResolvedValue({ valid: true, payer: "0xPayerAddr" });
 
@@ -490,7 +498,8 @@ describe("Refund Route", () => {
       status: "paid",
       endpoint: "/data/premium",
       amount: "100000",
-      payer: "0xPayer",
+      payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      onchain_invoice_id: "0xabc123",
     }];
     mockVerifier.refund.mockResolvedValue("0xrefundtx456");
     mockVerifier.waitForTx.mockResolvedValue({});
@@ -503,7 +512,7 @@ describe("Refund Route", () => {
     const body = await res.json();
     expect(body.txHash).toBe("0xrefundtx456");
     expect(body.invoice.status).toBe("refunded");
-    expect(mockVerifier.refund).toHaveBeenCalledWith("inv-r3");
+    expect(mockVerifier.refund).toHaveBeenCalledWith("0xabc123");
     expect(mockVerifier.waitForTx).toHaveBeenCalledWith("0xrefundtx456");
   });
 
@@ -513,7 +522,8 @@ describe("Refund Route", () => {
       status: "paid",
       endpoint: "/data/premium",
       amount: "100000",
-      payer: "0xPayer",
+      payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      onchain_invoice_id: "0xdef456",
     }];
     mockVerifier.refund.mockRejectedValue(new Error("EVM revert: transfer failed"));
 
@@ -591,7 +601,7 @@ describe("DB Sync Failure Recovery", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         authorization: {
-          from: "0xPayer", to: "0x0000000000000000000000000000000000000000", value: "100000",
+          from: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", to: "0x0000000000000000000000000000000000000000", value: "100000",
           validAfter: 0, validBefore: 9999999999, nonce: hashNonce("inv-dbfail"),
           v: 27, r: "0x1234", s: "0x5678",
         },
@@ -687,17 +697,17 @@ describe("Dispute Resolution", () => {
     const res = await app.request("/disputes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ invoiceId: "nonexistent", requester: "0xPayer", reason: "test" }),
+      body: JSON.stringify({ invoiceId: "nonexistent", requester: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", reason: "test" }),
     });
     expect(res.status).toBe(404);
   });
 
   it("should return 400 when invoice is not in paid status", async () => {
-    mockRows.invoices = [{ id: "inv-pend", status: "pending", payer: "0xPayer" }];
+    mockRows.invoices = [{ id: "inv-pend", status: "pending", payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" }];
     const res = await app.request("/disputes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ invoiceId: "inv-pend", requester: "0xPayer", reason: "test" }),
+      body: JSON.stringify({ invoiceId: "inv-pend", requester: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", reason: "test" }),
     });
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -717,12 +727,12 @@ describe("Dispute Resolution", () => {
   });
 
   it("should return 409 when an open dispute already exists", async () => {
-    mockRows.invoices = [{ id: "inv-dup", status: "paid", payer: "0xPayer" }];
+    mockRows.invoices = [{ id: "inv-dup", status: "paid", payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" }];
     mockRows.disputes = [{ id: "existing-disp", invoice_id: "inv-dup", status: "open" }];
     const res = await app.request("/disputes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ invoiceId: "inv-dup", requester: "0xPayer", reason: "duplicate" }),
+      body: JSON.stringify({ invoiceId: "inv-dup", requester: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", reason: "duplicate" }),
     });
     expect(res.status).toBe(409);
     const body = await res.json();
@@ -745,7 +755,7 @@ describe("Dispute Resolution", () => {
       status: "paid",
       endpoint: "/data/premium",
       amount: "100000",
-      payer: "0xPayer",
+      payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
     }];
     mockVerifier.refund.mockResolvedValue("0xrefund-disp1");
     mockVerifier.waitForTx.mockResolvedValue({});
@@ -776,7 +786,7 @@ describe("Dispute Resolution", () => {
       status: "paid",
       endpoint: "/data/premium",
       amount: "100000",
-      payer: "0xPayer",
+      payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
     }];
     mockVerifier.refund.mockRejectedValue(new Error("EVM revert: transfer failed"));
 
@@ -903,7 +913,7 @@ describe("E2E Flow: 402 → settle → data", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         authorization: {
-          from: "0xBuyer",
+          from: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
           to: "0x0000000000000000000000000000000000000000",
           value: "100000",
           validAfter: 0,
@@ -946,7 +956,7 @@ describe("E2E Flow: 402 → settle → data", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         authorization: {
-          from: "0xBuyer",
+          from: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
           to: "0x0000000000000000000000000000000000000000",
           value: "100000",
           validAfter: 0,

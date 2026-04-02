@@ -1,8 +1,38 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
-const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
+
+// ─── Wallet-based admin session ───
+let adminSessionToken: string | null = null;
+
+export function setAdminSession(token: string | null) {
+  adminSessionToken = token;
+}
+
+export function getAdminSession(): string | null {
+  return adminSessionToken;
+}
 
 export function adminHeaders(): Record<string, string> {
-  return ADMIN_KEY ? { "x-admin-key": ADMIN_KEY } : {};
+  return adminSessionToken ? { "x-admin-token": adminSessionToken } : {};
+}
+
+/**
+ * Request a challenge nonce from the backend for wallet-based admin auth.
+ */
+export async function requestAdminChallenge(address: string): Promise<{ nonce: string; message: string } | { error: string }> {
+  const res = await fetch(`${API_BASE}/admin/auth/challenge?address=${address}`);
+  return res.json();
+}
+
+/**
+ * Submit a signed challenge to get a session token.
+ */
+export async function verifyAdminSignature(address: string, signature: string): Promise<{ token: string; expiresIn: number } | { error: string }> {
+  const res = await fetch(`${API_BASE}/admin/auth/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address, signature }),
+  });
+  return res.json();
 }
 
 export async function apiFetch<T = unknown>(

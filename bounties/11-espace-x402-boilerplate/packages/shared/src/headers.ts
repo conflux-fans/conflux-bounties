@@ -1,4 +1,4 @@
-import { keccak256, toBytes, toHex, hexToBytes } from "viem";
+import { keccak256, toBytes, toHex, hexToBytes, encodeAbiParameters, parseAbiParameters } from "viem";
 import { X402_HEADERS } from "./constants.js";
 import type { X402PaymentChallenge } from "./types.js";
 
@@ -59,9 +59,28 @@ export function hashNonce(uuidNonce: string): `0x${string}` {
 
 /**
  * Hash a UUID invoice ID to bytes32 for on-chain storage.
- * All consumers (SDK client, verifier) MUST use this function
- * to ensure consistent invoice ID derivation.
+ * @deprecated Use deriveInvoiceId() instead — invoiceId is now derived
+ * deterministically from (from, recipient, token, nonce) on-chain.
  */
 export function hashInvoiceId(invoiceId: string): `0x${string}` {
   return keccak256(toBytes(invoiceId));
+}
+
+/**
+ * Derive the on-chain invoiceId deterministically from authorization parameters.
+ * Matches the Solidity: keccak256(abi.encode(from, recipient, token, nonce)).
+ * All consumers MUST use this to look up payments on-chain.
+ */
+export function deriveInvoiceId(
+  from: `0x${string}`,
+  recipient: `0x${string}`,
+  token: `0x${string}`,
+  nonce: `0x${string}`
+): `0x${string}` {
+  return keccak256(
+    encodeAbiParameters(
+      parseAbiParameters("address, address, address, bytes32"),
+      [from, recipient, token, nonce]
+    )
+  );
 }

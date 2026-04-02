@@ -1,8 +1,10 @@
 import {
   createPublicClient,
   createWalletClient,
+  encodeAbiParameters,
   http,
   keccak256,
+  parseAbiParameters,
   toBytes,
   type Chain,
   type Hash,
@@ -12,7 +14,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { verifierAbi } from "./abi.js";
 import { confluxESpaceTestnet } from "./chain.js";
-import { hashInvoiceId } from "@x402/shared";
+import { deriveInvoiceId } from "@x402/shared";
 import type { SignedAuthorization } from "./client.js";
 
 export interface VerifierConfig {
@@ -27,7 +29,7 @@ export class X402Verifier {
   private readonly client: PublicClient;
   private readonly walletClient?: WalletClient;
   private readonly contractAddress: `0x${string}`;
-  private readonly account?: ReturnType<typeof privateKeyToAccount>;
+  readonly account?: ReturnType<typeof privateKeyToAccount>;
 
   constructor(config: VerifierConfig) {
     this.contractAddress = config.contractAddress;
@@ -54,10 +56,14 @@ export class X402Verifier {
    * The buyer signs ReceiveWithAuthorization with `to = verifier contract`.
    * The verifier receives funds, then forwards to the recipient (seller).
    *
+   * The on-chain invoiceId is derived deterministically from
+   * (from, recipient, token, nonce) — it is NOT passed as a parameter.
+   *
    * @param recipient The seller's wallet address — must equal msg.sender (this.account)
+   * @returns Object with txHash and the derived on-chain invoiceId
    */
   async settle(
-    invoiceId: string,
+    _invoiceId: string,
     tokenAddress: `0x${string}`,
     endpoint: string,
     auth: SignedAuthorization,
@@ -67,12 +73,10 @@ export class X402Verifier {
       throw new Error("Facilitator wallet not configured — provide facilitatorKey");
     }
 
-    const invoiceIdHash = hashInvoiceId(invoiceId);
     // recipient defaults to the facilitator's own address (seller == facilitator)
     const recipientAddr = recipient ?? this.account.address;
 
     const settleArgs = [
-      invoiceIdHash,
       tokenAddress,
       auth.from as `0x${string}`,
       recipientAddr,
@@ -113,15 +117,29 @@ export class X402Verifier {
   }
 
   /**
-   * Release escrowed funds to the seller after the grace period (24 hours).
-   * Anyone can call this (permissionless) since it only sends to the recorded recipient.
+   * Derive the on-chain invoiceId for a given payment's parameters.
+   * Matches the Solidity: keccak256(abi.encode(from, recipient, token, nonce)).
    */
-  async release(invoiceId: string): Promise<Hash> {
+  deriveInvoiceId(
+    from: `0x${string}`,
+    token: `0x${string}`,
+    nonce: `0x${string}`,
+    recipient?: `0x${string}`
+  ): `0x${string}` {
+    const recipientAddr = recipient ?? this.account?.address;
+    if (!recipientAddr) throw new Error("Recipient address required");
+    return deriveInvoiceId(from, recipientAddr, token, nonce);
+  }
+
+  /**
+   * Release escrowed funds to the seller after the escrow grace period.
+   * Anyone can call this (permissionless) since it only sends to the recorded recipient.
+   * @param invoiceIdHash The derived on-chain invoiceId (bytes32 from deriveInvoiceId())
+   */
+  async release(invoiceIdHash: `0x${string}`): Promise<Hash> {
     if (!this.walletClient || !this.account) {
       throw new Error("Facilitator wallet not configured — provide facilitatorKey");
     }
-
-    const invoiceIdHash = hashInvoiceId(invoiceId);
 
     const hash = await this.walletClient.writeContract({
       address: this.contractAddress,
@@ -139,13 +157,12 @@ export class X402Verifier {
    * Refund a paid invoice back to the original payer.
    * Only the payment recipient (seller) can call this.
    * Funds are held in escrow, so no ERC-20 approval is needed.
+   * @param invoiceIdHash The derived on-chain invoiceId (bytes32 from deriveInvoiceId())
    */
-  async refund(invoiceId: string): Promise<Hash> {
+  async refund(invoiceIdHash: `0x${string}`): Promise<Hash> {
     if (!this.walletClient || !this.account) {
       throw new Error("Facilitator wallet not configured — provide facilitatorKey");
     }
-
-    const invoiceIdHash = hashInvoiceId(invoiceId);
 
     const hash = await this.walletClient.writeContract({
       address: this.contractAddress,
@@ -160,15 +177,15 @@ export class X402Verifier {
   }
 
   /**
-   * Refund a paid invoice to an alternative address (e.g., if the original
-   * payer is blocklisted). Only the payment recipient (seller) can call this.
+   * Refund a paid invoice to the original payer's address.
+   * Only the payment recipient (seller) can call this. The refund recipient
+   * must be the original payer (prevents seller misredirection of funds).
+   * @param invoiceIdHash The derived on-chain invoiceId (bytes32 from deriveInvoiceId())
    */
-  async refundTo(invoiceId: string, refundRecipient: `0x${string}`): Promise<Hash> {
+  async refundTo(invoiceIdHash: `0x${string}`, refundRecipient: `0x${string}`): Promise<Hash> {
     if (!this.walletClient || !this.account) {
       throw new Error("Facilitator wallet not configured — provide facilitatorKey");
     }
-
-    const invoiceIdHash = hashInvoiceId(invoiceId);
 
     const hash = await this.walletClient.writeContract({
       address: this.contractAddress,
@@ -223,12 +240,36 @@ export class X402Verifier {
     return hash;
   }
 
+  /**
+   * Read an on-chain payment record (escrow state, releaseAt, etc.).
+   * @param invoiceIdHash The derived on-chain invoiceId (bytes32 from deriveInvoiceId())
+   */
+  async getPayment(invoiceIdHash: `0x${string}`): Promise<{
+    payer: string;
+    recipient: string;
+    amount: bigint;
+    token: string;
+    endpoint: string;
+    nonce: string;
+    expiry: bigint;
+    paidAt: bigint;
+    releaseAt: bigint;
+    released: boolean;
+    refunded: boolean;
+  }> {
+    return (await this.client.readContract({
+      address: this.contractAddress,
+      abi: verifierAbi,
+      functionName: "getPayment",
+      args: [invoiceIdHash],
+    })) as any;
+  }
+
   async isInvoicePaid(
-    invoiceId: string,
+    invoiceIdHash: `0x${string}`,
     expectedAmount: bigint,
     expectedEndpoint: string
   ): Promise<{ valid: boolean; payer: string }> {
-    const invoiceIdHash = hashInvoiceId(invoiceId);
     const result = (await this.client.readContract({
       address: this.contractAddress,
       abi: verifierAbi,
@@ -240,7 +281,10 @@ export class X402Verifier {
 
   async isNonceUsed(from: `0x${string}`, nonce: `0x${string}`): Promise<boolean> {
     const scopedHash = keccak256(
-      `0x${from.slice(2)}${nonce.slice(2)}` as `0x${string}`
+      encodeAbiParameters(
+        parseAbiParameters("address, bytes32"),
+        [from, nonce]
+      )
     );
     return (await this.client.readContract({
       address: this.contractAddress,

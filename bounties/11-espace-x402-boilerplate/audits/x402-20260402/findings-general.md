@@ -7,172 +7,215 @@
 
 ---
 
-## [G-1] `abi.encodePacked` with two dynamic-width values enables nonce-key collisions
-**Severity**: Medium
+## [GEN-1] Caller-supplied `invoiceId` enables front-running and collision attacks
+**Severity**: High
 **Category**: evm-audit-general
-**Location**: `settle()` lines 282, 293
-**Description**: The nonce-tracking key is computed as `keccak256(abi.encodePacked(from, nonce))`. Both `from` (address, 20 bytes) and `nonce` (bytes32, 32 bytes) are fixed-width types, so in this specific case there is no collision between different type encodings. However, `abi.encodePacked` with an `address` does not left-pad to 32 bytes the way `abi.encode` does. While address + bytes32 packing is unambiguous, using `abi.encode` is the idiomatic safer pattern and avoids any future refactoring risk if additional dynamic parameters are added to the hash.
-
-After deeper analysis: `address` is 20 bytes fixed and `bytes32` is 32 bytes fixed. The packed encoding is deterministic and collision-free for this specific pair. Downgrading to Info.
-
-**Severity**: Info
-**Category**: evm-audit-general
-**Location**: `settle()` lines 282, 293
-**Description**: `keccak256(abi.encodePacked(from, nonce))` uses `abi.encodePacked` for the nonce key. While safe for this specific (address, bytes32) pair since both are fixed-width, using `abi.encode` is the recommended practice to prevent collisions if the schema is ever extended.
-**Proof of Concept**: No exploit currently possible. Risk arises only if future refactoring adds dynamic types to the hash preimage.
-**Recommendation**: Replace with `abi.encode` for defense in depth:
-```solidity
-bytes32 nonceKey = keccak256(abi.encode(from, nonce));
-```
+**Location**: `settle()`
+**Description**: The `invoiceId` is supplied by the caller and used as the sole key in the `payments` mapping. The only guard is `require(payments[invoiceId].paidAt == 0)`. A malicious actor (another seller, or an MEV bot) can observe a pending `settle()` transaction in the mempool and front-run it by submitting their own `settle()` with the same `invoiceId` but different payment parameters. This permanently blocks the legitimate payment from being recorded under that ID. Because `invoiceId` is a global namespace shared across all sellers, any seller can grief any other seller's settlement.
+**Proof of Concept**:
+1. Seller A submits `settle(invoiceId=0xABC, ...)` to the mempool.
+2. Seller B (or MEV bot) front-runs with `settle(invoiceId=0xABC, ...)` using their own valid ERC-3009 authorization and higher gas.
+3. Seller B's transaction lands first; Seller A's reverts with "X402: already paid".
+4. Seller A must coordinate a new `invoiceId` with the buyer.
+**Recommendation**: Derive `invoiceId` deterministically from payment parameters: `bytes32 invoiceId = keccak256(abi.encode(from, recipient, token, nonce))`. Alternatively, namespace the key by recipient: `payments[keccak256(abi.encode(invoiceId, recipient))]`.
 
 ---
 
-## [G-2] PUSH0 opcode incompatibility with Conflux eSpace and other non-mainnet chains
+## [GEN-2] `refundTo()` allows seller to redirect escrowed funds to arbitrary address
 **Severity**: Medium
 **Category**: evm-audit-general
-**Location**: `pragma solidity ^0.8.24` (line 2)
-**Description**: Solidity >=0.8.20 emits the `PUSH0` opcode by default. This contract targets Conflux eSpace, which may not support `PUSH0` depending on the EVM version implemented. If the target chain's EVM does not include `PUSH0` (introduced in the Shanghai upgrade), deployment or execution will fail. The `^0.8.24` pragma allows any compiler from 0.8.24 onward, all of which emit `PUSH0`.
-**Proof of Concept**: Compile the contract with solc >=0.8.20 and attempt deployment on a chain that has not adopted the Shanghai upgrade. The deployment transaction will revert due to the invalid opcode.
-**Recommendation**: Verify that Conflux eSpace supports the Shanghai upgrade and `PUSH0`. If not, either pin the compiler to 0.8.19 or set the EVM target version to `paris` in the compiler settings:
+**Location**: `refundTo()`, `_refundTo()`
+**Description**: The `refundTo()` function allows the seller (`p.recipient`) to send escrowed funds to any address except `address(0)` and `p.recipient`. The check `require(refundRecipient != payments[invoiceId].recipient)` only prevents a direct self-refund, but the seller can use any other address they control. This means a malicious seller can "refund" buyer funds to their own alternate wallet during the escrow period, marking the payment as `refunded = true` and emitting a `Refunded` event -- effectively stealing the buyer's funds while appearing to have issued a legitimate refund.
+**Proof of Concept**:
+1. Buyer authorizes payment. Seller calls `settle()`.
+2. Within escrow, seller calls `refundTo(invoiceId, sellerAlternateWallet)`.
+3. Payment is marked refunded. Buyer's funds go to seller's other wallet.
+4. Events show a "refund" occurred, obscuring the theft.
+**Recommendation**: Restrict `refundTo` so the refund recipient must be the original payer, or require the payer's signature for alternative refund addresses:
+```solidity
+require(refundRecipient == p.payer, "X402: can only refund to payer");
 ```
-solidity: {
-  compilers: [{ version: "0.8.24", settings: { evmVersion: "paris" } }]
+If alternative recipients are needed (e.g., blocklisted payer), require a separate payer-signed authorization.
+
+---
+
+## [GEN-3] Seller can set escrow duration to zero or near-zero, defeating the refund window
+**Severity**: Medium
+**Category**: evm-audit-general
+**Location**: `_validateEscrowDuration()`, `settle()`
+**Description**: `MIN_ESCROW_DURATION` is defined as 0, and `_validateEscrowDuration()` only checks the upper bound. A seller can register with `escrowDuration = 0` (or 1 second), causing `releaseAt = block.timestamp + 0`. The `release()` function's `require(block.timestamp >= p.releaseAt)` passes immediately in the same block. Meanwhile, `refund()` requires `block.timestamp < p.releaseAt`, which is impossible when escrow is 0. This completely eliminates the buyer's dispute window, rendering the escrow mechanism useless for that seller.
+**Proof of Concept**:
+1. Seller registers with `escrowDuration = 0`.
+2. Seller calls `settle()` -- `releaseAt = block.timestamp`.
+3. Anyone calls `release()` in the same block -- succeeds immediately.
+4. Buyer cannot call `refund()` as `block.timestamp < p.releaseAt` is never true.
+**Recommendation**: Enforce a meaningful minimum escrow:
+```solidity
+uint256 public constant MIN_ESCROW_DURATION = 1 hours;
+function _validateEscrowDuration(uint256 duration) internal pure returns (uint256) {
+    require(duration >= MIN_ESCROW_DURATION, "X402: escrow too short");
+    require(duration <= MAX_ESCROW_DURATION, "X402: escrow too long");
+    return duration;
 }
 ```
 
 ---
 
-## [G-3] Seller can set escrow duration to zero, enabling immediate release and defeating refund protection
+## [GEN-4] Force-feeding ETH inflates `withdrawFees()` beyond actual registration fees collected
 **Severity**: Medium
 **Category**: evm-audit-general
-**Location**: `_validateEscrowDuration()` line 471-476, `settle()` line 319
-**Description**: `MIN_ESCROW_DURATION` is 0 and `_validateEscrowDuration` accepts any value in `[0, MAX_ESCROW_DURATION]`. When `duration == 0`, it returns `DEFAULT_ESCROW_DURATION` (24h). However, a seller can pass `duration = 1` (1 second) during registration. In `settle()`, `releaseAt` is set to `block.timestamp + 1`, meaning anyone can call `release()` in the very next block (or even the same block if timestamp allows `>=`). This effectively bypasses the escrow refund window, defeating the stated purpose of escrow ("held in escrow for a grace period during which the seller can issue refunds"). A malicious seller could settle and immediately release, making refunds impossible for buyers.
+**Location**: `withdrawFees()`
+**Description**: `withdrawFees()` sends the entire `address(this).balance` to the owner. ETH can be force-sent to the contract via `selfdestruct` (deprecated but still functional), coinbase rewards, or pre-funded addresses. This inflates the balance beyond what was actually collected through registration fees. While the owner is trusted, this breaks the accounting invariant that withdrawn fees equal collected fees. On Conflux eSpace, equivalent force-send mechanisms may also exist.
 **Proof of Concept**:
-1. Seller calls `registerSeller("url", "desc", 1)` -- escrow duration = 1 second.
-2. Seller calls `settle(...)` -- `releaseAt = block.timestamp + 1`.
-3. In the same transaction (or next block), seller calls `release(invoiceId)` -- `block.timestamp >= releaseAt` passes.
-4. Buyer has no time to request a refund.
-**Recommendation**: Set `MIN_ESCROW_DURATION` to a meaningful minimum (e.g., 1 hour) and enforce it:
+1. Attacker deploys a contract funded with 10 ETH.
+2. Attacker calls `selfdestruct(X402PaymentVerifierAddress)`.
+3. Contract balance is now 10 ETH + registration fees.
+4. Owner calls `withdrawFees()` and receives inflated amount.
+**Recommendation**: Track collected fees explicitly:
 ```solidity
-uint256 public constant MIN_ESCROW_DURATION = 1 hours;
+uint256 public collectedFees;
+// In registerSeller/reactivateSeller:
+collectedFees += registrationFee;
+// In withdrawFees:
+uint256 amount = collectedFees;
+collectedFees = 0;
+(bool sent, ) = owner().call{value: amount}("");
 ```
 
 ---
 
-## [G-4] Duplicate token addresses in constructor are silently accepted
-**Severity**: Info
-**Category**: evm-audit-general
-**Location**: `constructor()` lines 132-139
-**Description**: The constructor iterates over `_tokens` and sets `supportedTokens[_tokens[i]] = true` without checking for duplicates. While this does not cause a security issue (setting a bool to true twice is idempotent), it may indicate a deployment misconfiguration.
-**Proof of Concept**: Deploy with `[tokenA, tokenA]` -- no revert, no warning.
-**Recommendation**: Add a duplicate check:
-```solidity
-require(!supportedTokens[_tokens[i]], "X402: duplicate token");
-```
-
----
-
-## [G-5] Off-by-one: escrow period boundary allows release and refund to race at `releaseAt`
-**Severity**: Low
-**Category**: evm-audit-general
-**Location**: `release()` line 339, `_refundTo()` line 399
-**Description**: `release()` requires `block.timestamp >= p.releaseAt` while `_refundTo()` requires `block.timestamp < p.releaseAt`. At exactly `block.timestamp == p.releaseAt`, the release path is open but the refund path is closed. This is logically consistent (no overlap), but means the last possible refund moment is the block before `releaseAt`, which may be unexpected for sellers who think they have until the escrow deadline to refund. More importantly, if both `release()` and `refund()` are submitted in the same block where `block.timestamp == p.releaseAt`, only `release()` can succeed. This is likely intentional but worth documenting.
-**Proof of Concept**: Seller submits `refund(invoiceId)` in a block where `block.timestamp == p.releaseAt`. Transaction reverts with "X402: escrow period ended".
-**Recommendation**: Document this boundary behavior clearly in NatSpec. If the intention is to allow refund up to and including the deadline, change the refund check to `<=`:
-```solidity
-require(block.timestamp <= p.releaseAt, "X402: escrow period ended");
-```
-And change release to `>`:
-```solidity
-require(block.timestamp > p.releaseAt, "X402: escrow period active");
-```
-
----
-
-## [G-6] `refundTo` allows seller to redirect escrowed funds to arbitrary address
+## [GEN-5] Compromised seller can reactivate after owner-initiated deactivation
 **Severity**: Medium
 **Category**: evm-audit-general
-**Location**: `refundTo()` lines 389-391, `_refundTo()` line 394
-**Description**: The `refundTo()` function allows the seller (payment recipient) to send escrowed funds to any address, not just the original payer. While the stated use case is handling blocklisted payer addresses, this also means a malicious seller can "refund" funds to their own wallet or any other address they control during the escrow period. Since only the seller can initiate refunds, and they could also just wait for release, this is primarily a trust-model concern -- but it means the `refunded` flag and `Refunded` event may be misleading, as funds labeled "refunded" could go to the seller rather than the buyer.
+**Location**: `deactivateSeller()`, `reactivateSeller()`
+**Description**: `deactivateSeller()` can be called by the owner to forcefully deactivate a malicious or compromised seller. However, that same seller address can immediately call `reactivateSeller()` to become active again, as reactivation only checks `sellers[msg.sender].registeredAt > 0` and `!sellers[msg.sender].active` -- there is no blocklist mechanism. This makes owner-initiated deactivation ineffective as a security measure.
 **Proof of Concept**:
-1. Seller settles a payment from buyer.
-2. Within escrow period, seller calls `refundTo(invoiceId, sellerOwnAddress)`.
-3. Payment is marked `refunded = true`, funds go to seller, buyer receives nothing.
-4. `Refunded` event shows `refundRecipient = sellerAddress`, but off-chain systems may not distinguish this from a legitimate refund.
-**Recommendation**: Consider restricting `refundTo` so the refund recipient cannot be the seller/recipient of the payment, or require buyer co-signature for alternative refund addresses:
-```solidity
-require(refundRecipient != p.recipient, "X402: cannot refund to seller");
-```
-
----
-
-## [G-7] No mechanism to recover tokens sent directly to the contract
-**Severity**: Low
-**Category**: evm-audit-general
-**Location**: Contract-wide
-**Description**: If ERC-20 tokens are sent directly to the contract (not through `settle()`), they become permanently locked. The contract has no `rescueTokens()` or similar admin function to recover accidentally sent funds. The `release()` and `refund()` functions only operate on recorded payment amounts, so excess balance is stranded.
-**Proof of Concept**: User accidentally calls `token.transfer(contractAddress, amount)` directly. Tokens are stuck with no recovery path.
-**Recommendation**: Add an owner-only rescue function that can only withdraw tokens not accounted for in active escrows, or a simpler emergency sweep with a timelock.
-
----
-
-## [G-8] `sellerList` can grow unboundedly, making `getActiveSellers` expensive
-**Severity**: Low
-**Category**: evm-audit-general
-**Location**: `registerSeller()` line 169, `reactivateSeller()` line 190, `getActiveSellers()` lines 449-462
-**Description**: While `getActiveSellers` is paginated (view function, no gas cost for external reads), the `sellerList` array grows with each registration and reactivation. The swap-and-pop in `deactivateSeller` keeps it bounded to active sellers, but repeated activate/deactivate cycles keep adding and removing entries. This is not a direct vulnerability due to pagination, but on-chain iteration over `sellerList` from other contracts could be expensive.
-**Proof of Concept**: N/A -- mitigated by pagination in the view function.
-**Recommendation**: Informational only. The current design with pagination is adequate.
-
----
-
-## [G-9] Seller re-registration is permanently blocked after first registration
-**Severity**: Low
-**Category**: evm-audit-general
-**Location**: `registerSeller()` line 156
-**Description**: The check `sellers[msg.sender].registeredAt == 0` permanently prevents an address from calling `registerSeller` again, even after deactivation. Deactivated sellers must use `reactivateSeller()` instead. However, `reactivateSeller` does not allow changing the `registeredAt` timestamp, and the separation between "register" and "reactivate" could confuse integrators. If a seller's address is compromised and deactivated by the owner, the compromised address can call `reactivateSeller()` to reactivate itself (since only `active` status is checked, not authorization beyond `msg.sender`).
-**Proof of Concept**:
-1. Seller registers with address A.
-2. Owner deactivates address A due to compromise.
-3. Compromised address A calls `reactivateSeller(...)` and becomes active again.
-**Recommendation**: Add an owner-controlled blocklist, or require owner approval for reactivation after owner-initiated deactivation:
+1. Owner detects a compromised seller and calls `deactivateSeller(sellerAddr)`.
+2. Compromised seller immediately calls `reactivateSeller("url", "desc", escrow)`.
+3. Seller is active again; owner's action was futile.
+**Recommendation**: Add a blocklist that prevents reactivation:
 ```solidity
 mapping(address => bool) public blockedSellers;
-```
-In `reactivateSeller`:
-```solidity
+function blockSeller(address wallet) external onlyOwner {
+    blockedSellers[wallet] = true;
+    if (sellers[wallet].active) { /* deactivate */ }
+}
+// In reactivateSeller:
 require(!blockedSellers[msg.sender], "X402: seller blocked");
 ```
 
 ---
 
-## [G-10] Double computation of nonce key hash in `settle()`
+## [GEN-6] `release()` has no access control -- anyone can trigger fund release after escrow
+**Severity**: Low
+**Category**: evm-audit-general
+**Location**: `release()`
+**Description**: The `release()` function has no caller restriction. Anyone can call it after the escrow period ends, forcing the transfer of escrowed funds to `p.recipient`. While funds go to the correct recipient, this removes the recipient's ability to delay claiming (e.g., for tax timing, coordination with disputes, or operational reasons). In contrast, `releaseTo()` correctly restricts to `msg.sender == p.recipient`.
+**Proof of Concept**: After escrow ends, a bot or third party calls `release(invoiceId)`. Funds are sent to the recipient regardless of the recipient's preference.
+**Recommendation**: Add `require(msg.sender == p.recipient, "X402: only recipient can release")` for consistency with `releaseTo()`.
+
+---
+
+## [GEN-7] No mechanism to recover funds when recipient cannot receive tokens after escrow
+**Severity**: Medium
+**Category**: evm-audit-general
+**Location**: `release()`, `_refundTo()`
+**Description**: After the escrow period ends, `refund()` is permanently blocked (`require(block.timestamp < p.releaseAt)`). If `release()` reverts because the recipient address cannot receive the token (e.g., the recipient is a contract without ERC-20 handling, or the recipient is blocklisted by the token contract), the funds are permanently stuck. There is no fallback mechanism -- no owner-mediated emergency withdrawal, no payer reclaim after a timeout, nothing.
+**Proof of Concept**:
+1. Payment is settled. Escrow passes.
+2. Recipient address is blocklisted by the USDC contract (a real scenario with Centre's blocklist).
+3. `release()` calls `safeTransfer` to recipient -- reverts due to blocklist.
+4. `refund()` reverts because escrow has ended.
+5. Funds are permanently locked in the contract.
+**Recommendation**: Add an emergency function with a long cooldown (e.g., 90 days after `releaseAt`) that allows the owner or payer to recover funds:
+```solidity
+function emergencyWithdraw(bytes32 invoiceId) external {
+    Payment storage p = payments[invoiceId];
+    require(p.paidAt > 0 && !p.released && !p.refunded);
+    require(block.timestamp > p.releaseAt + 90 days);
+    // return to payer
+}
+```
+
+---
+
+## [GEN-8] `validAfter` is not validated against `block.timestamp` in `settle()`
+**Severity**: Medium
+**Category**: evm-audit-general
+**Location**: `settle()`
+**Description**: The `settle()` function validates `block.timestamp < validBefore` but does not check `block.timestamp >= validAfter`. While the underlying ERC-3009 token contract will enforce this, the missing check wastes gas on transactions that will inevitably revert at the token level, and produces an opaque error message from the token contract rather than a clear contract-level revert reason.
+**Proof of Concept**:
+1. Authorization has `validAfter = block.timestamp + 1 hour`.
+2. Seller calls `settle()` immediately.
+3. All X402 contract-level checks pass (gas consumed for all requires and storage reads).
+4. `receiveWithAuthorization` reverts with a token-level error.
+**Recommendation**: Add `require(block.timestamp >= validAfter, "X402: authorization not yet valid")`.
+
+---
+
+## [GEN-9] Registration fee overpayment is silently absorbed
+**Severity**: Low
+**Category**: evm-audit-general
+**Location**: `registerSeller()`, `reactivateSeller()`
+**Description**: Both functions use `require(msg.value >= registrationFee)` but do not refund excess ETH. If a user accidentally sends more than required, the excess remains in the contract and is swept by the owner via `withdrawFees()`. The user has no recourse to recover the overpayment.
+**Proof of Concept**:
+1. Registration fee is 0.01 ETH.
+2. User sends 1 ETH by mistake.
+3. 0.99 ETH excess is absorbed by the contract.
+**Recommendation**: Use exact matching or refund the difference:
+```solidity
+require(msg.value == registrationFee, "X402: exact fee required");
+```
+
+---
+
+## [GEN-10] `updateSeller` and `reactivateSeller` cannot set escrow duration to zero
+**Severity**: Low
+**Category**: evm-audit-general
+**Location**: `updateSeller()`, `reactivateSeller()`
+**Description**: Both functions use `if (escrowDuration > 0)` to conditionally update the escrow duration. This means passing `escrowDuration = 0` silently keeps the old value. Since `_validateEscrowDuration` accepts 0 as valid (per `MIN_ESCROW_DURATION = 0`), a seller who registered with a nonzero escrow can never change it to zero. The semantics of "0 means don't change" vs "0 is a valid value" are conflated.
+**Proof of Concept**:
+1. Seller registers with `escrowDuration = 1 days`.
+2. Seller calls `updateSeller("url", "desc", 0)`.
+3. Escrow duration remains 1 day, with no indication the update was ignored.
+**Recommendation**: Use a sentinel value (e.g., `type(uint256).max`) for "do not change", or add a separate boolean parameter.
+
+---
+
+## [GEN-11] Double computation of nonce key hash in `settle()`
 **Severity**: Info
 **Category**: evm-audit-general
-**Location**: `settle()` lines 282, 293
-**Description**: `keccak256(abi.encodePacked(from, nonce))` is computed twice -- once for the `require` check and once to set the mapping. This wastes gas.
+**Location**: `settle()`
+**Description**: `keccak256(abi.encode(from, nonce))` is computed twice -- once inside the `require(!usedNonces[...])` check and again when assigning `nonceKey`. This wastes ~100 gas.
 **Proof of Concept**: N/A -- gas inefficiency only.
-**Recommendation**: Cache the hash:
+**Recommendation**: Compute the key once before the require:
 ```solidity
-bytes32 nonceKey = keccak256(abi.encodePacked(from, nonce));
+bytes32 nonceKey = keccak256(abi.encode(from, nonce));
 require(!usedNonces[nonceKey], "X402: nonce already used");
 usedNonces[nonceKey] = true;
 ```
 
 ---
 
-## [G-11] `verifyPayment` does not check `released` status
+## [GEN-12] PUSH0 opcode may be incompatible with Conflux eSpace
+**Severity**: Medium
+**Category**: evm-audit-general
+**Location**: `pragma solidity ^0.8.24`
+**Description**: Solidity 0.8.20+ emits the `PUSH0` opcode (Shanghai EVM upgrade). If Conflux eSpace does not support Shanghai-level opcodes, deployment or execution will fail with an invalid opcode error. The `^0.8.24` pragma permits compilers that will emit `PUSH0` by default.
+**Proof of Concept**: Compile with solc 0.8.24 default settings and deploy on a chain without Shanghai support. Transaction reverts.
+**Recommendation**: Verify Conflux eSpace Shanghai support. If unsupported, set `evmVersion: "paris"` in compiler settings or pin to solc 0.8.19.
+
+---
+
+## [GEN-13] `verifyPayment` does not report `released` status
 **Severity**: Low
 **Category**: evm-audit-general
-**Location**: `verifyPayment()` lines 358-371
-**Description**: The `verifyPayment` view function checks `paidAt` and `refunded` but does not return whether the payment has been `released`. Off-chain consumers may need to know whether funds are still in escrow or have been transferred to the seller to make correct decisions. A payment that has been released is "completed," while one still in escrow is "pending." This distinction could matter for dispute resolution or accounting.
-**Proof of Concept**: Call `verifyPayment` on a released payment -- returns `(true, payer)` with no indication that escrow has already been resolved.
-**Recommendation**: Either add `released` to the return values or document that `verifyPayment` intentionally does not distinguish escrow states:
+**Location**: `verifyPayment()`
+**Description**: `verifyPayment()` checks `paidAt` and `refunded` but does not return whether the payment has been `released`. Off-chain consumers calling this function cannot distinguish between a payment still in escrow and one that has been fully settled. This could lead to incorrect business logic (e.g., granting API access for a payment whose funds have already been released to the seller vs. one still in dispute-eligible escrow).
+**Proof of Concept**: Call `verifyPayment` on a released payment -- returns `(true, payer)` with no indication that escrow has resolved.
+**Recommendation**: Add `released` to the return values:
 ```solidity
-function verifyPayment(...)
-    external view
-    returns (bool valid, address payer, bool released)
-{
+function verifyPayment(...) external view returns (bool valid, address payer, bool released) {
     // ...
     return (true, p.payer, p.released);
 }
@@ -180,22 +223,12 @@ function verifyPayment(...)
 
 ---
 
-## [G-12] `reactivateSeller` emits `SellerRegistered` instead of a reactivation-specific event
-**Severity**: Info
-**Category**: evm-audit-general
-**Location**: `reactivateSeller()` line 193
-**Description**: `reactivateSeller` emits `SellerRegistered` which is the same event as initial registration. Off-chain indexers cannot distinguish between a new registration and a reactivation, which could cause incorrect accounting of seller counts or history.
-**Proof of Concept**: Monitor `SellerRegistered` events -- the same seller address appears multiple times with no way to differentiate registration from reactivation.
-**Recommendation**: Emit a dedicated `SellerReactivated` event or add a boolean parameter to `SellerRegistered`.
-
----
-
-## [G-13] No validation that `from` address is not `address(0)` or `address(this)` in `settle()`
+## [GEN-14] No `from` address validation in `settle()` -- `address(0)` and `address(this)` not excluded
 **Severity**: Low
 **Category**: evm-audit-general
-**Location**: `settle()` lines 263-276
-**Description**: The `settle()` function validates `recipient != address(0)` and `from != recipient`, but does not check that `from != address(0)` or `from != address(this)`. While the ERC-3009 `receiveWithAuthorization` would likely fail for `address(0)` due to invalid signatures, there is no explicit guard. More concerning, `from == address(this)` is not checked -- if the contract itself somehow had an authorization outstanding (unlikely but worth defending against), it could be used to drain escrowed funds.
-**Proof of Concept**: Theoretical -- would require a valid ERC-3009 signature from `address(this)` or `address(0)`, which is practically impossible but defense-in-depth suggests guarding against it.
+**Location**: `settle()`
+**Description**: `settle()` validates `recipient != address(0)` and `from != recipient`, but does not check `from != address(0)` or `from != address(this)`. While ERC-3009 signature verification would reject `address(0)` as a signer in practice, there is no explicit guard. If `from == address(this)`, a valid authorization (impossible to forge in practice but worth defending against) could allow draining the contract's own escrowed token balance.
+**Proof of Concept**: Theoretical only -- requires forging a signature from `address(this)` or `address(0)`.
 **Recommendation**: Add explicit validation:
 ```solidity
 require(from != address(0), "X402: zero payer");
@@ -204,20 +237,106 @@ require(from != address(this), "X402: contract cannot be payer");
 
 ---
 
-## [G-14] `Payment` struct stores redundant `endpoint` string, increasing storage costs
-**Severity**: Info
+## [GEN-15] Escrow boundary allows release but not refund at exact `releaseAt` timestamp
+**Severity**: Low
 **Category**: evm-audit-general
-**Location**: `Payment` struct, line 64
-**Description**: The `endpoint` field is a `string` stored in the `Payment` struct on-chain. Strings in storage are expensive. Since `endpoint` is only used in `verifyPayment` for comparison and in the `PaymentReceived` event, consider storing only the hash (`keccak256(bytes(endpoint))`) to save gas on settlement.
-**Proof of Concept**: N/A -- gas optimization.
-**Recommendation**: Store `bytes32 endpointHash` instead of `string endpoint` and compare hashes directly. The full endpoint string is already emitted in the event for off-chain indexing.
+**Location**: `release()`, `_refundTo()`
+**Description**: `release()` uses `>=` (`block.timestamp >= p.releaseAt`) while `_refundTo()` uses `<` (`block.timestamp < p.releaseAt`). At exactly `block.timestamp == p.releaseAt`, release succeeds but refund fails. If both transactions are submitted in the same block at the boundary, the seller loses the ability to refund. This is logically consistent (no overlap) but may surprise sellers who expect the escrow deadline to be inclusive for refunds.
+**Proof of Concept**: Seller submits `refund(invoiceId)` in a block where `block.timestamp == p.releaseAt`. Transaction reverts.
+**Recommendation**: Document the boundary behavior in NatSpec. Optionally adjust to make the refund deadline inclusive and release exclusive by one second.
 
 ---
 
-## [G-15] Owner can remove token support while payments in that token are still in escrow
+## [GEN-16] Duplicate token addresses in constructor silently accepted
+**Severity**: Info
+**Category**: evm-audit-general
+**Location**: `constructor()`
+**Description**: The constructor loop sets `supportedTokens[_tokens[i]] = true` without checking for duplicates. While idempotent and not exploitable, it may mask deployment misconfigurations.
+**Proof of Concept**: Deploy with `[tokenA, tokenA]` -- no revert, two `TokenSupported` events for the same address.
+**Recommendation**: Add `require(!supportedTokens[_tokens[i]], "X402: duplicate token")`.
+
+---
+
+## [GEN-17] `setRegistrationFee` has no upper bound
 **Severity**: Low
 **Category**: evm-audit-general
-**Location**: `setSupportedToken()` lines 420-427, `release()` lines 334-349
-**Description**: The owner can call `setSupportedToken(token, false)` while there are still active escrows denominated in that token. This does not prevent `release()` or `refund()` from executing (they do not check `supportedTokens`), so existing escrows are safe. However, it does prevent new settlements in that token, which could be confusing if documented as "removing support" without clarifying that existing escrows are unaffected. This is informational since the release/refund paths work correctly regardless.
-**Proof of Concept**: N/A -- existing escrows function correctly after token removal.
-**Recommendation**: Document in NatSpec that removing token support only affects new settlements, not existing escrows.
+**Location**: `setRegistrationFee()`
+**Description**: The owner can set `registrationFee` to any `uint256` value, including unreasonably high amounts that effectively prevent new seller registrations. While this requires a malicious or compromised owner, a maximum cap provides defense in depth.
+**Proof of Concept**: Owner calls `setRegistrationFee(type(uint256).max)`. No new sellers can register.
+**Recommendation**: Add `require(fee <= MAX_REGISTRATION_FEE)` with a reasonable constant.
+
+---
+
+## [GEN-18] `reactivateSeller` emits `SellerRegistered` instead of a distinct event
+**Severity**: Info
+**Category**: evm-audit-general
+**Location**: `reactivateSeller()`
+**Description**: `reactivateSeller()` emits `SellerRegistered`, the same event as first-time registration. Off-chain indexers cannot distinguish reactivation from initial registration, potentially causing incorrect seller count tracking or duplicate registration alerts.
+**Proof of Concept**: Same seller address emits `SellerRegistered` twice -- once on registration, once on reactivation.
+**Recommendation**: Emit a distinct `SellerReactivated` event.
+
+---
+
+## [GEN-19] No token rescue function for accidentally sent ERC-20 tokens
+**Severity**: Low
+**Category**: evm-audit-general
+**Location**: Contract-wide
+**Description**: If ERC-20 tokens are sent directly to the contract (not through `settle()`), they are permanently locked. The contract has no `rescueTokens()` function. The `release()` and `refund()` paths only operate on recorded payment amounts, so any excess token balance is stranded forever.
+**Proof of Concept**: User calls `token.transfer(contractAddress, amount)` directly. Tokens are permanently stuck.
+**Recommendation**: Add an owner-only rescue function that can withdraw tokens not accounted for in active escrows. This requires tracking total escrowed amounts per token.
+
+---
+
+## [GEN-20] `Payment` struct stores full `endpoint` string on-chain -- expensive storage
+**Severity**: Info
+**Category**: evm-audit-general
+**Location**: `Payment` struct
+**Description**: The `endpoint` field is a dynamic `string` stored in the `Payment` struct. String storage is expensive. Since `endpoint` is only used in `verifyPayment()` for a hash comparison, and the full string is already emitted in the `PaymentReceived` event for off-chain indexing, storing only the hash would save significant gas.
+**Proof of Concept**: N/A -- gas optimization.
+**Recommendation**: Store `bytes32 endpointHash = keccak256(bytes(endpoint))` instead of the full string.
+
+---
+
+## [GEN-21] `withdrawFees()` could be permanently bricked if owner is a non-receiving contract
+**Severity**: Low
+**Category**: evm-audit-general
+**Location**: `withdrawFees()`
+**Description**: `owner().call{value: balance}("")` will fail if the owner address is a contract that reverts on ETH receipt. While `Ownable2Step` requires the new owner to actively accept (mitigating accidental transfers), the owner contract could later upgrade its logic to reject ETH, permanently bricking fee withdrawal.
+**Proof of Concept**:
+1. Ownership is transferred to a multisig proxy.
+2. Proxy upgrades to a version whose `receive()` reverts.
+3. `withdrawFees()` permanently reverts.
+**Recommendation**: Allow the owner to specify a separate withdrawal address, or implement a pull-based withdrawal pattern.
+
+---
+
+## [GEN-22] `block.chainid` in event is not validated -- potential cross-chain replay
+**Severity**: Low
+**Category**: evm-audit-general
+**Location**: `settle()`
+**Description**: The `PaymentReceived` event includes `block.chainid` for informational purposes, but the contract does not validate or store the chain ID. In a chain fork scenario, the same contract at the same address on both chains could process the same ERC-3009 authorization independently, as the contract's `usedNonces` mapping is separate state on each fork. Whether this is exploitable depends on whether the ERC-3009 token's domain separator includes the chain ID.
+**Proof of Concept**: After a chain fork, seller calls `settle()` with the same authorization on both chains, double-charging the payer.
+**Recommendation**: Store `immutable uint256 DEPLOYMENT_CHAIN_ID = block.chainid` in the constructor and validate in `settle()`:
+```solidity
+require(block.chainid == DEPLOYMENT_CHAIN_ID, "X402: wrong chain");
+```
+
+---
+
+## [GEN-23] Owner can remove token support while escrows are active -- no impact but undocumented
+**Severity**: Info
+**Category**: evm-audit-general
+**Location**: `removeToken()`, `release()`, `refund()`
+**Description**: `removeToken()` can remove a token while payments in that token are still escrowed. Existing `release()` and `refund()` calls do not check `supportedTokens`, so they continue to work correctly. However, this behavior is not documented and could confuse operators who expect token removal to affect in-flight payments.
+**Proof of Concept**: N/A -- existing escrows are unaffected.
+**Recommendation**: Add NatSpec documenting that token removal only affects new settlements.
+
+---
+
+## [GEN-24] `received > 0` check in `settle()` does not verify `received == value` -- fee-on-transfer discrepancy
+**Severity**: Low
+**Category**: evm-audit-general
+**Location**: `settle()`
+**Description**: The balance-difference pattern correctly captures the actual amount received, but `require(received > 0)` does not verify that `received == value`. For fee-on-transfer tokens, `received < value`, meaning the payment is recorded for less than the buyer authorized. The buyer authorized `value` but the payment records `received`. Off-chain systems using the authorized `value` for reconciliation will see a mismatch with the on-chain `amount`.
+**Proof of Concept**: Token has 1% fee. Buyer authorizes 100. Contract receives 99. Payment records 99. Off-chain system expected 100.
+**Recommendation**: Either add `require(received == value, "X402: amount mismatch")` to reject fee-on-transfer tokens, or emit both `value` and `received` in the event for reconciliation.

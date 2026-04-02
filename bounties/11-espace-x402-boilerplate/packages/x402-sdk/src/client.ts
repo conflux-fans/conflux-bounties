@@ -10,7 +10,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { verifierAbi } from "./abi.js";
 import { confluxESpaceTestnet } from "./chain.js";
-import { RECEIVE_WITH_AUTHORIZATION_TYPES, ERC3009_DOMAIN, getERC3009Domain, splitSignature, hashNonce, hashInvoiceId } from "@x402/shared";
+import { RECEIVE_WITH_AUTHORIZATION_TYPES, ERC3009_DOMAIN, getERC3009Domain, splitSignature, hashNonce } from "@x402/shared";
 
 export interface X402PaymentChallenge {
   amount: string;
@@ -192,12 +192,10 @@ export class X402Client {
   }
 
   async verifyPayment(
-    invoiceId: string,
+    invoiceIdHash: `0x${string}`,
     expectedAmount: bigint,
     expectedEndpoint: string
   ): Promise<{ valid: boolean; payer: string }> {
-    const invoiceIdHash = hashInvoiceId(invoiceId);
-
     const result = (await this.publicClient.readContract({
       address: this.contractAddress,
       abi: verifierAbi,
@@ -208,9 +206,7 @@ export class X402Client {
     return { valid: result[0], payer: result[1] };
   }
 
-  async getPayment(invoiceId: string) {
-    const invoiceIdHash = hashInvoiceId(invoiceId);
-
+  async getPayment(invoiceIdHash: `0x${string}`) {
     return this.publicClient.readContract({
       address: this.contractAddress,
       abi: verifierAbi,

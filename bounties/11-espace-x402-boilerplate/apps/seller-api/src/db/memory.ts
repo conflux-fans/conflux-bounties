@@ -16,23 +16,25 @@ const store = {
 };
 
 // Seed default pricing
+// USDT0 uses 6 decimals: 1 USDT0 = 1_000_000
+// These values must match the SQL seeds in schema.sql
 store.endpoint_pricing.set("/data/instant", {
   endpoint: "/data/instant",
-  price: "10000000000000000",
+  price: "10000",
   token: "0x0000000000000000000000000000000000000000",
   description: "Instant lookup (no escrow)",
   tier: "premium",
 });
 store.endpoint_pricing.set("/data/premium", {
   endpoint: "/data/premium",
-  price: "100000000000000000",
+  price: "100000",
   token: "0x0000000000000000000000000000000000000000",
   description: "Premium data feed",
   tier: "premium",
 });
 store.endpoint_pricing.set("/compute/simulate", {
   endpoint: "/compute/simulate",
-  price: "500000000000000000",
+  price: "500000",
   token: "0x0000000000000000000000000000000000000000",
   description: "Compute simulation",
   tier: "premium",

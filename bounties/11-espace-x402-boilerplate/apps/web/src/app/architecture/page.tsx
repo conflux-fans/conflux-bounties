@@ -489,14 +489,14 @@ export default function ArchitecturePage() {
                     <td className="py-2.5 px-4">Refunds to an alternative address (e.g., if the original payer is blocklisted by the token).</td>
                   </tr>
                   <tr>
-                    <td className="py-2.5 px-4"><code className="text-white text-xs">registerSeller(apiBaseUrl, description)</code></td>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">registerSeller(apiBaseUrl, description, escrowDuration)</code></td>
                     <td className="py-2.5 px-4 whitespace-nowrap">Anyone</td>
-                    <td className="py-2.5 px-4">Registers caller&apos;s wallet as a seller. Stored on-chain with API URL and description.</td>
+                    <td className="py-2.5 px-4">Registers caller&apos;s wallet as a seller with custom escrow period. Stored on-chain with API URL and description. May require a registration fee.</td>
                   </tr>
                   <tr>
-                    <td className="py-2.5 px-4"><code className="text-white text-xs">updateSeller(apiBaseUrl, description)</code></td>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">updateSeller(apiBaseUrl, description, escrowDuration)</code></td>
                     <td className="py-2.5 px-4 whitespace-nowrap">Registered seller</td>
-                    <td className="py-2.5 px-4">Updates the caller&apos;s seller profile (URL, description).</td>
+                    <td className="py-2.5 px-4">Updates the caller&apos;s seller profile (URL, description, escrow duration).</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">deactivateSeller(wallet)</code></td>
@@ -504,9 +504,9 @@ export default function ArchitecturePage() {
                     <td className="py-2.5 px-4">Marks a seller as inactive and removes from active list via swap-and-pop.</td>
                   </tr>
                   <tr>
-                    <td className="py-2.5 px-4"><code className="text-white text-xs">reactivateSeller(apiBaseUrl, description)</code></td>
+                    <td className="py-2.5 px-4"><code className="text-white text-xs">reactivateSeller(apiBaseUrl, description, escrowDuration)</code></td>
                     <td className="py-2.5 px-4 whitespace-nowrap">Previously registered</td>
-                    <td className="py-2.5 px-4">Re-registers a previously deactivated seller with a new profile.</td>
+                    <td className="py-2.5 px-4">Re-registers a previously deactivated seller with a new profile and escrow duration.</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">proposeToken(token)</code></td>
@@ -554,7 +554,7 @@ export default function ArchitecturePage() {
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">getPayment(invoiceId)</code></td>
-                    <td className="py-2.5 px-4">Full payment record: payer, recipient, amount, token, endpoint, nonce, expiry, paidAt</td>
+                    <td className="py-2.5 px-4">Full payment record: payer, recipient, amount, token, endpoint, nonce, expiry, paidAt, releaseAt, released, refunded</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">usedNonces(bytes32)</code></td>
@@ -562,7 +562,7 @@ export default function ArchitecturePage() {
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">getSeller(wallet)</code></td>
-                    <td className="py-2.5 px-4">Seller profile: wallet, apiBaseUrl, description, active, registeredAt</td>
+                    <td className="py-2.5 px-4">Seller profile: wallet, apiBaseUrl, description, active, registeredAt, escrowDuration</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">getActiveSellers(offset, limit)</code></td>
@@ -570,7 +570,7 @@ export default function ArchitecturePage() {
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">getSellerCount()</code></td>
-                    <td className="py-2.5 px-4"><code className="text-xs text-emerald-400">uint256</code> &mdash; total registered sellers</td>
+                    <td className="py-2.5 px-4"><code className="text-xs text-emerald-400">uint256</code> &mdash; total active sellers</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">supportedTokens(address)</code></td>

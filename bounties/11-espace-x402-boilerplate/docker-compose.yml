@@ -4,15 +4,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: x402
-      POSTGRES_PASSWORD: x402pass
-      POSTGRES_DB: x402_db
+      POSTGRES_USER: ${POSTGRES_USER:-x402}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-x402pass}
+      POSTGRES_DB: ${POSTGRES_DB:-x402_db}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U x402"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-x402}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -35,7 +35,7 @@ services:
       - "4000:4000"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://x402:x402pass@postgres:5432/x402_db
+      DATABASE_URL: postgresql://${POSTGRES_USER:-x402}:${POSTGRES_PASSWORD:-x402pass}@postgres:5432/${POSTGRES_DB:-x402_db}
       REDIS_URL: redis://redis:6379
       API_PORT: "4000"
     depends_on:
@@ -43,6 +43,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   web:
     build:
@@ -55,7 +61,14 @@ services:
       # Browser fetches from host network, not Docker internal
       NEXT_PUBLIC_API_BASE: http://localhost:4000
     depends_on:
-      - seller-api
+      seller-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   agent:
     build:
@@ -66,7 +79,8 @@ services:
       # Agent runs inside Docker network — use container hostname
       API_BASE: http://seller-api:4000
     depends_on:
-      - seller-api
+      seller-api:
+        condition: service_healthy
     profiles:
       - agent  # Only starts with: docker compose --profile agent up
 

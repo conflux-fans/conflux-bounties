@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS invoices (
   status TEXT NOT NULL DEFAULT 'pending',
   payer TEXT,
   tx_hash TEXT,
+  onchain_invoice_id TEXT UNIQUE,
+  release_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

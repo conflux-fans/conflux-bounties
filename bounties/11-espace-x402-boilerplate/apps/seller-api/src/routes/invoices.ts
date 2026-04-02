@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { verifyTypedData } from "viem";
-import { RECEIVE_WITH_AUTHORIZATION_TYPES, getERC3009Domain, hashNonce } from "@x402/shared";
+import { RECEIVE_WITH_AUTHORIZATION_TYPES, getERC3009Domain, hashNonce, deriveInvoiceId } from "@x402/shared";
 import { sql } from "../db/index.js";
 import { config } from "../lib/config.js";
 import { logger } from "../lib/logger.js";
@@ -10,6 +10,7 @@ import { adminAuth } from "../middleware/adminAuth.js";
 import { verifier } from "../lib/verifier.js";
 import { paymentsTotal, paymentAmountTotal, facilitatorGasSaved } from "../lib/metrics.js";
 import { publish } from "../lib/eventBus.js";
+import { scheduleEscrowRelease } from "../jobs/escrowRelease.js";
 
 // Stricter rate limit for settlement — each call triggers an on-chain tx (facilitator pays gas)
 const SETTLE_MAX_PER_MINUTE = 5;
@@ -45,13 +46,11 @@ export function resetSettleRateLimit() {
 
 export const invoiceRoutes = new Hono();
 
-const ESCROW_HOURS = 24;
-
 /** Enrich an invoice record with escrow timing fields. */
 function withEscrowTiming(invoice: Record<string, any>) {
-  if (invoice.status === "paid" && invoice.updated_at) {
-    const paidAt = new Date(invoice.updated_at).getTime();
-    const releaseAt = paidAt + ESCROW_HOURS * 60 * 60 * 1000;
+  if (invoice.status === "paid" && invoice.release_at) {
+    const releaseAt = new Date(invoice.release_at).getTime();
+    const paidAt = invoice.updated_at ? new Date(invoice.updated_at).getTime() : Date.now();
     const now = Date.now();
     return {
       ...invoice,
@@ -165,12 +164,30 @@ invoiceRoutes.post("/:id/settle", settleRateLimit, async (c) => {
     // Wait for on-chain confirmation before updating DB
     await verifier.waitForTx(txHash);
 
+    // Derive the on-chain invoiceId: keccak256(abi.encode(from, recipient, token, nonce))
+    if (!verifier.account?.address) throw new Error("Facilitator account not configured");
+    const onChainInvoiceId = deriveInvoiceId(
+      auth.from as `0x${string}`,
+      verifier.account.address,
+      config.tokenAddress,
+      auth.nonce as `0x${string}`
+    );
+
+    // Read the actual on-chain releaseAt timestamp set by the contract
+    let releaseAtISO: string | null = null;
+    try {
+      const payment = await verifier.getPayment(onChainInvoiceId);
+      releaseAtISO = new Date(Number(payment.releaseAt) * 1000).toISOString();
+    } catch (err) {
+      logger.warn({ err, invoiceId: id }, "Failed to read on-chain releaseAt — escrow timing may be inaccurate");
+    }
+
     // Retry DB write up to 3 times to prevent state divergence
     // (payment confirmed on-chain but DB still shows 'pending')
     for (let dbAttempt = 0; dbAttempt < 3; dbAttempt++) {
       try {
         await sql`
-          UPDATE invoices SET status = 'paid', payer = ${auth.from}, tx_hash = ${txHash}, updated_at = NOW()
+          UPDATE invoices SET status = 'paid', payer = ${auth.from}, tx_hash = ${txHash}, release_at = ${releaseAtISO}, onchain_invoice_id = ${onChainInvoiceId}, updated_at = NOW()
           WHERE id = ${id}
         `;
         break;
@@ -188,6 +205,15 @@ invoiceRoutes.post("/:id/settle", settleRateLimit, async (c) => {
     publish("invoice.paid", { invoiceId: id, payer: auth.from, txHash });
     paymentsTotal.inc({ endpoint: invoice.endpoint, status: "settled" });
     paymentAmountTotal.inc({ endpoint: invoice.endpoint }, Number(invoice.amount));
+
+    // Schedule automatic escrow release
+    if (releaseAtISO) {
+      const delayMs = new Date(releaseAtISO).getTime() - Date.now();
+      scheduleEscrowRelease(id, delayMs).catch((err) => {
+        logger.warn({ err, invoiceId: id }, "Failed to schedule escrow auto-release");
+      });
+    }
+
     return c.json({
       invoice: { ...invoice, status: "paid", payer: auth.from, tx_hash: txHash },
       verified: true,
@@ -204,7 +230,7 @@ invoiceRoutes.post("/:id/settle", settleRateLimit, async (c) => {
   }
 });
 
-// Release escrowed funds to the seller after the 24h grace period
+// Release escrowed funds to the seller after the escrow grace period
 invoiceRoutes.post("/:id/release", adminAuth, async (c) => {
   const id = c.req.param("id");
   const [invoice] = await sql`SELECT * FROM invoices WHERE id = ${id}`;
@@ -212,9 +238,12 @@ invoiceRoutes.post("/:id/release", adminAuth, async (c) => {
   if (invoice.status !== "paid") {
     return c.json({ error: `Cannot release invoice with status '${invoice.status}'` }, 400);
   }
+  if (!invoice.onchain_invoice_id) {
+    return c.json({ error: "Missing on-chain invoice ID — invoice may predate the contract upgrade" }, 400);
+  }
 
   try {
-    const txHash = await verifier.release(id);
+    const txHash = await verifier.release(invoice.onchain_invoice_id as `0x${string}`);
     await verifier.waitForTx(txHash);
 
     await sql`
@@ -247,9 +276,12 @@ invoiceRoutes.post("/:id/refund", adminAuth, async (c) => {
   if (invoice.status !== "paid") {
     return c.json({ error: `Cannot refund invoice with status '${invoice.status}'` }, 400);
   }
+  if (!invoice.onchain_invoice_id) {
+    return c.json({ error: "Missing on-chain invoice ID — invoice may predate the contract upgrade" }, 400);
+  }
 
   try {
-    const txHash = await verifier.refund(id);
+    const txHash = await verifier.refund(invoice.onchain_invoice_id as `0x${string}`);
     await verifier.waitForTx(txHash);
 
     await sql`
@@ -288,9 +320,16 @@ invoiceRoutes.post("/:id/verify", async (c) => {
     return c.json({ error: "Invoice expired" }, 410);
   }
 
+  // Compute on-chain invoiceId for verification — requires payer info
+  // If the invoice has a stored onchain_invoice_id, use it; otherwise we can't verify
+  const verifyInvoiceId = invoice.onchain_invoice_id as `0x${string}` | null;
+  if (!verifyInvoiceId) {
+    return c.json({ invoice, verified: false, error: "No on-chain invoice ID — not yet settled" });
+  }
+
   try {
     const { valid, payer } = await verifier.isInvoicePaid(
-      id,
+      verifyInvoiceId,
       BigInt(invoice.amount),
       invoice.endpoint
     );

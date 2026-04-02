@@ -44,6 +44,9 @@ interface IERC3009 {
 contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    /// @notice Chain ID recorded at deployment; validated in settle() to prevent cross-chain replay
+    uint256 public immutable DEPLOYMENT_CHAIN_ID;
+
     /// @notice Maximum time an authorization can be valid into the future (7 days)
     uint256 public constant MAX_AUTH_DURATION = 7 days;
 
@@ -142,6 +145,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
 
     /// @param _tokens Initial supported ERC-3009 token addresses
     constructor(address[] memory _tokens) Ownable(msg.sender) {
+        DEPLOYMENT_CHAIN_ID = block.chainid;
         for (uint256 i = 0; i < _tokens.length; i++) {
             require(_tokens[i] != address(0), "X402: zero token address");
             require(_tokens[i].code.length > 0, "X402: token has no code");
@@ -160,8 +164,8 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
     /**
      * @notice Register as a seller. Each address can only register once.
      *         Use reactivateSeller() after deactivation.
-     * @param escrowDuration Escrow hold period in seconds (0 = use default 24h).
-     *        Must be between MIN_ESCROW_DURATION and MAX_ESCROW_DURATION if non-zero.
+     * @param escrowDuration Escrow hold period in seconds (0 = immediate release, no escrow).
+     *        Must be between MIN_ESCROW_DURATION and MAX_ESCROW_DURATION.
      */
     function registerSeller(string calldata apiBaseUrl, string calldata description, uint256 escrowDuration) external payable {
         require(bytes(apiBaseUrl).length > 0, "X402: empty API URL");
@@ -257,11 +261,15 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
      *         Only the recipient (seller) can call this, preventing front-running and
      *         ensuring the invoiceId binding is controlled by the intended payee.
      *
+     *         The invoiceId is derived deterministically as
+     *         keccak256(abi.encode(from, recipient, token, nonce)), binding each
+     *         payment to the authorization's unique parameters and preventing
+     *         misattribution or front-running by other sellers.
+     *
      *         Funds are held in escrow for ESCROW_DURATION. During this period, the
      *         seller can issue a refund. After the period, anyone can call release()
      *         to transfer funds to the seller.
      *
-     * @param invoiceId   Unique invoice identifier (bound by the recipient/seller)
      * @param token       ERC-3009 token address
      * @param from        The payer (signer of the authorization)
      * @param recipient   The payment recipient, must equal msg.sender
@@ -275,7 +283,6 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
      * @param s           Signature s
      */
     function settle(
-        bytes32 invoiceId,
         address token,
         address from,
         address recipient,
@@ -288,10 +295,15 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
         bytes32 r,
         bytes32 s
     ) external nonReentrant {
+        require(block.chainid == DEPLOYMENT_CHAIN_ID, "X402: wrong chain");
         require(supportedTokens[token], "X402: unsupported token");
         require(value > 0, "X402: zero payment");
         require(recipient != address(0), "X402: zero recipient");
         require(from != recipient, "X402: self-payment");
+
+        // Derive invoiceId deterministically from authorization parameters
+        bytes32 invoiceId = keccak256(abi.encode(from, recipient, token, nonce));
+
         require(payments[invoiceId].paidAt == 0, "X402: already paid");
         require(!usedNonces[keccak256(abi.encode(from, nonce))], "X402: nonce already used");
         require(msg.sender == recipient, "X402: only recipient can settle");
@@ -331,7 +343,7 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
             nonce: nonce,
             expiry: validBefore,
             paidAt: block.timestamp,
-            releaseAt: block.timestamp + (sellers[recipient].escrowDuration > 0 ? sellers[recipient].escrowDuration : DEFAULT_ESCROW_DURATION),
+            releaseAt: block.timestamp + sellers[recipient].escrowDuration,
             released: false,
             refunded: false
         });
@@ -421,12 +433,14 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
     }
 
     /**
-     * @notice Refund a paid invoice to an alternative address (e.g., if the original
-     *         payer is blocklisted). Only the payment recipient (seller) can initiate.
+     * @notice Refund a paid invoice to the original payer's address, or to a
+     *         payer-specified alternative address. Only the payment recipient
+     *         (seller) can initiate. The refund recipient must be the original
+     *         payer to prevent seller misredirection of funds.
      */
     function refundTo(bytes32 invoiceId, address refundRecipient) external nonReentrant {
         require(refundRecipient != address(0), "X402: zero refund recipient");
-        require(refundRecipient != payments[invoiceId].recipient, "X402: cannot refund to seller");
+        require(refundRecipient == payments[invoiceId].payer, "X402: can only refund to payer");
         _refundTo(invoiceId, refundRecipient);
     }
 
@@ -542,12 +556,10 @@ contract X402PaymentVerifier is Ownable2Step, ReentrancyGuard {
 
     /**
      * @notice Validate and normalize escrow duration.
-     * @param duration Requested duration in seconds (0 = use default).
+     * @param duration Requested duration in seconds (0 = immediate release, no escrow).
      * @return Validated duration within [MIN_ESCROW_DURATION, MAX_ESCROW_DURATION].
      */
     function _validateEscrowDuration(uint256 duration) internal pure returns (uint256) {
-        if (duration == 0) return DEFAULT_ESCROW_DURATION;
-        require(duration >= MIN_ESCROW_DURATION, "X402: escrow too short");
         require(duration <= MAX_ESCROW_DURATION, "X402: escrow too long");
         return duration;
     }

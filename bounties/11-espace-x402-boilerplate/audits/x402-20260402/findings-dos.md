@@ -130,3 +130,98 @@ The practical impact is limited because the escrow periods are measured in hours
 3. `block.timestamp` passes `releaseAt`. Seller can no longer refund.
 
 **Recommendation**: Consider adding a small grace period after `releaseAt` during which the seller can still refund (but release is also available), creating a brief overlap window. This reduces the incentive for block stuffing at the boundary.
+
+---
+
+## [DOS-7] `withdrawFees()` reverts if owner is a contract that rejects ETH
+**Severity**: Medium
+**Category**: evm-audit-dos
+**Location**: `withdrawFees()`
+**Description**: The `withdrawFees()` function sends the contract's ETH balance to `owner()` using a low-level `.call{value: balance}("")`. If the owner is a multisig or smart contract wallet that has a `receive()` function which reverts (or no `receive()`/`fallback()` function at all), the withdrawal permanently fails. Since `Ownable2Step` allows transferring ownership to any address including contracts, accumulated registration fees become permanently locked.
+
+This is Medium because it affects protocol revenue (owner-only fund loss) and could be triggered by a legitimate ownership transfer to a contract wallet that inadvertently rejects plain ETH transfers.
+
+**Proof of Concept**:
+1. Owner transfers ownership to a multisig contract that does not implement `receive()` or `fallback()`.
+2. Sellers register and pay registration fees, accumulating ETH in the contract.
+3. New owner calls `withdrawFees()`.
+4. `owner().call{value: balance}("")` reverts because the multisig rejects the ETH transfer.
+5. Registration fees are permanently locked.
+
+**Recommendation**: Add a `withdrawFeesTo(address payable to)` function that allows the owner to specify a withdrawal destination, or use a pull-based withdrawal pattern where the owner sets a recipient and the recipient claims:
+```solidity
+function withdrawFeesTo(address payable to) external onlyOwner {
+    require(to != address(0), "X402: zero address");
+    uint256 balance = address(this).balance;
+    require(balance > 0, "X402: no fees");
+    (bool sent, ) = to.call{value: balance}("");
+    require(sent, "X402: withdrawal failed");
+}
+```
+
+---
+
+## [DOS-8] Seller can set `MAX_ESCROW_DURATION` (30 days) to trap buyer funds
+**Severity**: Medium
+**Category**: evm-audit-dos
+**Location**: `registerSeller()`, `_validateEscrowDuration()`
+**Description**: A seller can set their `escrowDuration` to `MAX_ESCROW_DURATION` (30 days). When a buyer's payment is settled, their funds are locked for the full 30-day escrow period before `release()` can be called. During this time, the buyer has no recourse -- the contract provides no mechanism for the buyer to withdraw or dispute. The buyer's funds are effectively trapped for a month.
+
+While the seller's escrow duration is visible on-chain before the buyer signs the ERC-3009 authorization, the x402 protocol flow typically involves automated HTTP 402 responses where the buyer's wallet signs the authorization without the user inspecting escrow terms. A malicious seller could initially register with a short escrow, build trust, then `deactivateSeller` + `reactivateSeller` with a 30-day escrow to bait-and-switch.
+
+**Proof of Concept**:
+1. Malicious seller registers with `escrowDuration = 30 days`.
+2. Buyer's wallet automatically authorizes a payment via x402 flow.
+3. Seller calls `settle()`, locking buyer's funds for 30 days.
+4. Seller never provides the paid-for service.
+5. Buyer cannot retrieve funds for 30 days. Seller may never call `refund()`.
+
+**Recommendation**: Either reduce `MAX_ESCROW_DURATION` to a more reasonable value (e.g., 3-7 days), or give the buyer a dispute/cancel mechanism that can be invoked during the escrow period. Alternatively, require the buyer to explicitly acknowledge the escrow duration in the signed authorization.
+
+---
+
+## [DOS-9] Zero escrow duration allows instant release with no refund window
+**Severity**: Low
+**Category**: evm-audit-dos
+**Location**: `_validateEscrowDuration()`, `release()`
+**Description**: `MIN_ESCROW_DURATION` is 0, and `_validateEscrowDuration()` only checks `duration <= MAX_ESCROW_DURATION`. A seller can register with `escrowDuration = 0`, which means `releaseAt = block.timestamp + 0 = paidAt`. The moment `settle()` completes, `release()` can be called in the same block (or even the same transaction via a multicall pattern). This eliminates any refund window: the seller (or a bot) can atomically settle and release, making refunds impossible.
+
+The `refund()` check `require(block.timestamp < p.releaseAt)` would fail immediately since `block.timestamp >= releaseAt` from the moment of settlement.
+
+**Proof of Concept**:
+1. Seller registers with `escrowDuration = 0`.
+2. Buyer authorizes payment via ERC-3009.
+3. Seller calls `settle()` then `release()` in the same transaction (via a wrapper contract).
+4. Funds are immediately transferred to the seller.
+5. If the service was not delivered, the buyer has no recourse -- `refund()` is already blocked.
+
+**Recommendation**: Set a non-zero `MIN_ESCROW_DURATION` (e.g., 1 hour or 15 minutes) to ensure buyers always have a refund window:
+```solidity
+uint256 public constant MIN_ESCROW_DURATION = 1 hours;
+
+function _validateEscrowDuration(uint256 duration) internal pure returns (uint256) {
+    require(duration >= MIN_ESCROW_DURATION, "X402: escrow too short");
+    require(duration <= MAX_ESCROW_DURATION, "X402: escrow too long");
+    return duration;
+}
+```
+
+---
+
+## [DOS-10] Token pause blocks all `release()` and `refund()` operations permanently during pause
+**Severity**: Low
+**Category**: evm-audit-dos
+**Location**: `release()`, `_refundTo()`
+**Description**: If a supported token (e.g., USDC, USDT) is paused by its admin, all `safeTransfer` calls in `release()`, `releaseTo()`, `refund()`, and `refundTo()` will revert. This creates a complete DoS on all escrowed payments for that token. Unlike `settle()` (covered in DOS-5), this affects funds already locked in the contract.
+
+During a pause, escrow timers continue to advance. If the pause outlasts a payment's escrow period, the refund window closes while the token is paused, and the seller loses the ability to refund even after the token unpauses. This converts a transient DoS into a permanent loss of the refund option.
+
+**Proof of Concept**:
+1. Multiple payments are escrowed in USDC.
+2. USDC is paused (e.g., regulatory action).
+3. Seller wants to refund a payment but `_refundTo()` reverts due to the paused token.
+4. Pause lasts longer than the remaining escrow period.
+5. After unpause, `block.timestamp >= releaseAt`, so `refund()` is now permanently blocked.
+6. Seller's only option is `release()`, even if a refund was warranted.
+
+**Recommendation**: Allow the owner to extend escrow deadlines during token pauses, or track a "pause-adjusted" release time. Alternatively, accept this as an inherent risk but document it clearly for sellers and buyers.

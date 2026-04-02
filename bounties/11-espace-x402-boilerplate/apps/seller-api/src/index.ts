@@ -4,6 +4,7 @@ import { logger } from "./lib/logger.js";
 import { config } from "./lib/config.js";
 import { sql } from "./db/index.js";
 import { startInvoiceExpiryWorker } from "./jobs/invoiceExpiry.js";
+import { startEscrowReleaseWorker } from "./jobs/escrowRelease.js";
 import { startEventLogger } from "./jobs/eventLogger.js";
 
 const port = Number(process.env.API_PORT) || 4000;
@@ -16,12 +17,13 @@ if (config.tokenAddress !== "0x0000000000000000000000000000000000000000") {
     .catch((err) => logger.warn({ err }, "Failed to update seed pricing token address"));
 }
 
-// Start BullMQ worker for automatic invoice expiration
+// Start BullMQ workers for automatic invoice expiration and escrow release
 try {
   startInvoiceExpiryWorker();
-  logger.info("Invoice expiry worker started");
+  startEscrowReleaseWorker();
+  logger.info("Invoice expiry and escrow release workers started");
 } catch (err) {
-  logger.warn({ err }, "Invoice expiry worker failed to start (Redis may be unavailable)");
+  logger.warn({ err }, "BullMQ workers failed to start (Redis may be unavailable)");
 }
 
 // Start event logger (subscribes to invoice.* and dispute.* channels)

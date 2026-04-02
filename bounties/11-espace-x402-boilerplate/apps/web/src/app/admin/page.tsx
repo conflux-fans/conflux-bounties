@@ -1,14 +1,143 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
-import { BarChart3, Key, DollarSign, Download, Plus, Bot, Pause, Play, MessageSquare, Fuel, AlertTriangle, ShieldAlert, Check, X, Copy, ToggleLeft, ToggleRight, Lock, Unlock, Timer, ExternalLink } from "lucide-react";
+import { useAccount, useSignMessage } from "wagmi";
+import { ConnectKitButton } from "connectkit";
+import { apiFetch, getAdminSession, setAdminSession, requestAdminChallenge, verifyAdminSignature } from "@/lib/api";
+import { BarChart3, Key, DollarSign, Download, Plus, Bot, Pause, Play, MessageSquare, Fuel, AlertTriangle, ShieldAlert, Check, X, Copy, ToggleLeft, ToggleRight, Lock, Unlock, Timer, ExternalLink, Wallet } from "lucide-react";
 import AgentChat from "@/components/AgentChat";
 import { Navbar } from "@/components/Navbar";
 import { fetchDisputes, resolveDispute, adminHeaders } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+const SERVICE_WALLET = process.env.NEXT_PUBLIC_SERVICE_WALLET_ADDRESS?.toLowerCase() || "";
+
+function AdminAuthGate({ children }: { children: React.ReactNode }) {
+  const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const [authError, setAuthError] = useState("");
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check if connected wallet is the seller/admin wallet
+  const isAdminWallet = isConnected && address?.toLowerCase() === SERVICE_WALLET;
+
+  // Clear session when wallet disconnects or changes
+  useEffect(() => {
+    if (!isConnected || !isAdminWallet) {
+      setAdminSession(null);
+      setIsAuthenticated(false);
+    }
+  }, [isConnected, isAdminWallet]);
+
+  const authenticate = useCallback(async () => {
+    if (!address) return;
+    setIsAuthenticating(true);
+    setAuthError("");
+
+    try {
+      // 1. Request challenge nonce
+      const challenge = await requestAdminChallenge(address);
+      if ("error" in challenge) {
+        setAuthError(challenge.error);
+        setIsAuthenticating(false);
+        return;
+      }
+
+      // 2. Sign the challenge message with the wallet
+      const signature = await signMessageAsync({ message: challenge.message });
+
+      // 3. Submit signature to get session token
+      const result = await verifyAdminSignature(address, signature);
+      if ("error" in result) {
+        setAuthError(result.error);
+        setIsAuthenticating(false);
+        return;
+      }
+
+      setAdminSession(result.token);
+      setIsAuthenticated(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Authentication failed";
+      // User rejected the signature request
+      if (msg.includes("User rejected") || msg.includes("denied")) {
+        setAuthError("Signature request was rejected");
+      } else {
+        setAuthError(msg);
+      }
+    }
+    setIsAuthenticating(false);
+  }, [address, signMessageAsync]);
+
+  if (!isConnected) {
+    return (
+      <div className="min-h-screen">
+        <Navbar />
+        <main className="max-w-md mx-auto px-6 py-20 text-center">
+          <div className="rounded-2xl border border-gray-700/50 bg-[#0F2744]/60 p-10">
+            <Wallet className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-white mb-3">Admin Authentication</h2>
+            <p className="text-gray-400 text-sm mb-6">
+              Connect the seller wallet to access the admin dashboard.
+            </p>
+            <ConnectKitButton />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!isAdminWallet) {
+    return (
+      <div className="min-h-screen">
+        <Navbar />
+        <main className="max-w-md mx-auto px-6 py-20 text-center">
+          <div className="rounded-2xl border border-red-700/50 bg-[#0F2744]/60 p-10">
+            <ShieldAlert className="w-12 h-12 text-red-400 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-white mb-3">Not Authorized</h2>
+            <p className="text-gray-400 text-sm mb-2">
+              Connected wallet is not the seller admin.
+            </p>
+            <p className="text-gray-500 text-xs font-mono mb-6 break-all">
+              {address}
+            </p>
+            <ConnectKitButton />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !getAdminSession()) {
+    return (
+      <div className="min-h-screen">
+        <Navbar />
+        <main className="max-w-md mx-auto px-6 py-20 text-center">
+          <div className="rounded-2xl border border-gray-700/50 bg-[#0F2744]/60 p-10">
+            <Lock className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-white mb-3">Sign to Continue</h2>
+            <p className="text-gray-400 text-sm mb-6">
+              Sign a message with your wallet to authenticate as the seller admin.
+            </p>
+            {authError && (
+              <p className="text-red-400 text-sm mb-4">{authError}</p>
+            )}
+            <button
+              onClick={authenticate}
+              disabled={isAuthenticating}
+              className="px-6 py-2.5 rounded-lg bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 hover:bg-yellow-500/30 transition-colors disabled:opacity-50"
+            >
+              {isAuthenticating ? "Signing..." : "Sign Message"}
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
 
 export default function AdminPage() {
   const queryClient = useQueryClient();
@@ -221,6 +350,7 @@ export default function AdminPage() {
   ];
 
   return (
+    <AdminAuthGate>
     <div className="min-h-screen">
       <Navbar />
 
@@ -1120,5 +1250,6 @@ export default function AdminPage() {
         </div>
       )}
     </div>
+    </AdminAuthGate>
   );
 }

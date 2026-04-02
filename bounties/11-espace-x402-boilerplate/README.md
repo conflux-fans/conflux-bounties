@@ -2,7 +2,7 @@
 
 End-to-end reference for **x402 pay-per-request payments** on Conflux eSpace using **ERC-3009 `receiveWithAuthorization`** with USDT0. Three cohesive apps — a Seller API, a Web Frontend, and an AI Agent — demonstrate the full gasless payment lifecycle.
 
-> **Status:** Experimental / non-production. Built for Conflux Bounty #11.
+> **Status:** Complete. All acceptance criteria met. Two security audits completed (0 critical/high findings). Built for Conflux Bounty #11.
 
 ---
 
@@ -21,6 +21,8 @@ End-to-end reference for **x402 pay-per-request payments** on Conflux eSpace usi
 - [AI Agent](#ai-agent)
 - [Environment Variables Reference](#environment-variables-reference)
 - [Testing](#testing)
+- [Security Audits](#security-audits)
+- [Acceptance Criteria](#acceptance-criteria)
 - [Troubleshooting](#troubleshooting)
 - [Further Reading](#further-reading)
 
@@ -140,7 +142,7 @@ NEXT_PUBLIC_X402_CONTRACT_ADDRESS_TESTNET=0x<same-address>
 ### Step 6: (Optional) Set up additional env vars
 
 - **WalletConnect Project ID** — Get a free one at [https://cloud.walletconnect.com/](https://cloud.walletconnect.com/) and set `NEXT_PUBLIC_WC_PROJECT_ID`. The frontend works without it, but wallet connection will be limited.
-- **Admin API Key** — Generate with `node -e "console.log(crypto.randomUUID())"` and set both `ADMIN_API_KEY` and `NEXT_PUBLIC_ADMIN_API_KEY` to the same value. Required for the admin dashboard.
+- **Admin Dashboard** — The admin dashboard authenticates via wallet signature (the seller wallet). No shared secret is needed. For programmatic/CI access to admin endpoints, set `ADMIN_API_KEY` and pass it as the `x-admin-key` header.
 - **LLM API Key** — Set `OPENAI_API_KEY` if you want to use the AI agent. Any OpenAI-compatible provider works (see [LLM provider](#llm-provider) section).
 
 ### Step 7: Start the applications
@@ -464,7 +466,6 @@ The backend supports both chains simultaneously. The frontend sends `x-chain-id`
 | `NEXT_PUBLIC_NETWORK` | Default network shown before wallet connects | `testnet` |
 | `NEXT_PUBLIC_SERVICE_WALLET_ADDRESS` | Facilitator/seller wallet address | `0x...` |
 | `NEXT_PUBLIC_WC_PROJECT_ID` | WalletConnect project ID ([get one free](https://cloud.walletconnect.com/)) | `abc123...` |
-| `NEXT_PUBLIC_ADMIN_API_KEY` | Must match `ADMIN_API_KEY` for admin dashboard access | `uuid` |
 
 ### AI Agent (optional)
 
@@ -482,7 +483,7 @@ The backend supports both chains simultaneously. The frontend sends `x-chain-id`
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `API_PORT` | Seller API port | `4000` |
-| `ADMIN_API_KEY` | API key for admin routes | _(empty = admin routes open)_ |
+| `ADMIN_API_KEY` | API key for programmatic admin access (dashboard uses wallet auth) | _(empty)_ |
 | `DATABASE_URL` | PostgreSQL connection string (production mode only) | _(in-memory in dev)_ |
 | `REDIS_URL` | Redis connection string (production mode only) | _(disabled in dev)_ |
 | `LOG_LEVEL` | Logging level (`debug`, `info`, `warn`, `error`) | `info` |
@@ -508,6 +509,53 @@ npm run test -w apps/agent
 # Frontend tests (paywall modal, endpoint catalog, API client)
 npm run test -w apps/web
 ```
+
+---
+
+## Security Audits
+
+Two independent audit cycles were performed on the `X402PaymentVerifier` smart contract.
+
+### Audit 1 — March 29, 2026
+
+Initial audit using 7 parallel specialist agents covering access control, signatures, ERC-20 interactions, DoS, precision/math, chain-specific issues, and general security. Full report: [`audits/x402-2026-03-29/AUDIT-REPORT.md`](audits/x402-2026-03-29/AUDIT-REPORT.md).
+
+### Audit 2 — April 2, 2026
+
+Follow-up audit after code refinements. Same methodology (7 specialist agents, 500+ checklist items).
+
+| Severity | Count |
+|----------|-------|
+| Critical | 0 |
+| High | 0 |
+| Medium | 6 |
+| Low | 8 |
+| Info | 7 |
+
+**Key medium findings** (design trade-offs, not bugs):
+- **M-1**: Seller can redirect refunds via `refundTo()` — mitigated by trust model (seller is API operator)
+- **M-2**: Token blocklist can lock escrowed funds — edge case for USDT-style blocklists post-settlement
+- **M-3**: No chain-ID binding in invoiceId — cross-chain replay possible in theory, mitigated by separate contract deployments
+
+**Conclusion**: No critical or high severity issues. The contract follows established patterns (CEI ordering, ReentrancyGuard, Ownable2Step, SafeERC20) and delegates signature verification to the ERC-3009 token contract. All findings are acceptable for an experimental boilerplate.
+
+Full report: [`audits/x402-20260402/AUDIT-REPORT.md`](audits/x402-20260402/AUDIT-REPORT.md).
+
+---
+
+## Acceptance Criteria
+
+All acceptance criteria from the [bounty spec](spec.md) are met:
+
+| Criterion | Status |
+|-----------|--------|
+| Seller endpoints enforce x402: free endpoints open, premium return 402 until paid | Done |
+| Web client connects wallet, views invoice, confirms payment, auto-fetches data | Done |
+| AI agent detects 402, submits payment on testnet, retries within <30s | Done |
+| Logging + analytics show per-endpoint usage, revenue, agent spend caps | Done |
+| Full stack spins up locally via `docker compose up` | Done |
+| Payment proof bound to request scope (nonce/expiry + endpoint) with replay protection | Done |
+| End-to-end flow works with demo scripts and docs | Done |
 
 ---
 

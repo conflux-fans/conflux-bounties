@@ -791,11 +791,6 @@ export const verifierAbi = [
   {
     "inputs": [
       {
-        "internalType": "bytes32",
-        "name": "invoiceId",
-        "type": "bytes32"
-      },
-      {
         "internalType": "address",
         "name": "token",
         "type": "address"
