@@ -486,7 +486,7 @@ export default function ArchitecturePage() {
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">refundTo(invoiceId, refundRecipient)</code></td>
                     <td className="py-2.5 px-4 whitespace-nowrap">Seller only</td>
-                    <td className="py-2.5 px-4">Refunds to an alternative address (e.g., if the original payer is blocklisted by the token).</td>
+                    <td className="py-2.5 px-4">Refunds to the original payer (must match on-chain record). Provides an explicit recipient parameter for clarity and future extensibility.</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 px-4"><code className="text-white text-xs">registerSeller(apiBaseUrl, description, escrowDuration)</code></td>

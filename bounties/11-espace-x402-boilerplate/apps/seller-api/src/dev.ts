@@ -38,7 +38,7 @@ const { adminAuthRoutes } = await import("./routes/adminAuth.js");
 const { adminAuth } = await import("./middleware/adminAuth.js");
 
 const SERVICE_WALLET = process.env.SERVICE_WALLET_ADDRESS || "0xFF1D35e04d9F336283046fA464Be11B675B0e5aF";
-const INSTANT_SELLER_WALLET = process.env.SERVICE_WALLET_ADDRESS_2 || SERVICE_WALLET;
+// All endpoints use the same seller wallet
 const FACILITATOR_KEY = process.env.SERVICE_WALLET_KEY as `0x${string}` | undefined;
 
 // ─── Per-network configuration ───
@@ -354,7 +354,7 @@ function paywall(endpoint: string, c: any) {
   const nonce = newInvoiceId;
   const expiry = Math.floor(Date.now() / 1000) + INVOICE_EXPIRY_SECONDS;
 
-  const invoiceRecipient = endpoint === "/data/instant" ? INSTANT_SELLER_WALLET : SERVICE_WALLET;
+  const invoiceRecipient = SERVICE_WALLET;
 
   invoices.set(newInvoiceId, {
     id: newInvoiceId, endpoint, amount: invoiceAmount, token: invoiceToken,
@@ -650,8 +650,7 @@ app.post("/invoices/:id/release", async (c) => {
   const invChainId = (inv.chainId as number) || DEFAULT_CHAIN_ID;
   const releaseVerifier = verifiers[invChainId] || verifier;
   // Use the stored on-chain invoiceId (set during settlement).
-  // The on-chain recipient is always the facilitator wallet (msg.sender of settle()),
-  // NOT inv.recipient which may differ (e.g. INSTANT_SELLER_WALLET).
+  // The on-chain recipient is always the facilitator wallet (msg.sender of settle()).
   const onChainInvoiceId = inv.onchain_invoice_id as `0x${string}` | undefined;
   if (releaseVerifier && onChainInvoiceId) {
     try {

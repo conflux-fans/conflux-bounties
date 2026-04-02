@@ -40,7 +40,6 @@ const DEFAULT_ENDPOINTS: EndpointDef[] = [
     icon: BoltIcon,
     color: "cyan",
     escrowHours: 0,
-    sellerOverride: process.env.NEXT_PUBLIC_SERVICE_WALLET_ADDRESS_2 || undefined,
   },
   {
     path: "/data/premium",
@@ -50,7 +49,7 @@ const DEFAULT_ENDPOINTS: EndpointDef[] = [
     description: "Detailed analytics with historical trends, top contracts, and gas usage",
     icon: Database,
     color: "amber",
-    escrowHours: 24,
+    escrowHours: 1,
   },
   {
     path: "/compute/simulate",
