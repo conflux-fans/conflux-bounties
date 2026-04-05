@@ -7,13 +7,16 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth/get-session";
 import { requireAdmin } from "@/lib/admin";
 import { GATED_STORAGE_ROOT } from "@/lib/assets/paths";
+import { isS3StorageConfigured, putGatedObject } from "@/lib/storage/object-storage";
 
 function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 48) || "asset";
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 48) || "asset"
+  );
 }
 
 export async function GET() {
@@ -52,18 +55,24 @@ export async function POST(req: NextRequest) {
     slug = `${baseSlug}-${n}`;
   }
 
-  const uploadsDir = path.join(GATED_STORAGE_ROOT, "uploads");
-  await mkdir(uploadsDir, { recursive: true });
   const fileBase = `${slug}-${sha256.slice(0, 8)}`;
   const storageKey = `uploads/${fileBase}`;
-  const abs = path.join(uploadsDir, fileBase);
-  await writeFile(abs, buf);
+  const mimeType = file.type || "application/octet-stream";
+
+  if (isS3StorageConfigured()) {
+    await putGatedObject(storageKey, buf, mimeType);
+  } else {
+    const uploadsDir = path.join(GATED_STORAGE_ROOT, "uploads");
+    await mkdir(uploadsDir, { recursive: true });
+    const abs = path.join(uploadsDir, fileBase);
+    await writeFile(abs, buf);
+  }
 
   const asset = await prisma.gatedAsset.create({
     data: {
       slug,
       originalName: file.name,
-      mimeType: file.type || "application/octet-stream",
+      mimeType,
       sha256,
       sizeBytes: buf.length,
       storageKey,
