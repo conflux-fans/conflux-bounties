@@ -6,19 +6,101 @@ Full requirements: [`spec.md`](./spec.md).
 
 ---
 
-## Quick start
+## Quick start (run locally)
 
-1. **Copy env** — `cp .env.example .env`
-2. **Database** — Set `DATABASE_URL`. With Docker: `npm run db:up`, wait a few seconds, then:
-   ```bash
-   npx prisma db push
-   npm run db:seed
-   ```
-3. **Required env** — `SESSION_SECRET` (32+ characters), `SIWC_DOMAIN` / `NEXT_PUBLIC_SIWC_DOMAIN` (e.g. `localhost`), `ADMIN_WALLETS` (your wallet to use `/admin`).
-4. **Run** — `npm install` → `npm run dev` → open [http://localhost:3000](http://localhost:3000).
+### What you need
 
-Sign in: **Login** → connect wallet (chain **1030** or **71**) → sign the message.  
-Default seed rules are strict; use **Admin** to allowlist your address or attach real token contracts.
+- **Node.js 20+** (LTS recommended) and **npm**
+- **PostgreSQL** reachable from your machine — easiest is **Docker Desktop** (or another Docker engine) for `npm run db:up`
+- A **wallet** (e.g. MetaMask) with **Conflux eSpace** mainnet (**1030**) or testnet (**71**) if you will sign in
+
+### 1. Open the project folder
+
+If you cloned the **conflux-bounties** monorepo, this app lives here:
+
+```bash
+cd bounties/06-token-nft-gated-site
+```
+
+If you only have this repo, `cd` to its root (where `package.json` is).
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+### 3. Create your `.env` file
+
+```bash
+cp .env.example .env
+```
+
+Edit **`.env`** and set at least:
+
+| Variable | What to put |
+|----------|-------------|
+| `DATABASE_URL` | Postgres connection string. The example points at `localhost:5432` with user/db `postgres` / `gated` — use that if you follow step 4 with Docker. |
+| `SESSION_SECRET` | Any random string **at least 32 characters** (used to sign session cookies). |
+| `SIWC_DOMAIN` | Usually `localhost` for local dev. |
+| `NEXT_PUBLIC_SIWC_DOMAIN` | **Same value** as `SIWC_DOMAIN`. |
+| `ADMIN_WALLETS` | Your wallet address (the one you will use in the browser), comma-separated if several. Replace the placeholder `0x0000…` in `.env.example`. |
+
+Leave **`STORAGE_MODE`** unset or `local` unless you are configuring R2/S3 (files then go under `./storage/gated`).
+
+### 4. Start Postgres and create tables
+
+**Option A — Docker (recommended)**  
+
+Start **Docker**, then:
+
+```bash
+npm run db:up
+```
+
+Wait until the container is healthy (often **5–15 seconds**), then:
+
+```bash
+npx prisma generate
+npx prisma db push
+npm run db:seed
+```
+
+**Option B — your own Postgres**  
+
+Create a database, set `DATABASE_URL` in `.env` to match it, then run the same three commands:
+
+```bash
+npx prisma generate
+npx prisma db push
+npm run db:seed
+```
+
+`db:push` applies the schema; `db:seed` adds sample rules, assets, etc.
+
+### 5. Start the app
+
+```bash
+npm run dev
+```
+
+In the terminal, note the URL (default **http://localhost:3000**). Open it in your browser.
+
+### 6. Sign in and try the app
+
+1. Go to **`/login`**.
+2. **Connect** your wallet (network **1030** or **71**).
+3. **Sign** the SIWE message when prompted — that creates a **server session** (different from only “connected” in the header).
+4. Open **`/profile`** to confirm you are signed in.
+
+**Gating:** Seed data is strict. To reach **`/members`** or gated resources, either add your address in **`/admin`** (allowlist / rules) or point rules at token contracts you actually hold.
+
+**Admin:** `/admin` only works if your connected wallet is listed in **`ADMIN_WALLETS`** in `.env` (restart `npm run dev` after changing `.env`).
+
+### If something fails
+
+- **Database / `P1001`:** Postgres not running or wrong `DATABASE_URL`. Check Docker, or `npm run db:up` logs.
+- **SIWE / login:** `SIWC_DOMAIN` and `NEXT_PUBLIC_SIWC_DOMAIN` must match how the app builds the sign-in message (see **Troubleshooting** below).
 
 ---
 
