@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import type { Address } from "viem";
-import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth/get-session";
 import { requireAdmin } from "@/lib/admin";
 import { fetchAndCacheTokenMetadata } from "@/lib/metadata/token-metadata";
-import { rulesJsonSchema } from "@/lib/gating/types";
+import { refreshMetadataFromEnabledRules } from "@/lib/metadata/refresh-from-rules";
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,40 +44,6 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const rules = await prisma.gatingRule.findMany({ where: { enabled: true } });
-  const seen = new Set<string>();
-  const results: { key: string; ok: boolean }[] = [];
-
-  for (const rule of rules) {
-    const parsed = rulesJsonSchema.safeParse(rule.rulesJson);
-    if (!parsed.success) continue;
-    for (const c of parsed.data.conditions) {
-      const key = `${c.chainId}:${c.address.toLowerCase()}:${c.type}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      try {
-        const std =
-          c.type === "ERC20"
-            ? "ERC20"
-            : c.type === "ERC721"
-              ? "ERC721"
-              : "ERC1155";
-        await fetchAndCacheTokenMetadata({
-          chainId: c.chainId,
-          tokenAddress: c.address as Address,
-          standard: std,
-        });
-        results.push({ key, ok: true });
-      } catch {
-        results.push({ key, ok: false });
-      }
-    }
-  }
-
-  const cached = await prisma.tokenMetadataCache.findMany({
-    orderBy: { updatedAt: "desc" },
-    take: 100,
-  });
-
-  return NextResponse.json({ refreshed: results, cached });
+  const { refreshed, cached } = await refreshMetadataFromEnabledRules();
+  return NextResponse.json({ refreshed, cached });
 }
