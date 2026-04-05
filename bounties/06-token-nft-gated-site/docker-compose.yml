@@ -41,5 +41,22 @@ services:
       redis:
         condition: service_started
 
+  # Optional: periodic token metadata refresh (enable with: docker compose --profile cron up)
+  metadata-cron:
+    profiles: ["cron"]
+    image: curlimages/curl:8.5.0
+    environment:
+      CRON_SECRET: ${CRON_SECRET:-please-set-cron-secret-16chars-min}
+    depends_on:
+      - web
+    command:
+      - /bin/sh
+      - -c
+      - |
+        while true; do
+          sleep 900
+          curl -sfS -H "Authorization: Bearer $$CRON_SECRET" "http://web:3000/api/cron/metadata-refresh" || true
+        done
+
 volumes:
   pgdata:
