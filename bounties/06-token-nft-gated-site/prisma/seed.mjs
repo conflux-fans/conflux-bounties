@@ -98,6 +98,7 @@ Signed download links are issued after gating checks pass.
       sha256: createHash("sha256").update(pdfBuf).digest("hex"),
       sizeBytes: pdfBuf.length,
       storageKey: "bundled/sample.pdf",
+      body: pdfBuf,
     },
     {
       slug: "demo-video",
@@ -106,19 +107,61 @@ Signed download links are issued after gating checks pass.
       sha256: createHash("sha256").update(vidBuf).digest("hex"),
       sizeBytes: vidBuf.length,
       storageKey: "bundled/demo-video.txt",
+      body: vidBuf,
     },
   ];
 
+  const bucket = process.env.R2_BUCKET || process.env.S3_BUCKET;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID;
+  const secretAccessKey =
+    process.env.R2_SECRET_ACCESS_KEY || process.env.S3_SECRET_ACCESS_KEY;
+  const endpoint = process.env.R2_ENDPOINT || process.env.S3_ENDPOINT;
+  const mode = process.env.STORAGE_MODE?.toLowerCase();
+  if (
+    (mode === "s3" || mode === "r2") &&
+    bucket &&
+    accessKeyId &&
+    secretAccessKey
+  ) {
+    const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
+    const rawRegion = process.env.R2_REGION || process.env.S3_REGION || "auto";
+    const region = rawRegion === "auto" ? "us-east-1" : rawRegion;
+    const forcePathStyle =
+      process.env.R2_FORCE_PATH_STYLE === "true" ||
+      process.env.S3_FORCE_PATH_STYLE === "true";
+    const client = new S3Client({
+      region,
+      endpoint: endpoint || undefined,
+      credentials: {
+        accessKeyId,
+        secretAccessKey,
+      },
+      forcePathStyle: Boolean(endpoint && forcePathStyle),
+    });
+    for (const r of rows) {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: r.storageKey,
+          Body: r.body,
+          ContentType: r.mimeType,
+        }),
+      );
+    }
+    console.log("Uploaded bundled assets to Cloudflare R2 (S3-compatible) bucket.");
+  }
+
   for (const r of rows) {
+    const { body: _b, ...row } = r;
     await prisma.gatedAsset.upsert({
-      where: { slug: r.slug },
-      create: r,
+      where: { slug: row.slug },
+      create: row,
       update: {
-        sha256: r.sha256,
-        sizeBytes: r.sizeBytes,
-        mimeType: r.mimeType,
-        originalName: r.originalName,
-        storageKey: r.storageKey,
+        sha256: row.sha256,
+        sizeBytes: row.sizeBytes,
+        mimeType: row.mimeType,
+        originalName: row.originalName,
+        storageKey: row.storageKey,
       },
     });
   }
