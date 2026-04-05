@@ -12,11 +12,15 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "test": "jest",
+    "test:coverage": "jest --coverage",
     "test:e2e": "playwright test",
     "db:seed": "node prisma/seed.mjs",
-    "db:up": "node scripts/db-up.mjs"
+    "db:up": "node scripts/db-up.mjs",
+    "metadata:cron": "node scripts/metadata-cron.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1019.0",
+    "@aws-sdk/s3-request-presigner": "^3.1019.0",
     "@prisma/client": "^6.4.1",
     "@tanstack/react-query": "^5.91.2",
     "ioredis": "^5.10.1",
