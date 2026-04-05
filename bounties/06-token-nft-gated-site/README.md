@@ -13,6 +13,7 @@ Full requirements: [`spec.md`](./spec.md).
 - **Node.js 20+** (LTS recommended) and **npm**
 - **PostgreSQL** reachable from your machine — easiest is **Docker Desktop** (or another Docker engine) for `npm run db:up`
 - A **wallet** (e.g. MetaMask) with **Conflux eSpace** mainnet (**1030**) or testnet (**71**) if you will sign in
+- **Where gated files live:** by default the app stores them **on disk** under `./storage/gated` (`STORAGE_MODE=local`). To store uploads and serve downloads from **Cloudflare R2** (or any S3-compatible bucket), set **`STORAGE_MODE=r2`** (or `s3`) and the **`R2_*`** variables in `.env` — see the table below.
 
 ### 1. Open the project folder
 
@@ -46,7 +47,21 @@ Edit **`.env`** and set at least:
 | `NEXT_PUBLIC_SIWC_DOMAIN` | **Same value** as `SIWC_DOMAIN`. |
 | `ADMIN_WALLETS` | Your wallet address (the one you will use in the browser), comma-separated if several. Replace the placeholder `0x0000…` in `.env.example`. |
 
-Leave **`STORAGE_MODE`** unset or `local` unless you are configuring R2/S3 (files then go under `./storage/gated`).
+**Gated file storage (local vs R2)** — important if you care where uploads and downloads go:
+
+| Variable | What to put |
+|----------|-------------|
+| `STORAGE_MODE` | `local` (default in `.env.example`) — files on the server under `./storage/gated`. Use `r2` or `s3` when you configure a remote bucket below. |
+| `R2_BUCKET` | Your R2 **bucket name** only (not a URL). |
+| `R2_ENDPOINT` | Account S3 API URL: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` — **no** `/bucket` suffix. Create the bucket and S3-compatible API token in the Cloudflare R2 dashboard. |
+| `R2_ACCESS_KEY_ID` | S3-compatible **access key** from the R2 API token. |
+| `R2_SECRET_ACCESS_KEY` | S3-compatible **secret** from the R2 API token. |
+| `R2_REGION` | Usually `auto` for R2. |
+| `R2_FORCE_PATH_STYLE` | Typically `true` for R2 (path-style addressing). |
+
+With **`STORAGE_MODE=r2`** and valid `R2_*` values, **admin uploads** and **`db:seed`** put objects in the bucket; after the app checks the signed download link, the browser is **redirected (302)** to a **short-lived presigned URL** instead of streaming from disk. If you omit remote config, keep **`STORAGE_MODE=local`**.
+
+**S3-compatible providers:** you can use the legacy **`S3_*`** names instead of `R2_*` (see `.env.example`). Same flow: presigned GET after the HMAC gate.
 
 ### 4. Start Postgres and create tables
 
