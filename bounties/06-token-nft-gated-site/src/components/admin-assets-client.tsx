@@ -31,8 +31,9 @@ export function AdminAssetsClient() {
 
   async function upload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const form = e.currentTarget;
     setMsg(null);
-    const fd = new FormData(e.currentTarget);
+    const fd = new FormData(form);
     if (slug.trim()) fd.set("slug", slug.trim());
     setBusy(true);
     const res = await fetch("/api/admin/assets", { method: "POST", body: fd });
@@ -42,7 +43,7 @@ export function AdminAssetsClient() {
       return;
     }
     setSlug("");
-    e.currentTarget.reset();
+    form.reset();
     await load();
     setMsg("Uploaded");
   }
