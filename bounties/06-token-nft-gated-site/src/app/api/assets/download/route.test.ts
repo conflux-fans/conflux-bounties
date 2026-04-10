@@ -62,6 +62,41 @@ describe("GET /api/assets/download", () => {
     expect(readGatedFile).toHaveBeenCalled();
   });
 
+  it("403 for invalid token", async () => {
+    const req = new NextRequest("http://localhost/api/assets/download?t=badtoken");
+    const res = await GET(req);
+    expect(res.status).toBe(403);
+  });
+
+  it("404 when asset is missing", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    const t = signDownloadToken({
+      slug: "missing",
+      wallet: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      exp,
+    });
+    (prisma.gatedAsset.findUnique as jest.Mock).mockResolvedValue(null);
+    const req = new NextRequest(
+      `http://localhost/api/assets/download?t=${encodeURIComponent(t)}`,
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(404);
+  });
+
+  it("403 for expired token", async () => {
+    const exp = Math.floor(Date.now() / 1000) - 10;
+    const t = signDownloadToken({
+      slug: "pack",
+      wallet: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      exp,
+    });
+    const req = new NextRequest(
+      `http://localhost/api/assets/download?t=${encodeURIComponent(t)}`,
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(403);
+  });
+
   it("302 to presigned URL when remote storage configured", async () => {
     (isS3StorageConfigured as jest.Mock).mockReturnValue(true);
     (presignGatedGetUrl as jest.Mock).mockResolvedValue(
@@ -97,5 +132,21 @@ describe("GET /api/assets/download", () => {
     );
     const res = await GET(req);
     expect(res.status).toBe(502);
+  });
+
+  it("404 when local file read fails", async () => {
+    (readGatedFile as jest.Mock).mockRejectedValueOnce(new Error("missing"));
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    const t = signDownloadToken({
+      slug: "pack",
+      wallet: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      exp,
+    });
+    (prisma.gatedAsset.findUnique as jest.Mock).mockResolvedValue(assetRow);
+    const req = new NextRequest(
+      `http://localhost/api/assets/download?t=${encodeURIComponent(t)}`,
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(404);
   });
 });
