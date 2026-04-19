@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "apps/seller-api/src/dev.ts"],
+      "port": 4000
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "apps/web", "--port", "3000"],
+      "port": 3000
+    }
+  ]
+}

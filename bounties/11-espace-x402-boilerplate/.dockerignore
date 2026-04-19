@@ -1,0 +1,13 @@
+node_modules
+.git
+.env
+.env.local
+*.log
+dist
+.next
+coverage
+.turbo
+.cache
+audits
+docs
+monitoring/grafana/data

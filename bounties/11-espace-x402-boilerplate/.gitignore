@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+.env
+*.local
+coverage/
+typechain-types/
+artifacts/
+cache/
+.venv/
+*.db
+*.db-shm
+*.db-wal
+__pycache__/
+.config.runtime.json
+deploy-manifest.json

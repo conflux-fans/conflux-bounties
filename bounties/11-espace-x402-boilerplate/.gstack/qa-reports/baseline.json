@@ -1,0 +1,21 @@
+{
+  "date": "2026-04-02",
+  "url": "http://localhost:3000",
+  "healthScore": 89,
+  "issues": [
+    { "id": "ISSUE-001", "title": "Agent chat quick actions don't auto-submit", "severity": "medium", "category": "UX", "status": "verified" },
+    { "id": "ISSUE-002", "title": "/sellers API BigInt serialization error", "severity": "high", "category": "Functional", "status": "verified" },
+    { "id": "ISSUE-003", "title": "React hydration warning in SellerDirectory", "severity": "low", "category": "Console", "status": "deferred" },
+    { "id": "ISSUE-004", "title": "Agent wallet badge doesn't sync with network switch", "severity": "medium", "category": "Functional", "status": "verified" }
+  ],
+  "categoryScores": {
+    "console": 70,
+    "links": 100,
+    "visual": 100,
+    "functional": 85,
+    "ux": 85,
+    "performance": 100,
+    "content": 100,
+    "accessibility": 90
+  }
+}

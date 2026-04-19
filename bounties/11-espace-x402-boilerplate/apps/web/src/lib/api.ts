@@ -1,0 +1,132 @@
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+
+// ─── Wallet-based admin session ───
+let adminSessionToken: string | null = null;
+const sessionListeners = new Set<() => void>();
+
+export function setAdminSession(token: string | null) {
+  adminSessionToken = token;
+  sessionListeners.forEach((fn) => fn());
+}
+
+export function getAdminSession(): string | null {
+  return adminSessionToken;
+}
+
+/** Subscribe to session changes — returns an unsubscribe function */
+export function onSessionChange(fn: () => void): () => void {
+  sessionListeners.add(fn);
+  return () => sessionListeners.delete(fn);
+}
+
+export function adminHeaders(): Record<string, string> {
+  return adminSessionToken ? { "x-admin-token": adminSessionToken } : {};
+}
+
+/**
+ * Request a challenge nonce from the backend for wallet-based admin auth.
+ */
+export async function requestAdminChallenge(address: string): Promise<{ nonce: string; message: string } | { error: string }> {
+  const res = await fetch(`${API_BASE}/admin/auth/challenge?address=${address}`);
+  return res.json();
+}
+
+/**
+ * Submit a signed challenge to get a session token.
+ */
+export async function verifyAdminSignature(address: string, signature: string): Promise<{ token: string; expiresIn: number } | { error: string }> {
+  const res = await fetch(`${API_BASE}/admin/auth/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address, signature }),
+  });
+  return res.json();
+}
+
+export async function apiFetch<T = unknown>(
+  path: string,
+  options?: RequestInit & { invoiceId?: string; payer?: string; preferredToken?: string; chainId?: number }
+): Promise<{ data?: T; paymentRequired?: PaymentChallenge; error?: string; status: number }> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(path.startsWith("/admin") ? adminHeaders() : {}),
+    ...(options?.headers as Record<string, string>),
+  };
+
+  if (options?.invoiceId) {
+    headers["x-payment-invoice-id"] = options.invoiceId;
+  }
+  if (options?.payer) {
+    headers["x-payment-payer"] = options.payer;
+  }
+  if (options?.preferredToken) {
+    headers["x-preferred-token"] = options.preferredToken;
+  }
+  if (options?.chainId) {
+    headers["x-chain-id"] = String(options.chainId);
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  if (res.status === 402) {
+    const body = await res.json();
+    return {
+      status: 402,
+      paymentRequired: {
+        amount: res.headers.get("x-payment-amount") || body["x-payment-amount"],
+        token: res.headers.get("x-payment-token") || body["x-payment-token"],
+        nonce: res.headers.get("x-payment-nonce") || body["x-payment-nonce"],
+        expiry: Number(res.headers.get("x-payment-expiry") || body["x-payment-expiry"]),
+        endpoint: res.headers.get("x-payment-endpoint") || body["x-payment-endpoint"],
+        invoiceId: res.headers.get("x-payment-invoice-id") || body["x-payment-invoice-id"],
+        description: res.headers.get("x-payment-description") || body["x-payment-description"],
+        recipient: res.headers.get("x-payment-recipient") || body["x-payment-recipient"],
+        verifierAddress: res.headers.get("x-payment-verifier") || body["x-payment-verifier"],
+        ...(body.supportedTokens && { supportedTokens: body.supportedTokens }),
+      },
+    };
+  }
+
+  const data = await res.json();
+  if (!res.ok) return { error: data.error || "Request failed", status: res.status };
+  return { data: data.data ?? data, status: res.status };
+}
+
+export interface PaymentChallenge {
+  amount: string;
+  token: string;
+  nonce: string;
+  expiry: number;
+  endpoint: string;
+  invoiceId: string;
+  description?: string;
+  recipient?: string;
+  verifierAddress?: string;
+  supportedTokens?: { address: string; symbol: string; price: string; priceRaw: string }[];
+}
+
+export async function submitDispute(invoiceId: string, requester: string, reason: string) {
+  const res = await fetch(`${API_BASE}/disputes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ invoiceId, requester, reason }),
+  });
+  return res.json();
+}
+
+export async function fetchDisputes(status?: string) {
+  const qs = status ? `?status=${status}` : "";
+  const res = await fetch(`${API_BASE}/disputes${qs}`, {
+    headers: adminHeaders(),
+  });
+  return res.json();
+}
+
+export async function resolveDispute(id: string, resolution: "approved" | "rejected", adminNote?: string) {
+  const res = await fetch(`${API_BASE}/disputes/${id}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...adminHeaders() },
+    body: JSON.stringify({ resolution, adminNote }),
+  });
+  return res.json();
+}

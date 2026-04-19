@@ -1,0 +1,155 @@
+{
+  "info": {
+    "name": "x402 Boilerplate API",
+    "description": "Conflux eSpace x402 pay-per-request API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4000" }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/health"
+      }
+    },
+    {
+      "name": "Free Data",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/data/free"
+      }
+    },
+    {
+      "name": "Premium Data (triggers 402)",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/data/premium"
+      }
+    },
+    {
+      "name": "Premium Data (with invoice)",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/data/premium",
+        "header": [
+          { "key": "x-payment-invoice-id", "value": "{{invoice_id}}" }
+        ]
+      }
+    },
+    {
+      "name": "Compute Simulate (triggers 402)",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/compute/simulate",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"iterations\": 1000}"
+        }
+      }
+    },
+    {
+      "name": "Get Invoice",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/invoices/{{invoice_id}}"
+      }
+    },
+    {
+      "name": "Settle Invoice (submit signed ERC-3009 auth)",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/invoices/{{invoice_id}}/settle",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"authorization\": {\"from\": \"0xBUYER_ADDRESS\", \"to\": \"0xSERVICE_WALLET\", \"value\": \"100000\", \"validAfter\": \"0\", \"validBefore\": \"9999999999\", \"nonce\": \"0x...\", \"v\": 28, \"r\": \"0x...\", \"s\": \"0x...\"}}"
+        }
+      }
+    },
+    {
+      "name": "Verify Invoice",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/invoices/{{invoice_id}}/verify"
+      }
+    },
+    {
+      "name": "Refund Invoice (admin)",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/invoices/{{invoice_id}}/refund"
+      }
+    },
+    {
+      "name": "List Invoices",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/invoices?limit=20"
+      }
+    },
+    {
+      "name": "Get Pricing",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/admin/pricing"
+      }
+    },
+    {
+      "name": "Update Pricing",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/admin/pricing/data/premium",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"price\": \"200000000000000000\", \"description\": \"Updated premium data\"}"
+        }
+      }
+    },
+    {
+      "name": "Analytics",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/admin/analytics"
+      }
+    },
+    {
+      "name": "Export Usage CSV",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/admin/analytics/export"
+      }
+    },
+    {
+      "name": "List API Keys",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/admin/keys"
+      }
+    },
+    {
+      "name": "Create API Key",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/admin/keys",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"label\": \"test-key\", \"ownerId\": \"dev-1\", \"rateLimit\": 120}"
+        }
+      }
+    }
+  ]
+}
