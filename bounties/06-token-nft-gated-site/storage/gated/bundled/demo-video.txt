@@ -1,0 +1,4 @@
+Demo video / media placeholder
+========================
+Replace with a real .mp4 (or other format) via Admin → Assets upload.
+Signed download links are issued after gating checks pass.

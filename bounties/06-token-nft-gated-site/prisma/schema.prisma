@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Nonce {
+  id        String   @id @default(cuid())
+  value     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Session {
+  id            String    @id @default(cuid())
+  walletAddress String
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([walletAddress])
+}
+
+model GatingRule {
+  id           String   @id @default(cuid())
+  name         String
+  pathPattern  String
+  combineLogic String   @default("ALL") // ALL | ANY
+  rulesJson    Json
+  sortOrder    Int      @default(0)
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accessLogs AccessLog[]
+
+  @@index([enabled, pathPattern])
+}
+
+model AccessLog {
+  id            String   @id @default(cuid())
+  walletAddress String?
+  path          String
+  ruleId        String?
+  allowed       Boolean
+  ip            String?
+  userAgent     String?
+  meta          Json?
+  createdAt     DateTime @default(now())
+
+  rule GatingRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([walletAddress])
+}
+
+model AllowlistEntry {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+model DenylistEntry {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+model TokenMetadataCache {
+  id            String   @id @default(cuid())
+  chainId       Int
+  tokenAddress  String
+  standard      String // ERC20 | ERC721 | ERC1155
+  name          String?
+  symbol        String?
+  uri           String?
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+
+  @@unique([chainId, tokenAddress, standard])
+}
+
+model AuthFailureLog {
+  id            String   @id @default(cuid())
+  walletAddress String?
+  ip            String?
+  reason        String
+  meta          Json?
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([ip])
+}
+
+model GatedAsset {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  originalName String
+  mimeType     String
+  sha256       String
+  sizeBytes    Int
+  storageKey   String
+  createdAt    DateTime @default(now())
+
+  @@index([slug])
+}

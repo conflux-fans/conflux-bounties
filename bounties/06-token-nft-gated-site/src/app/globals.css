@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #f1efe8;
+    --foreground: #0c1210;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply min-h-screen bg-paper bg-mesh-page font-sans text-ink antialiased;
+  }
+
+  ::selection {
+    @apply bg-accent-soft text-ink;
+  }
+}
+
+@layer components {
+  .ui-card {
+    @apply rounded-2xl border border-ink/[0.07] bg-surface/95 p-6 shadow-card-sm backdrop-blur-sm;
+  }
+
+  .ui-card-tight {
+    @apply rounded-xl border border-ink/[0.06] bg-white/90 p-4 shadow-card-sm;
+  }
+
+  .ui-panel-dashed {
+    @apply rounded-2xl border border-dashed border-accent/25 bg-accent-soft/25 p-5 sm:p-6;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:pointer-events-none disabled:opacity-45;
+  }
+
+  .btn-primary-sm {
+    @apply inline-flex items-center justify-center rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:ring-offset-1 focus-visible:ring-offset-paper disabled:pointer-events-none disabled:opacity-45;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-xl border border-ink/10 bg-white px-5 py-2.5 text-sm font-semibold text-ink transition hover:border-accent/25 hover:bg-accent-soft/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:pointer-events-none disabled:opacity-45;
+  }
+
+  .btn-secondary-sm {
+    @apply inline-flex items-center justify-center rounded-lg border border-ink/10 bg-white px-3 py-1.5 text-xs font-medium text-ink transition hover:border-accent/25 hover:bg-accent-soft/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20 disabled:pointer-events-none disabled:opacity-45;
+  }
+
+  .btn-ghost {
+    @apply rounded-lg px-3 py-1.5 text-sm font-medium text-ink-muted transition hover:bg-ink/[0.04] hover:text-ink;
+  }
+
+  .btn-danger-sm {
+    @apply rounded-lg border border-red-200/90 bg-red-50/80 px-2.5 py-1 text-xs font-medium text-red-800 transition hover:bg-red-100;
+  }
+
+  .input-field {
+    @apply mt-1 w-full rounded-xl border border-ink/10 bg-white px-3 py-2 text-sm text-ink shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20;
+  }
+
+  .input-field-mono {
+    @apply input-field font-mono text-xs;
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.22em] text-accent;
+  }
+
+  .eyebrow-amber {
+    @apply text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-800;
+  }
+
+  .kbd-inline {
+    @apply rounded-md border border-ink/[0.08] bg-ink/[0.04] px-1.5 py-0.5 font-mono text-[0.82em] text-ink-muted;
+  }
+
+  .section-title {
+    @apply font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl;
+  }
+
+  .section-subtitle {
+    @apply text-lg font-semibold tracking-tight text-ink;
+  }
+
+  .section-desc {
+    @apply mt-2 text-sm leading-relaxed text-ink-muted;
+  }
+
+  .nav-pill {
+    @apply rounded-full px-3 py-1.5 text-sm font-medium text-ink-muted transition hover:bg-ink/[0.05] hover:text-ink;
+  }
+
+  .nav-pill-active {
+    @apply bg-accent-soft text-accent;
+  }
+
+  .table-wrap {
+    @apply overflow-x-auto rounded-xl border border-ink/[0.07] bg-white/95 shadow-card-sm;
+  }
+
+  .table-head {
+    @apply border-b border-ink/[0.06] bg-paper/80 text-left text-xs font-medium text-ink-muted;
+  }
+}
