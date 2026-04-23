@@ -55,9 +55,14 @@ jobs:
       - name: Run agent tests
         run: npm run test -w apps/agent
 
-      - name: Lint
-        run: npm run lint --if-present --workspaces
-        continue-on-error: true
+      - name: Run web tests
+        run: npm run test -w apps/web
+
+      - name: Type-check API
+        run: npx tsc --noEmit -p apps/seller-api/tsconfig.json
+
+      - name: Type-check agent
+        run: npx tsc --noEmit -p apps/agent/tsconfig.json
 
   contracts:
     runs-on: ubuntu-latest
