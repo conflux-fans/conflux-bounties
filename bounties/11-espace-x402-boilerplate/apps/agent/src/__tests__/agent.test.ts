@@ -330,4 +330,27 @@ describe("X402Agent.callEndpoint", () => {
     );
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
+
+  // 11. Sub-30s retry benchmark (spec: 402 → pay → retry within 30s)
+  it("completes 402 → sign → settle → retry cycle in under 30 seconds", async () => {
+    const agent = new X402Agent(makeConfig());
+    const challengeHeaders = make402Headers();
+    const premiumData = { premium: true, data: [1, 2, 3] };
+
+    fetchSpy.mockResolvedValueOnce(
+      mockResponse(402, challengeHeaders, challengeHeaders),
+    );
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, { paused: false }));
+    fetchSpy.mockResolvedValueOnce(mockResponse(200, premiumData));
+
+    mockSignAuthorization.mockResolvedValueOnce(SIGNED_AUTH);
+    mockSubmitAuthorization.mockResolvedValueOnce({ verified: true, txHash: "0xtiming" });
+
+    const start = performance.now();
+    const data = await agent.callEndpoint("/premium");
+    const elapsed = performance.now() - start;
+
+    expect(data).toEqual(premiumData);
+    expect(elapsed).toBeLessThan(30_000);
+  });
 });
