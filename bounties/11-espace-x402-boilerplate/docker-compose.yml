@@ -76,13 +76,10 @@ services:
       dockerfile: apps/agent/Dockerfile
     env_file: .env
     environment:
-      # Agent runs inside Docker network — use container hostname
       API_BASE: http://seller-api:4000
     depends_on:
       seller-api:
         condition: service_healthy
-    profiles:
-      - agent  # Only starts with: docker compose --profile agent up
 
   prometheus:
     image: prom/prometheus:latest
