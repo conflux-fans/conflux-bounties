@@ -2,7 +2,7 @@
 
 End-to-end reference for **x402 pay-per-request payments** on Conflux eSpace using **ERC-3009 `receiveWithAuthorization`** with USDT0. Three cohesive apps — a Seller API, a Web Frontend, and an AI Agent — demonstrate the full gasless payment lifecycle.
 
-> **Status:** Complete. All acceptance criteria met. Two security audits completed (0 critical/high findings). Built for Conflux Bounty #11.
+> **Status:** Complete. Two security audits completed (0 critical/high findings). Built for Conflux Bounty #11.
 
 ### Demo Video
 
@@ -226,12 +226,7 @@ Production mode uses Postgres + Redis for persistent storage.
 ```bash
 docker compose up --build
 ```
-This starts: Postgres, Redis, Seller API (port 4000), Web UI (port 3000).
-
-### With the AI agent
-```bash
-docker compose --profile agent up --build
-```
+This starts: Postgres, Redis, Seller API (port 4000), Web UI (port 3000), and the AI Agent.
 
 ### With monitoring (Prometheus + Grafana)
 ```bash
@@ -267,10 +262,13 @@ npm run dev:web
 │   ├── web/             # Next.js 14 frontend — wallet connect, paywall UI, admin dashboard
 │   └── agent/           # LangChain AI agent + MCP server for Claude integration
 ├── docs/
-│   ├── architecture.md  # Mermaid system diagram & component table
-│   ├── sequence.md      # Payment flow sequence diagrams
-│   ├── runbooks.md      # Operational guides (rotate keys, pricing, disputes)
-│   └── SECURITY.md      # Threat model & hardening recommendations
+│   ├── architecture.md              # Mermaid system diagram & component table
+│   ├── sequence.md                  # Payment flow sequence diagrams
+│   ├── replay-protection.md         # Replay protection & post-settlement access model
+│   ├── branding.md                  # Frontend branding customization guide
+│   ├── agent-sample-conversation.md # Sample agent conversation (discovery → payment → data)
+│   ├── runbooks.md                  # Operational guides (rotate keys, pricing, disputes)
+│   └── SECURITY.md                  # Threat model & hardening recommendations
 ├── monitoring/          # Prometheus + Grafana configs & dashboards
 ├── postman/             # Postman API collection for manual testing
 ├── scripts/
@@ -552,17 +550,27 @@ Full report: [`audits/x402-20260402/AUDIT-REPORT.md`](audits/x402-20260402/AUDIT
 
 ## Acceptance Criteria
 
-All acceptance criteria from the [bounty spec](spec.md) are met:
+Status against the [bounty spec](spec.md):
 
-| Criterion | Status |
-|-----------|--------|
-| Seller endpoints enforce x402: free endpoints open, premium return 402 until paid | Done |
-| Web client connects wallet, views invoice, confirms payment, auto-fetches data | Done |
-| AI agent detects 402, submits payment on testnet, retries within <30s | Done |
-| Logging + analytics show per-endpoint usage, revenue, agent spend caps | Done |
-| Full stack spins up locally via `docker compose up` | Done |
-| Payment proof bound to request scope (nonce/expiry + endpoint) with replay protection | Done |
-| End-to-end flow works with demo scripts and docs | Done |
+| Criterion | Status | Notes |
+|-----------|--------|-------|
+| Seller endpoints enforce x402: free endpoints open, premium return 402 until paid, then return data | Done | Premium endpoints return JSON (not SSE/chunked streaming). See [spec note](#premium-data-format). |
+| Web client connects wallet, views invoice, confirms payment, auto-fetches data | Done | |
+| AI agent detects 402, submits payment on testnet, retries within <30s | Done | Verified by timing test in `apps/agent/src/__tests__/agent.test.ts`. |
+| Logging + analytics show per-endpoint usage, revenue, agent spend caps | Done | |
+| Full stack spins up locally via `docker compose up` (API, DB, frontend, agent) | Done | Agent included in default profile — no `--profile` flag needed. |
+| Payment proof bound to request scope (nonce/expiry + endpoint) with replay protection | Done | Payer binding enforced: `x-payment-payer` header required when invoice has a stored payer. See [`docs/replay-protection.md`](docs/replay-protection.md). |
+| End-to-end flow works with demo scripts and docs | Done | |
+| Frontend branding customization documented | Done | See [`docs/branding.md`](docs/branding.md). |
+| Agent sample conversation (discovery → payment → data retrieval) | Done | See [`docs/agent-sample-conversation.md`](docs/agent-sample-conversation.md). |
+
+### Premium Data Format
+
+The spec mentions "stream data" for premium endpoints. This implementation returns premium data as standard JSON responses, not SSE or chunked transfer encoding. JSON was chosen because:
+
+1. The x402 payment model is request-scoped — each 402 challenge maps to a single request/response cycle.
+2. JSON is simpler for agent integration (the AI agent parses JSON directly).
+3. SSE/chunked streaming can be added per-endpoint without changing the payment flow — the x402 middleware is format-agnostic.
 
 ---
 
@@ -592,6 +600,9 @@ npm run preflight
 
 - [`docs/architecture.md`](docs/architecture.md) — System diagram and component overview
 - [`docs/sequence.md`](docs/sequence.md) — Payment flow sequence diagrams (happy path, agent, refund, expiry)
+- [`docs/replay-protection.md`](docs/replay-protection.md) — Replay protection layers and post-settlement access model
+- [`docs/branding.md`](docs/branding.md) — Customizing frontend branding (colors, logo, app name)
+- [`docs/agent-sample-conversation.md`](docs/agent-sample-conversation.md) — Sample agent conversation (discovery → payment → data)
 - [`docs/runbooks.md`](docs/runbooks.md) — Operational guides (rotate keys, adjust pricing, handle disputes)
 - [`docs/SECURITY.md`](docs/SECURITY.md) — Threat model and hardening recommendations
 - [`spec.md`](spec.md) — Original bounty specification and acceptance criteria
