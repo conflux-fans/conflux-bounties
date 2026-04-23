@@ -101,9 +101,12 @@ disputeRoutes.post("/:id/resolve", adminAuth, async (c) => {
     if (!invoice || invoice.status !== "paid") {
       return c.json({ error: "Invoice is no longer in paid status — cannot refund" }, 400);
     }
+    if (!invoice.onchain_invoice_id) {
+      return c.json({ error: "Missing on-chain invoice ID — invoice may predate the contract upgrade" }, 400);
+    }
 
     try {
-      const txHash = await verifier.refund(dispute.invoice_id);
+      const txHash = await verifier.refund(invoice.onchain_invoice_id as `0x${string}`);
       await verifier.waitForTx(txHash);
       refundTxHash = txHash;
 
