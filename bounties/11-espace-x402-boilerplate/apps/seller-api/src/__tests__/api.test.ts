@@ -158,7 +158,7 @@ describe("x402 Middleware", () => {
     expect(body["x-payment-invoice-id"]).toBeDefined();
   });
 
-  it("should pass through when valid paid invoice is provided", async () => {
+  it("should pass through when valid paid invoice is provided (no stored payer)", async () => {
     mockRows.pricing = [{ price: "100000", token: "0xMockToken", description: "Premium" }];
     mockRows.invoices = [{ id: "inv-123", status: "paid", endpoint: "/data/premium" }];
 
@@ -168,6 +168,48 @@ describe("x402 Middleware", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toBe("premium");
+  });
+
+  it("should pass through when paid invoice has payer and correct x-payment-payer header", async () => {
+    mockRows.pricing = [{ price: "100000", token: "0xMockToken", description: "Premium" }];
+    mockRows.invoices = [{ id: "inv-124", status: "paid", endpoint: "/data/premium", payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" }];
+
+    const res = await app.request("/data/premium", {
+      headers: {
+        "x-payment-invoice-id": "inv-124",
+        "x-payment-payer": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toBe("premium");
+  });
+
+  it("should reject 403 when invoice has payer but x-payment-payer header is missing", async () => {
+    mockRows.pricing = [{ price: "100000", token: "0xMockToken", description: "Premium" }];
+    mockRows.invoices = [{ id: "inv-125", status: "paid", endpoint: "/data/premium", payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" }];
+
+    const res = await app.request("/data/premium", {
+      headers: { "x-payment-invoice-id": "inv-125" },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain("x-payment-payer header required");
+  });
+
+  it("should reject 403 when x-payment-payer does not match stored payer", async () => {
+    mockRows.pricing = [{ price: "100000", token: "0xMockToken", description: "Premium" }];
+    mockRows.invoices = [{ id: "inv-126", status: "paid", endpoint: "/data/premium", payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" }];
+
+    const res = await app.request("/data/premium", {
+      headers: {
+        "x-payment-invoice-id": "inv-126",
+        "x-payment-payer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain("payer mismatch");
   });
 });
 
@@ -749,7 +791,7 @@ describe("Dispute Resolution", () => {
 
   // ─── Resolution tests ───
 
-  it("should approve dispute and trigger on-chain refund", async () => {
+  it("should approve dispute and trigger on-chain refund using onchain_invoice_id", async () => {
     mockRows.disputes = [{
       id: "disp-1",
       invoice_id: "inv-d1",
@@ -764,6 +806,7 @@ describe("Dispute Resolution", () => {
       endpoint: "/data/premium",
       amount: "100000",
       payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      onchain_invoice_id: "0xonchain123",
     }];
     mockVerifier.refund.mockResolvedValue("0xrefund-disp1");
     mockVerifier.waitForTx.mockResolvedValue({});
@@ -776,8 +819,35 @@ describe("Dispute Resolution", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.refundTxHash).toBe("0xrefund-disp1");
-    expect(mockVerifier.refund).toHaveBeenCalledWith("inv-d1");
+    expect(mockVerifier.refund).toHaveBeenCalledWith("0xonchain123");
     expect(mockVerifier.waitForTx).toHaveBeenCalledWith("0xrefund-disp1");
+  });
+
+  it("should return 400 when dispute-approved invoice has no onchain_invoice_id", async () => {
+    mockRows.disputes = [{
+      id: "disp-no-onchain",
+      invoice_id: "inv-no-onchain",
+      requester: "0xpayer",
+      reason: "Missing on-chain ID",
+      status: "open",
+      created_at: new Date().toISOString(),
+    }];
+    mockRows.invoices = [{
+      id: "inv-no-onchain",
+      status: "paid",
+      endpoint: "/data/premium",
+      amount: "100000",
+      payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    }];
+
+    const res = await app.request("/disputes/disp-no-onchain/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-key": ADMIN_KEY },
+      body: JSON.stringify({ resolution: "approved" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("on-chain invoice ID");
   });
 
   it("should return 500 when on-chain refund fails during dispute approval", async () => {
@@ -795,6 +865,7 @@ describe("Dispute Resolution", () => {
       endpoint: "/data/premium",
       amount: "100000",
       payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      onchain_invoice_id: "0xonchain456",
     }];
     mockVerifier.refund.mockRejectedValue(new Error("EVM revert: transfer failed"));
 
@@ -935,10 +1006,13 @@ describe("E2E Flow: 402 → settle → data", () => {
     expect(settleBody.verified).toBe(true);
     expect(settleBody.txHash).toBe("0xtx-e2e");
 
-    // Step 5: Re-fetch premium data with paid invoice ID
-    mockRows.invoices = [{ id: invoiceId, status: "paid", endpoint: "/data/premium" }];
+    // Step 5: Re-fetch premium data with paid invoice ID + payer header
+    mockRows.invoices = [{ id: invoiceId, status: "paid", endpoint: "/data/premium", payer: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" }];
     const dataRes = await app.request("/data/premium", {
-      headers: { "x-payment-invoice-id": invoiceId },
+      headers: {
+        "x-payment-invoice-id": invoiceId,
+        "x-payment-payer": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      },
     });
     expect(dataRes.status).toBe(200);
     const data = await dataRes.json() as Record<string, unknown>;

@@ -46,11 +46,14 @@ export const x402Paywall = createMiddleware(async (c, next) => {
       SELECT * FROM invoices WHERE id = ${invoiceId} AND status = 'paid' AND endpoint = ${endpoint}
     `;
     if (invoice) {
-      // Bind invoice to payer: require x-payment-payer header matching the original payer
-      // to prevent replay by third parties who learn the invoice ID.
       const payerHeader = c.req.header("x-payment-payer");
-      if (invoice.payer && payerHeader && payerHeader.toLowerCase() !== invoice.payer.toLowerCase()) {
-        return c.json({ error: "Invoice payer mismatch" }, 403);
+      if (invoice.payer) {
+        if (!payerHeader) {
+          return c.json({ error: "x-payment-payer header required for this invoice" }, 403);
+        }
+        if (payerHeader.toLowerCase() !== invoice.payer.toLowerCase()) {
+          return c.json({ error: "Invoice payer mismatch" }, 403);
+        }
       }
       c.set("invoice" as never, invoice);
       return next();
