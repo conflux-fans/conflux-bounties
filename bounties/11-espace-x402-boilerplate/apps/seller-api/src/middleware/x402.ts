@@ -67,6 +67,15 @@ export const x402Paywall = createMiddleware(async (c, next) => {
         endpoint
       );
       if (valid) {
+        const payerHeader = c.req.header("x-payment-payer");
+        if (payer) {
+          if (!payerHeader) {
+            return c.json({ error: "x-payment-payer header required for this invoice" }, 403);
+          }
+          if (payerHeader.toLowerCase() !== payer.toLowerCase()) {
+            return c.json({ error: "Invoice payer mismatch" }, 403);
+          }
+        }
         await sql`
           UPDATE invoices SET status = 'paid', payer = ${payer}, updated_at = NOW()
           WHERE id = ${invoiceId}
