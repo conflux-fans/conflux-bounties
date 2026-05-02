@@ -16,7 +16,7 @@ describe('block-fetcher', () => {
   });
 
   it('should handle null baseFeePerGas', () => {
-    const baseFee = undefined;
+    const baseFee = undefined as bigint | undefined;
     expect(baseFee?.toString() ?? null).toBeNull();
   });
 

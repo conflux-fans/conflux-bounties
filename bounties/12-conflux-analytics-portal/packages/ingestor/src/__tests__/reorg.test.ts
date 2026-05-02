@@ -12,8 +12,8 @@ describe('reorg detection', () => {
   });
 
   it('should detect reorg when parent hashes mismatch', () => {
-    const storedHash = '0xabc123';
-    const newParentHash = '0xdef456';
+    const storedHash: string = '0xabc123';
+    const newParentHash: string = '0xdef456';
     expect(storedHash === newParentHash).toBe(false);
   });
 
