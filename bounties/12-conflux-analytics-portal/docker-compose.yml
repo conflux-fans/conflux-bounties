@@ -1,0 +1,109 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: conflux_analytics
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analytics -d conflux_analytics"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
+  init:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    command: >
+      sh -c "
+        npx tsx scripts/migrate.ts &&
+        npx tsx scripts/seed.ts
+      "
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: conflux_analytics
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics_secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ingestor:
+    build:
+      context: .
+      dockerfile: packages/ingestor/Dockerfile
+    environment:
+      CONFLUX_RPC_URL: https://evm.confluxrpc.com
+      CHAIN_ID: "1030"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: conflux_analytics
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics_secret
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      INGESTOR_CONCURRENCY: "5"
+      INGESTOR_RATE_LIMIT: "50"
+      POLL_INTERVAL_MS: "1000"
+      BACKFILL_CHUNK_SIZE: "10"
+      MAX_REORG_DEPTH: "20"
+      AGGREGATOR_INTERVAL_MS: "600000"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      API_PORT: "3001"
+      API_HOST: "0.0.0.0"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: conflux_analytics
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics_secret
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      RATE_LIMIT_PUBLIC: "30"
+      RATE_LIMIT_AUTHED: "100"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: .
+      dockerfile: packages/frontend/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3001/api/v1
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
