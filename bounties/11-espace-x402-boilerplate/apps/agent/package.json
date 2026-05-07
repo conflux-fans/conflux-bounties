@@ -1,0 +1,36 @@
+{
+  "name": "@x402/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts demo",
+    "start": "tsx src/index.ts demo",
+    "demo": "tsx src/index.ts demo",
+    "langchain": "tsx src/index.ts langchain",
+    "direct": "tsx src/index.ts direct",
+    "mcp": "tsx src/mcp-server.ts",
+    "build": "tsc",
+    "lint": "eslint src/",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@langchain/core": "^0.2.0",
+    "@langchain/openai": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@x402/sdk": "*",
+    "@x402/shared": "*",
+    "better-sqlite3": "^11.0.0",
+    "langchain": "^0.2.0",
+    "pino": "^9.0.0",
+    "pino-pretty": "^11.0.0",
+    "viem": "^2.10.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "tsx": "^4.10.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

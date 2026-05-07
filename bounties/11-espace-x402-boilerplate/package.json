@@ -1,0 +1,37 @@
+{
+  "name": "espace-x402-boilerplate",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w apps/seller-api",
+    "dev:api:local": "npx tsx apps/seller-api/src/dev.ts",
+    "dev:web": "npm run dev -w apps/web",
+    "dev:agent": "npm run dev -w apps/agent",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "contracts:compile": "npm run compile -w packages/contracts",
+    "contracts:test": "npm run test -w packages/contracts",
+    "contracts:deploy": "npm run deploy -w packages/contracts",
+    "contracts:deploy:mainnet": "NETWORK=mainnet npm run deploy -w packages/contracts -- --network confluxMainnet",
+    "post-deploy": "bash scripts/post-deploy.sh",
+    "deploy:full": "npm run contracts:compile && npm run contracts:deploy && bash scripts/post-deploy.sh",
+    "deploy:full:mainnet": "npm run contracts:compile && npm run contracts:deploy:mainnet && bash scripts/post-deploy.sh",
+    "preflight": "bash scripts/preflight.sh",
+    "db:migrate": "npm run migrate -w apps/seller-api",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "mcp:agent": "npm run mcp -w apps/agent"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1"
+  }
+}
